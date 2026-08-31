@@ -226,11 +226,34 @@ check('ลิงก์ /exec ไม่ใช่ลิงก์ทดสอบ', 
   const m = linksMessage_();
   check('เตือนเมื่อยังไม่ได้ deploy', m.indexOf('/dev') > 0 && m.indexOf('แชร์ให้คนอื่นไม่ได้') > 0, true);
   check('บอกวิธี deploy ต่อ', m.indexOf('Who has access') > 0, true);
+  check('กรณี /dev ยังบอกกุญแจให้เอาไปต่อเอง',
+    m.indexOf('?key=' + getSetting_('admin_token','')) > 0 &&
+    m.indexOf('?key=' + getSetting_('view_token','')) > 0, true);
+  check('อธิบายกรณีที่ deploy ไปแล้วด้วย', m.indexOf('Manage deployments') > 0, true);
+
   global.ScriptApp.getService = () => ({ getUrl: () => 'https://script.google.com/macros/s/AKfy/exec' });
   const m2 = linksMessage_();
   check('ลิงก์ /exec แสดงกุญแจครบสองชุด',
-    m2.indexOf('?key=' + getSetting_('admin_token','')) > 0 &&
-    m2.indexOf('?key=' + getSetting_('view_token','')) > 0, true);
+    m2.indexOf('/exec?key=' + getSetting_('admin_token','')) > 0 &&
+    m2.indexOf('/exec?key=' + getSetting_('view_token','')) > 0, true);
+
+  // เปิดเว็บแอปครั้งเดียว ระบบต้องจำ URL จริงไว้เอง
+  setSetting_('webapp_url', '');
+  rememberExecUrl_();
+  check('เปิด /exec แล้วระบบจำ URL ไว้', getSetting_('webapp_url',''), 'https://script.google.com/macros/s/AKfy/exec');
+
+  // จำแล้ว ต่อให้กลับมารันจากหน้าแก้ไขโค้ด (ได้ /dev) ก็ยังให้ลิงก์จริงได้
+  global.ScriptApp.getService = () => ({ getUrl: () => 'https://script.google.com/macros/s/AKfy/dev' });
+  check('จำแล้วให้ลิงก์จริงได้แม้รันจากหน้าแก้ไขโค้ด',
+    linksMessage_().indexOf('/exec?key=' + getSetting_('admin_token','')) > 0, true);
+  check('ลิงก์ /dev ไม่ถูกจำ', (rememberExecUrl_(), getSetting_('webapp_url','')),
+    'https://script.google.com/macros/s/AKfy/exec');
+
+  // วาง URL เองในชีต Settings ก็ใช้ได้
+  setSetting_('webapp_url', 'https://script.google.com/macros/s/PASTED/exec');
+  check('วาง URL เองในชีตแล้วใช้ได้',
+    linksMessage_().indexOf('/macros/s/PASTED/exec?key=') > 0, true);
+  setSetting_('webapp_url', '');
   global.ScriptApp.getService = real;
 }
 check('กรองกุญแจตัดอักขระอันตรายทิ้ง', safeKey_('ab"><script>x</script>-1_2'), 'abscriptxscript-1_2');

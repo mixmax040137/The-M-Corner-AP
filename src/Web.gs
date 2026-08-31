@@ -8,6 +8,8 @@ function doGet(e) {
 
   if (role === ROLE.NONE) return denyPage_();
 
+  rememberExecUrl_();   // ตอนนี้โค้ดทำงานอยู่ใน /exec จริง จึงจดที่อยู่ไว้ใช้ตอนแสดงลิงก์
+
   var t = HtmlService.createTemplateFromFile('ui/Index');
   t.appName = APP.NAME;
   t.subtitle = APP.SUBTITLE;

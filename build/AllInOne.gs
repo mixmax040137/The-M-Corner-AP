@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก (ไฟล์เดียวจบ)
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 16:19 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 16:26 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -265,6 +265,7 @@ var DEFAULT_SETTINGS = [
   { key: 'admin_token',     label: 'กุญแจผู้ดูแล (แก้ไขได้)',  value: '', note: 'สร้างอัตโนมัติตอนติดตั้ง — อย่าแชร์ให้ใคร' },
   { key: 'view_token',      label: 'กุญแจแชร์ (ดูอย่างเดียว)', value: '', note: 'สร้างอัตโนมัติ — แชร์ลิงก์นี้ให้คนอื่นดูได้' },
   { key: 'admin_emails',    label: 'อีเมลผู้ดูแลเพิ่มเติม',     value: '', note: 'คั่นด้วยเครื่องหมายจุลภาค เว้นว่างได้' },
+  { key: 'webapp_url',      label: 'Web app URL (ลงท้าย /exec)', value: '', note: 'ระบบจำให้เองตอนเปิดเว็บครั้งแรก · หรือวางเองจาก Deploy > Manage deployments' },
   { key: 'backup_keep',     label: 'เก็บไฟล์สำรองย้อนหลัง (ชุด)', value: '30', note: '' },
   { key: 'refresh_seconds', label: 'รีเฟรชข้อมูลอัตโนมัติทุก (วินาที)', value: '25', note: 'ใส่ 0 เพื่อปิด' }
 ];
@@ -584,6 +585,7 @@ function onOpen() {
     .addSeparator()
     .addItem('🔗 แสดงลิงก์เข้าใช้งาน', 'showWebAppUrl')
     .addItem('🔁 ออกลิงก์แชร์ใหม่ (ยกเลิกลิงก์เดิม)', 'rotateShareLink')
+    .addItem('🔑 แสดงเฉพาะกุญแจ (เอาไปต่อท้าย URL เอง)', 'showKeysOnly')
     .addSeparator()
     .addItem('💾 สำรองข้อมูลลง Drive ตอนนี้', 'backupNow')
     .addItem('🗓️ ตั้งสำรองข้อมูลอัตโนมัติทุกวัน', 'installBackupTrigger')
@@ -713,25 +715,36 @@ function showWebAppUrl() {
   return alert_(linksMessage_());
 }
 
-/** ข้อความบอกลิงก์ พร้อมเตือนถ้ายังไม่ได้ deploy เป็นเวอร์ชัน */
+/** ข้อความบอกลิงก์ — จัดการกรณีที่ยังหา URL จริงไม่เจอด้วย */
 function linksMessage_() {
+  var admin = getSetting_('admin_token', '');
+  var view = getSetting_('view_token', '');
   var url = webAppUrl_();
-  if (!url) {
-    return 'ยังไม่ได้ Deploy\n\n' + deploySteps_();
+
+  if (url && !isTestUrl_(url)) {
+    return '━━━━━━━━━━━━━━━━━━━━━━\n' +
+      '🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' + url + '?key=' + admin + '\n\n' +
+      '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้ใครก็ได้)\n' + url + '?key=' + view + '\n' +
+      '━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+      'เปิดในมือถือแล้วกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป';
   }
-  if (isTestUrl_(url)) {
-    return '⚠️ ลิงก์ที่ได้ตอนนี้ลงท้ายด้วย /dev — เป็นลิงก์ทดสอบ\n\n' +
-      'ลิงก์ /dev เปิดได้เฉพาะบัญชีที่เป็นเจ้าของสคริปต์ และ "แชร์ให้คนอื่นไม่ได้"\n' +
-      'แปลว่าขั้นตอน Deploy ยังไม่เสร็จ\n\n' + deploySteps_() +
-      '\n\nทำเสร็จแล้วรัน START_HERE อีกครั้ง จะได้ลิงก์ที่ลงท้ายด้วย /exec';
-  }
-  return '━━━━━━━━━━━━━━━━━━━━━━\n' +
-    '🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' +
-    url + '?key=' + getSetting_('admin_token', '') + '\n\n' +
-    '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้ใครก็ได้)\n' +
-    url + '?key=' + getSetting_('view_token', '') + '\n' +
+
+  return 'ยังหาลิงก์จริงไม่เจอ (ที่เห็นตอนนี้ลงท้ายด้วย /dev ซึ่งเป็นลิงก์ทดสอบ\n' +
+    'เปิดได้เฉพาะบัญชีคุณ และแชร์ให้คนอื่นไม่ได้)\n\n' +
+    'เกิดได้ 2 กรณี — ทำตามนี้ได้เลยทั้งคู่:\n\n' +
+    '① ถ้ายังไม่เคยกด Deploy\n' + deploySteps_() + '\n\n' +
+    '② ถ้า Deploy ไปแล้ว (getUrl จะคืน /dev เสมอเมื่อรันจากหน้าแก้ไขโค้ด — เป็นเรื่องปกติ)\n' +
+    '   กด Deploy → Manage deployments → คัดลอก "Web app URL" ที่ลงท้ายด้วย /exec\n\n' +
+    '━━━━━━━━━━━━━━━━━━━━━━\n' +
+    'ได้ URL มาแล้ว เอามาต่อท้ายด้วยกุญแจข้างล่างนี้:\n\n' +
+    '🔑 ผู้ดูแล  ?key=' + admin + '\n' +
+    '👀 แชร์     ?key=' + view + '\n\n' +
+    'ตัวอย่าง\n' +
+    'https://script.google.com/macros/s/AKfy..../exec?key=' + admin + '\n' +
     '━━━━━━━━━━━━━━━━━━━━━━\n\n' +
-    'เปิดในมือถือแล้วกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป';
+    '💡 ทางลัด: วาง Web app URL ลงในชีต Settings แถว webapp_url\n' +
+    '   แล้วรันเมนูนี้อีกครั้ง ระบบจะประกอบลิงก์เต็มให้เอง\n' +
+    '   (หรือแค่เปิดลิงก์ /exec สักครั้ง ระบบก็จะจำเอง)';
 }
 
 function deployMessage_() { return deploySteps_(); }
@@ -800,6 +813,17 @@ function START_HERE() {
 
 /** ชื่อไทยของ START_HERE เผื่อหาในรายการฟังก์ชันง่ายขึ้น */
 function ติดตั้งทั้งหมด() { return START_HERE(); }
+
+
+/** แสดงแค่กุญแจ ไว้ใช้ตอนมี Web app URL อยู่ในมือแล้ว */
+function showKeysOnly() {
+  ensureTokens_();
+  return alert_(
+    'กุญแจของระบบ — เอาไปต่อท้าย Web app URL ที่ลงท้ายด้วย /exec\n\n' +
+    '🔑 ผู้ดูแล (แก้ไขได้)\n?key=' + getSetting_('admin_token', '') + '\n\n' +
+    '👀 แชร์ (ดูอย่างเดียว)\n?key=' + getSetting_('view_token', '') + '\n\n' +
+    'หา Web app URL ได้ที่  Deploy → Manage deployments');
+}
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -898,11 +922,35 @@ function rotateViewToken_() {
 
 /**
  * URL ของเว็บแอป
- *   ลงท้าย /exec = deploy แล้ว ใช้ได้กับทุกคน แชร์ได้
- *   ลงท้าย /dev  = ยังไม่ได้ deploy เป็นเวอร์ชัน ใช้ได้เฉพาะเจ้าของสคริปต์ แชร์ไม่ได้
+ *   ลงท้าย /exec = ลิงก์จริง ใช้ได้กับทุกคน แชร์ได้
+ *   ลงท้าย /dev  = ลิงก์ทดสอบ เปิดได้เฉพาะเจ้าของสคริปต์ แชร์ไม่ได้
+ *
+ * หมายเหตุสำคัญ: ScriptApp.getService().getUrl() คืน /dev เสมอเมื่อเรียกจากหน้าแก้ไขโค้ด
+ * ถึงจะ deploy ไปแล้วก็ตาม จึงต้องหา URL จริงจากทางอื่นด้วย
  */
-function webAppUrl_() {
+function rawServiceUrl_() {
   try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
+}
+
+/** URL ที่ใช้ประกอบลิงก์จริง — เอาที่ลงท้าย /exec ก่อนเสมอ */
+function webAppUrl_() {
+  var saved = String(getSetting_('webapp_url', '') || '').trim();
+  if (saved && !isTestUrl_(saved)) return saved.replace(/\?.*$/, '');
+  var live = rawServiceUrl_();
+  return live;
+}
+
+/**
+ * จำ URL จริงไว้ตอนที่มีคนเปิดเว็บแอป
+ * เพราะตอนโค้ดทำงานอยู่ใน /exec ตัว getUrl() จะคืน /exec ให้
+ */
+function rememberExecUrl_() {
+  try {
+    var u = rawServiceUrl_();
+    if (!u || isTestUrl_(u)) return;
+    u = u.replace(/\?.*$/, '');
+    if (u !== String(getSetting_('webapp_url', '') || '').trim()) setSetting_('webapp_url', u);
+  } catch (e) { /* ไม่สำคัญพอจะขัดจังหวะการเปิดหน้า */ }
 }
 
 function isTestUrl_(url) {
@@ -3302,6 +3350,8 @@ function doGet(e) {
   var role = resolveRole_(key);
 
   if (role === ROLE.NONE) return denyPage_();
+
+  rememberExecUrl_();   // ตอนนี้โค้ดทำงานอยู่ใน /exec จริง จึงจดที่อยู่ไว้ใช้ตอนแสดงลิงก์
 
   var t = HtmlService.createTemplate(indexHtml_());
   t.appName = APP.NAME;

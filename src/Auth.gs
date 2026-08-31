@@ -90,11 +90,35 @@ function rotateViewToken_() {
 
 /**
  * URL ของเว็บแอป
- *   ลงท้าย /exec = deploy แล้ว ใช้ได้กับทุกคน แชร์ได้
- *   ลงท้าย /dev  = ยังไม่ได้ deploy เป็นเวอร์ชัน ใช้ได้เฉพาะเจ้าของสคริปต์ แชร์ไม่ได้
+ *   ลงท้าย /exec = ลิงก์จริง ใช้ได้กับทุกคน แชร์ได้
+ *   ลงท้าย /dev  = ลิงก์ทดสอบ เปิดได้เฉพาะเจ้าของสคริปต์ แชร์ไม่ได้
+ *
+ * หมายเหตุสำคัญ: ScriptApp.getService().getUrl() คืน /dev เสมอเมื่อเรียกจากหน้าแก้ไขโค้ด
+ * ถึงจะ deploy ไปแล้วก็ตาม จึงต้องหา URL จริงจากทางอื่นด้วย
  */
-function webAppUrl_() {
+function rawServiceUrl_() {
   try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
+}
+
+/** URL ที่ใช้ประกอบลิงก์จริง — เอาที่ลงท้าย /exec ก่อนเสมอ */
+function webAppUrl_() {
+  var saved = String(getSetting_('webapp_url', '') || '').trim();
+  if (saved && !isTestUrl_(saved)) return saved.replace(/\?.*$/, '');
+  var live = rawServiceUrl_();
+  return live;
+}
+
+/**
+ * จำ URL จริงไว้ตอนที่มีคนเปิดเว็บแอป
+ * เพราะตอนโค้ดทำงานอยู่ใน /exec ตัว getUrl() จะคืน /exec ให้
+ */
+function rememberExecUrl_() {
+  try {
+    var u = rawServiceUrl_();
+    if (!u || isTestUrl_(u)) return;
+    u = u.replace(/\?.*$/, '');
+    if (u !== String(getSetting_('webapp_url', '') || '').trim()) setSetting_('webapp_url', u);
+  } catch (e) { /* ไม่สำคัญพอจะขัดจังหวะการเปิดหน้า */ }
 }
 
 function isTestUrl_(url) {

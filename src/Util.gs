@@ -20,32 +20,81 @@ function getSpreadsheet_() {
   return active;
 }
 
-/** คืนชีตตามชื่อ สร้างใหม่พร้อมหัวตารางถ้ายังไม่มี */
+/**
+ * คืนชีตตามชื่อ สร้างใหม่พร้อมหัวตารางถ้ายังไม่มี
+ *
+ * ⚠️ กฎเหล็ก: ถ้าชีตมีข้อมูลอยู่แล้วและหัวตารางไม่ตรงกับ SCHEMA
+ * ห้ามเขียนหัวใหม่ทับเฉย ๆ เพราะข้อมูลจะยังอยู่ตำแหน่งเดิมแล้วเลื่อนคอลัมน์ทั้งแผง
+ * ต้องย้ายข้อมูลตามชื่อหัวตารางเดิมก่อนเสมอ
+ */
 function ensureSheet_(name) {
   var ss = getSpreadsheet_();
   var sh = ss.getSheetByName(name);
   var cols = SCHEMA[name];
   if (!cols) throw new Error('ไม่พบ schema ของชีต: ' + name);
+  if (!sh) sh = ss.insertSheet(name);
 
-  if (!sh) {
-    sh = ss.insertSheet(name);
-  }
   var headers = cols.map(function (c) { return c.label; });
-  var first = sh.getRange(1, 1, 1, Math.max(headers.length, sh.getLastColumn() || 1)).getValues()[0];
-  var needHeader = false;
+  var lastCol = sh.getLastColumn();
+  var existing = lastCol > 0 ? sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
+    return String(h == null ? '' : h).trim();
+  }) : [];
+
+  var matches = true;
   for (var i = 0; i < headers.length; i++) {
-    if (String(first[i] || '').trim() !== headers[i]) { needHeader = true; break; }
+    if (existing[i] !== headers[i]) { matches = false; break; }
   }
-  if (needHeader) {
-    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sh.getRange(1, 1, 1, headers.length)
-      .setFontWeight('bold')
-      .setBackground('#1f2a44')
-      .setFontColor('#ffffff')
-      .setVerticalAlignment('middle');
-    sh.setFrozenRows(1);
+  if (matches) return sh;
+
+  var hasData = sh.getLastRow() > 1;
+  var hasHeader = existing.filter(String).length > 0;
+
+  if (hasData && hasHeader) {
+    remapSheet_(sh, name, existing);   // ย้ายข้อมูลตามชื่อหัวตาราง แล้วค่อยเขียนหัวใหม่
+    return sh;
   }
+
+  writeHeaderRow_(sh, headers);
   return sh;
+}
+
+function writeHeaderRow_(sh, headers) {
+  sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sh.getRange(1, 1, 1, headers.length)
+    .setFontWeight('bold')
+    .setBackground('#1f2a44')
+    .setFontColor('#ffffff')
+    .setVerticalAlignment('middle');
+  sh.setFrozenRows(1);
+}
+
+/**
+ * ย้ายข้อมูลจากหัวตารางเดิมมาเรียงตาม SCHEMA ปัจจุบัน
+ * คอลัมน์ที่เพิ่มใหม่จะว่าง คอลัมน์ที่ถูกตัดออกจะหายไป
+ */
+function remapSheet_(sh, name, existing) {
+  var cols = SCHEMA[name];
+  var lastRow = sh.getLastRow();
+  var lastCol = Math.max(sh.getLastColumn(), cols.length);
+  var values = lastRow > 1 ? sh.getRange(2, 1, lastRow - 1, existing.length).getValues() : [];
+
+  var idx = {};
+  existing.forEach(function (h, i) { if (h && !(h in idx)) idx[h] = i; });
+
+  var matrix = [];
+  values.forEach(function (row) {
+    if (row.every(function (v) { return v === '' || v === null; })) return;
+    matrix.push(cols.map(function (c) {
+      var i = idx[c.label];
+      return i === undefined ? '' : row[i];
+    }));
+  });
+
+  sh.getRange(1, 1, lastRow, lastCol).clearContent();
+  writeHeaderRow_(sh, cols.map(function (c) { return c.label; }));
+  if (matrix.length) sh.getRange(2, 1, matrix.length, cols.length).setValues(matrix);
+  console.log('remapSheet_: ย้ายคอลัมน์ชีต ' + name + ' จำนวน ' + matrix.length + ' แถว');
+  return matrix.length;
 }
 
 /** อ่านทั้งชีตออกมาเป็น array ของ object ตาม schema (แนบ _row = เลขแถวจริง) */

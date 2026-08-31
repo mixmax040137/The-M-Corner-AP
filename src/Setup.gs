@@ -26,6 +26,8 @@ function onOpen() {
     .addItem('🔁 ออกลิงก์แชร์ใหม่ (ยกเลิกลิงก์เดิม)', 'rotateShareLink')
     .addItem('🔑 แสดงเฉพาะกุญแจ (เอาไปต่อท้าย URL เอง)', 'showKeysOnly')
     .addSeparator()
+    .addItem('🩺 ซ่อมข้อมูลที่คอลัมน์เลื่อน', 'REPAIR')
+    .addSeparator()
     .addItem('💾 สำรองข้อมูลลง Drive ตอนนี้', 'backupNow')
     .addItem('🗓️ ตั้งสำรองข้อมูลอัตโนมัติทุกวัน', 'installBackupTrigger')
     .addToUi();
@@ -39,6 +41,9 @@ function setupSystem() {
   var ss = SpreadsheetApp.getActiveSpreadsheet() || getSpreadsheet_();
   props_().setProperty(PROP.SPREADSHEET_ID, ss.getId());
 
+  // ต้องย้ายข้อมูลก่อนที่ ensureSheet_ จะไปแตะหัวตาราง ไม่งั้นคอลัมน์จะเลื่อน
+  runMigrations_();
+
   var created = [];
   Object.keys(SHEETS).forEach(function (k) {
     var name = SHEETS[k];
@@ -51,7 +56,6 @@ function setupSystem() {
   seedRooms_();
   seedSettings_();
   ensureTokens_();
-  runMigrations_();      // ย้ายคอลัมน์ให้ตรงรุ่นใหม่ ก่อนใครจะอ่านข้อมูล
   ensureDriveFolders_();
 
   var msg = 'ติดตั้งระบบเรียบร้อย\n\n' +

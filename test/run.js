@@ -231,6 +231,126 @@ console.log('\n── 4d. ก้อนหนี้แม่-ลูก (ป้า
   near('ที่ดินยังไม่มีแม่หลังลองผูกวน', debtOverview_().totalDebt, 13151000, 0);
 }
 
+console.log('\n── 4e-0. ต้นเหตุ: อัปเดตโค้ดทับชีตโครงเก่าแล้วต้องไม่เลื่อน ──');
+{
+  // นี่คือสถานการณ์จริงที่ทำข้อมูลพัง: ชีตยังเป็นโครงเก่า แล้วรัน setupSystem ของโค้ดใหม่
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const dSh = ss.getSheetByName(SHEETS.DEBTS);
+  const oldDebtHeaders = ['รหัส','ประเภทบัญชี','รายการหนี้','เจ้าหนี้','วันที่ก่อหนี้','ยอดหนี้ตั้งต้น',
+                          'ดอกเบี้ย/เดือน','กำหนดชำระ (วันที่)','ยอดผ่อนต่อเดือน','สถานะ','หมายเหตุ','แก้ไขล่าสุด'];
+  dSh.getRange(1, 1, dSh.getLastRow(), 14).clearContent();
+  dSh.getRange(1, 1, 1, 12).setValues([oldDebtHeaders]);
+  dSh.getRange(2, 1, 1, 12).setValues([
+    ['X1','หนี้หลัก','ซื้อที่ดิน The M Corner AP','ครอบครัว','2018-03-07',4700000,'',20,80000,'กำลังผ่อน','ยืมป้าตา','']
+  ]);
+
+  const pSh = ss.getSheetByName(SHEETS.DEBT_PAYMENTS);
+  const oldPayHeaders = ['รหัส','รหัสหนี้','ประเภทบัญชี','วันที่ชำระ','ปี (ค.ศ.)','งวดที่',
+                         'จำนวนเงิน','ประเภทการชำระ','ช่องทาง','ผู้ชำระ','สลิปการโอน','หมายเหตุ','แก้ไขล่าสุด'];
+  pSh.getRange(1, 1, pSh.getLastRow(), 14).clearContent();
+  pSh.getRange(1, 1, 1, 13).setValues([oldPayHeaders]);
+  pSh.getRange(2, 1, 2, 13).setValues([
+    ['Y1','','หนี้หลัก','2026-01-21',2026,'1/2569',80000,'เงินต้น','โอนธนาคาร','มิกซ์','','งวดมกราคม',''],
+    ['Y2','','หนี้รอง','2026-08-30',2026,'',       32200,'ดอกเบี้ย','โอน QR','','','ดอกเบี้ยป้าตา','']
+  ]);
+  PropertiesService.getScriptProperties().deleteProperty('SCHEMA_VERSION');
+
+  setupSystem();   // ← ตรงนี้เคยทำข้อมูลเลื่อน
+
+  const d = readRows_(SHEETS.DEBTS).find(r => r.id === 'X1');
+  check('ต้นเหตุแก้แล้ว: ยอดตั้งต้นไม่เพี้ยน', d.principal, 4700000);
+  check('ต้นเหตุแก้แล้ว: เจ้าหนี้อยู่ที่เดิม', d.creditor, 'ครอบครัว');
+  check('ต้นเหตุแก้แล้ว: ไม่มีใครไปโผล่ในช่องแม่', d.parentId, '');
+  check('ต้นเหตุแก้แล้ว: กำหนดชำระอยู่ที่เดิม', d.dueDay, 20);
+  check('ต้นเหตุแก้แล้ว: สถานะอยู่ที่เดิม', d.status, 'กำลังผ่อน');
+  check('ต้นเหตุแก้แล้ว: หมายเหตุอยู่ที่เดิม', d.note, 'ยืมป้าตา');
+
+  const pay = {};
+  readRows_(SHEETS.DEBT_PAYMENTS).forEach(r => { pay[r.id] = r; });
+  check('ต้นเหตุแก้แล้ว: เงินต้นถูกแยกถูกต้อง', [pay['Y1'].principal, pay['Y1'].interest], [80000, 0]);
+  check('ต้นเหตุแก้แล้ว: ดอกเบี้ยถูกแยกถูกต้อง', [pay['Y2'].principal, pay['Y2'].interest], [0, 32200]);
+  check('ต้นเหตุแก้แล้ว: ช่องทางอยู่ที่เดิม', [pay['Y1'].channel, pay['Y2'].channel], ['โอนธนาคาร', 'โอน QR']);
+  check('ต้นเหตุแก้แล้ว: ผู้ชำระอยู่ที่เดิม', pay['Y1'].payer, 'มิกซ์');
+  check('ต้นเหตุแก้แล้ว: หมายเหตุอยู่ที่เดิม', pay['Y1'].note, 'งวดมกราคม');
+  near('ต้นเหตุแก้แล้ว: ยอดหนี้ถูกต้อง', debtSummary_('หนี้หลัก','all').totalDebt, 4700000, 0);
+
+  clearSheet_(SHEETS.DEBTS); clearSheet_(SHEETS.DEBT_PAYMENTS);
+  seedDebts_(); seedDebtPayments_();
+}
+
+console.log('\n── 4e. จำลองอาการคอลัมน์เลื่อน แล้วซ่อมกลับ ──');
+{
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const serial = n => new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+
+  // ── สร้างสภาพเสียให้เหมือนของจริงเป๊ะ ──
+  // โค้ดรุ่นก่อนเขียนหัวใหม่ทับข้อมูลโครงเก่า แล้วอ่านชื่อหัวใหม่ไปเทียบตำแหน่งเก่า
+  // ผลคือค่าทุกช่องเลื่อนไป 1 ตำแหน่ง และยอดตั้งต้นถูกเก็บเป็นวันที่
+  const dSh = ss.getSheetByName(SHEETS.DEBTS);
+  dSh.getRange(1, 1, dSh.getLastRow(), 14).clearContent();
+  dSh.getRange(1, 1, 1, 13).setValues([SCHEMA[SHEETS.DEBTS].map(c => c.label)]);
+  dSh.getRange(2, 1, 2, 13).setValues([
+    ['D1','หนี้หลัก','ซื้อที่ดิน The M Corner AP','ครอบครัว', serial(42800), serial(4700000),
+     '', 20, 80000, 'กำลังผ่อน', 'ยืมป้าตา 1 ล้านบาท', new Date('2026-08-31T15:42:56Z'), ''],
+    ['D2','หนี้รอง','เงินยืมป้าตา (ทุนซื้อที่ดิน)','ป้าตา', serial(42800), serial(1000000),
+     2200, 20, '', 'กำลังผ่อน', 'ชำระดอกเบี้ยเดือนละ 2,200 บาท', new Date('2026-08-31T15:42:56Z'), '']
+  ]);
+
+  const pSh = ss.getSheetByName(SHEETS.DEBT_PAYMENTS);
+  pSh.getRange(1, 1, pSh.getLastRow(), 14).clearContent();
+  pSh.getRange(1, 1, 1, 14).setValues([SCHEMA[SHEETS.DEBT_PAYMENTS].map(c => c.label)]);
+  pSh.getRange(2, 1, 3, 14).setValues([
+    // principal=ยอดเดิม, interest=0, amount=ยอดเดิม, channel←ผู้ชำระ, payer←สลิป, slips←หมายเหตุ, note←แก้ไขล่าสุด
+    ['P1','','หนี้หลัก','2026-01-21',2026,'1/2569', 80000, 0, 80000, '', '', 'นำเข้าจากชีตเดิม', new Date('2026-08-31T15:42:56Z'), ''],
+    ['P2','','หนี้รอง','2026-08-30',2026,'',        32200, 0, 32200, '', '', 'ดอกเบี้ยป้าตา — นำเข้าจากชีตเดิม', new Date('2026-08-31T15:42:56Z'), ''],
+    ['P3','','หนี้หลัก','2026-03-13',2026,'3/2569', 80000, 0, 80000, '', '', 'นำเข้าจากชีตเดิม', new Date('2026-08-31T15:42:56Z'), '']
+  ]);
+
+  // ── ยืนยันว่าอาการตรงกับที่ผู้ใช้เจอ ──
+  const broken = debtSummary_('หนี้หลัก', 'all');
+  check('อาการตรงกับที่เจอจริง: ยอดหนี้กลายเป็น 0', broken.totalDebt, 0);
+  const brokenLand = readRows_(SHEETS.DEBTS)[0];
+  check('อาการ: parentId กลายเป็นชื่อเจ้าหนี้', brokenLand.parentId, 'ครอบครัว');
+  check('อาการ: ดอกเบี้ย/เดือน กลายเป็นวันครบกำหนด', brokenLand.interestPerMonth, 20);
+  check('อาการ: หมายเหตุกลายเป็นวันที่', !!toDate_(readRows_(SHEETS.DEBT_PAYMENTS)[0].note), true);
+
+  // ── ซ่อม ──
+  REPAIR();
+
+  const dFixed = {};
+  readRows_(SHEETS.DEBTS).forEach(r => { dFixed[r.id] = r; });
+  check('ซ่อมแล้ว: ยอดตั้งต้นที่ดินกลับมา 4,700,000', dFixed['D1'].principal, 4700000);
+  check('ซ่อมแล้ว: ยอดตั้งต้นป้าตากลับมา 1,000,000', dFixed['D2'].principal, 1000000);
+  check('ซ่อมแล้ว: เจ้าหนี้กลับที่เดิม', [dFixed['D1'].creditor, dFixed['D2'].creditor], ['ครอบครัว', 'ป้าตา']);
+  check('ซ่อมแล้ว: วันที่ก่อหนี้กลับมาเป็นวันที่จริง', dFixed['D1'].startDate, '2017-03-06');
+  check('ซ่อมแล้ว: ดอกเบี้ย/เดือน ถูกต้อง', [dFixed['D1'].interestPerMonth, dFixed['D2'].interestPerMonth], [null, 2200]);
+  check('ซ่อมแล้ว: กำหนดชำระกลับมาเป็น 20', dFixed['D1'].dueDay, 20);
+  check('ซ่อมแล้ว: สถานะกลับมาถูก', dFixed['D1'].status, 'กำลังผ่อน');
+  check('ซ่อมแล้ว: หมายเหตุกลับมาถูก', dFixed['D1'].note, 'ยืมป้าตา 1 ล้านบาท');
+  check('ซ่อมแล้ว: ผูกป้าตาเข้ากับที่ดินให้ใหม่', dFixed['D2'].parentId, 'D1');
+
+  const pFixed = {};
+  readRows_(SHEETS.DEBT_PAYMENTS).forEach(r => { pFixed[r.id] = r; });
+  check('ซ่อมแล้ว: รายการเงินต้นยังเป็นเงินต้น', [pFixed['P1'].principal, pFixed['P1'].interest], [80000, 0]);
+  check('ซ่อมแล้ว: รายการดอกเบี้ยกู้กลับเป็นดอกเบี้ย', [pFixed['P2'].principal, pFixed['P2'].interest], [0, 32200]);
+  check('ซ่อมแล้ว: ช่องทางกู้คืนจากข้อมูลตั้งต้น', [pFixed['P1'].channel, pFixed['P2'].channel], ['โอนธนาคาร', 'โอน QR']);
+  check('ซ่อมแล้ว: หมายเหตุกลับมาเป็นข้อความ', pFixed['P1'].note, 'นำเข้าจากชีตเดิม');
+  check('ซ่อมแล้ว: แก้ไขล่าสุดกลับมาเป็นวันที่', pFixed['P1'].updatedAt, '2026-08-31');
+
+  const okMain = debtSummary_('หนี้หลัก', 'all');
+  near('ซ่อมแล้ว: ยอดหนี้หลักกลับมา 4,700,000', okMain.totalDebt, 4700000, 0);
+  near('ซ่อมแล้ว: ชำระแล้ว 160,000', okMain.paid, 160000, 0);
+  near('ซ่อมแล้ว: ดอกเบี้ยหนี้รอง 32,200', debtSummary_('หนี้รอง', 'all').interestPaid, 32200, 0);
+
+  // รันซ้ำต้องไม่ทำอะไรอีก
+  const again = REPAIR();
+  check('รันซ่อมซ้ำแล้วบอกว่าปกติดี', again.indexOf('ปกติดี') > 0, true);
+  near('รันซ่อมซ้ำแล้วยอดไม่เพี้ยน', debtSummary_('หนี้หลัก', 'all').totalDebt, 4700000, 0);
+
+  clearSheet_(SHEETS.DEBTS); clearSheet_(SHEETS.DEBT_PAYMENTS);
+  seedDebts_(); seedDebtPayments_();
+}
+
 console.log('\n── 5. รายการซื้อของ ──');
 const buy = purchaseSummary_('all');
 near('ยอดรวมทั้งหมด = 856,404', buy.grandTotal, 856404, 0);
@@ -438,7 +558,8 @@ check('app.version เรียกได้ด้วยกุญแจแชร�
 const bk = backupToDrive_();
 check('สำรองลง Drive สำเร็จ', /^the-m-corner-ap-.*\.json$/.test(bk.name), true);
 check('ไฟล์สำรองมีข้อมูลครบ 11 ชีต', Object.keys(bk.counts).length, 11);
-check('ประวัติไฟล์สำรองขึ้น 1 ชุด', listBackups_().length, 1);
+check('ไฟล์สำรองที่เพิ่งสร้างอยู่ในประวัติ',
+  listBackups_().some(b => b.name === bk.name), true);
 setSetting_('backup_keep', '2');
 backupToDrive_(); backupToDrive_(); backupToDrive_();
 check('เก็บย้อนหลังตามที่ตั้งไว้ (2 ชุด)', listBackups_().length, 2);

@@ -10,7 +10,7 @@ const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 
-const GS_ORDER = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs',
+const GS_ORDER = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Migrate.gs',
                   'Backup.gs','Debt.gs','Purchase.gs','Maintenance.gs','Building.gs',
                   'Dashboard.gs','Api.gs','Notify.gs','Web.gs'];
 

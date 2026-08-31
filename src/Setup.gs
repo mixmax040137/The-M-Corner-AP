@@ -51,6 +51,7 @@ function setupSystem() {
   seedRooms_();
   seedSettings_();
   ensureTokens_();
+  runMigrations_();      // ย้ายคอลัมน์ให้ตรงรุ่นใหม่ ก่อนใครจะอ่านข้อมูล
   ensureDriveFolders_();
 
   var msg = 'ติดตั้งระบบเรียบร้อย\n\n' +

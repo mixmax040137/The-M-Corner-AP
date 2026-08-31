@@ -960,8 +960,8 @@ function renderDebt(d){
 
   var byYear = d.byYear.length ? card('📅 ยอดชำระแยกตามปี',
     '<div class="tw"><table class="t"><thead><tr>' +
-    '<th>ปี</th><th class="num">เงินต้น</th><th class="num">ดอกเบี้ย</th><th class="num">รวม</th>' +
-    '<th class="num">จำนวนครั้ง</th><th class="num">สะสม</th><th style="width:26%">ความคืบหน้าสะสม</th>' +
+    '<th>ปี</th><th class="num">เงินต้น</th><th class="num">ดอกเบี้ย</th><th class="num">รวมที่โอน</th>' +
+    '<th class="num">จำนวนครั้ง</th><th class="num">เงินต้นสะสม</th><th style="width:26%">ความคืบหน้าสะสม</th>' +
     '</tr></thead><tbody>' +
     d.byYear.map(function(y){
       var cum = y.cumulative != null ? y.cumulative : 0;
@@ -970,7 +970,7 @@ function renderDebt(d){
         '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
         '<td class="num">' + money(y.principal) + '</td>' +
         '<td class="num">' + (y.interest ? money(y.interest) : '–') + '</td>' +
-        '<td class="num"><b>' + money(y.principal + y.interest + y.fee) + '</b></td>' +
+        '<td class="num"><b>' + money(y.principal + y.interest) + '</b></td>' +
         '<td class="num">' + y.count + '</td>' +
         '<td class="num">' + money(cum) + '</td>' +
         '<td>' + progress(p) + '</td></tr>';
@@ -979,14 +979,16 @@ function renderDebt(d){
   var rows = d.payments;
   var list = card('🧾 รายการโอนใช้หนี้ · ' + yearLabel + ' (' + rows.length + ')',
     rows.length ? '<div class="tw"><table class="t"><thead><tr>' +
-      '<th>วันที่</th><th>งวด</th><th class="num">จำนวนเงิน</th><th>ประเภท</th><th>ช่องทาง</th>' +
+      '<th>วันที่</th><th>งวด</th><th class="num">เงินต้น</th><th class="num">ดอกเบี้ย</th>' +
+      '<th class="num">รวมที่โอน</th><th>ช่องทาง</th>' +
       '<th>สลิป</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>' +
       rows.map(function(p){
         return '<tr>' +
           '<td class="nowrap">' + thDate(p.payDate) + '</td>' +
           '<td class="nowrap">' + esc(p.installment || '–') + '</td>' +
+          '<td class="num">' + (p.principal ? '<b style="color:var(--ok)">' + money(p.principal) + '</b>' : '<span class="faint">–</span>') + '</td>' +
+          '<td class="num">' + (p.interest ? '<b style="color:var(--warn)">' + money(p.interest) + '</b>' : '<span class="faint">–</span>') + '</td>' +
           '<td class="num"><b>' + money(p.amount) + '</b></td>' +
-          '<td>' + (p.kind === 'ดอกเบี้ย' ? '<span class="b warn">ดอกเบี้ย</span>' : (p.kind === 'ค่าธรรมเนียม' ? '<span class="b mute">ค่าธรรมเนียม</span>' : '<span class="b ok">เงินต้น</span>')) + '</td>' +
           '<td class="fs12">' + esc(p.channel || '–') + '</td>' +
           '<td>' + thumbsHtml(p.slipRefs) + '</td>' +
           '<td class="fs12 muted clip">' + esc(p.note || '') + '</td>' +
@@ -1648,12 +1650,17 @@ function fieldsHtml(specs, rec){
         'onchange="previewPicked(this,\'' + id + '\')"></label>' +
         '<div id="' + id + '_preview" class="thumbs mt8"></div>';
 
+    } else if (f.type === 'computed') {
+      inner = '<div class="inp" id="' + id + '" style="background:var(--surface-2);font-weight:600;' +
+              'font-variant-numeric:tabular-nums;cursor:default">0</div>';
+
     } else if (f.type === 'date') {
       inner = '<input type="date" class="inp" id="' + id + '" value="' + esc(v || '') + '">';
 
     } else if (f.type === 'number' || f.type === 'money') {
       inner = '<input type="number" step="' + (f.type === 'money' ? '0.01' : '1') + '" class="inp" id="' + id + '" ' +
-              'value="' + (v == null || v === '' ? '' : esc(v)) + '" placeholder="' + esc(f.ph||'') + '" inputmode="decimal">';
+              'value="' + (v == null || v === '' ? '' : esc(v)) + '" placeholder="' + esc(f.ph||'') + '" inputmode="decimal"' +
+              (f.sums ? ' oninput="recalcSums()"' : '') + '>';
 
     } else {
       inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(v || '') + '" placeholder="' + esc(f.ph||'') + '">';
@@ -1663,6 +1670,22 @@ function fieldsHtml(specs, rec){
       '<label for="' + id + '">' + esc(f.label) + (f.required ? ' <span style="color:var(--danger)">*</span>' : '') + '</label>' +
       inner + (f.hint ? '<div class="hint">' + esc(f.hint) + '</div>' : '') + '</div>';
   }).join('') + '</div>';
+}
+
+/** อัปเดตช่องผลรวมทุกช่องในฟอร์มปัจจุบัน */
+function recalcSums(){
+  (FORM.specs || []).forEach(function(f){
+    if (f.type !== 'computed' || !f.from) return;
+    var el = document.getElementById('f_' + f.key);
+    if (!el) return;
+    var total = 0;
+    f.from.forEach(function(k){
+      var i = document.getElementById('f_' + k);
+      if (i) total += Number(i.value) || 0;
+    });
+    el.textContent = total.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ฿';
+    el.style.color = total > 0 ? 'var(--ok)' : 'var(--muted)';
+  });
 }
 
 function existingFilesHtml(key){
@@ -1699,6 +1722,7 @@ function readForm(specs, bucket){
   var uploads = [];
 
   specs.forEach(function(f){
+    if (f.type === 'computed') return;          // ช่องคำนวณ ไม่ต้องบันทึก
     var el = document.getElementById('f_' + f.key);
     if (!el) return;
     if (f.type === 'files') {
@@ -1730,6 +1754,8 @@ function openForm(opts){
   if (rec.id && opts.onDelete) {
     document.getElementById('fDel').onclick = function(){ closeModal(); opts.onDelete(rec.id); };
   }
+
+  recalcSums();
 
   document.getElementById('fSave').onclick = function(){
     var btn = this;
@@ -1799,15 +1825,18 @@ function formDebtPayment(rec, ledger){
   var debts = (S.cache[S.page] && S.cache[S.page].debts) || [];
   openForm({
     title: rec && rec.id ? 'แก้ไขรายการชำระ' : 'บันทึกการโอนใช้หนี้',
-    record: rec || { payDate: today(), kind: 'เงินต้น', channel: 'โอน QR' },
+    record: rec || { payDate: today(), channel: 'โอน QR' },
     action: 'debt.savePayment', base: { ledger: ledger }, bucket: 'debt',
     onDelete: delDebtPayment,
     fields: [
       { key:'payDate', label:'วันที่ชำระ', type:'date', required:true },
-      { key:'amount',  label:'จำนวนเงิน (บาท)', type:'money', required:true },
-      { key:'kind',    label:'ประเภทการชำระ', type:'select', options:opt('payKinds'), blank:false,
-        hint:'"ดอกเบี้ย" จะไม่ถูกนำไปลดยอดเงินต้น' },
       { key:'channel', label:'ช่องทาง', type:'select', options:opt('payChannels') },
+      { key:'principal', label:'เงินต้น (บาท)', type:'money', sums:true,
+        hint:'ส่วนที่ไปลดยอดหนี้จริง' },
+      { key:'interest',  label:'ดอกเบี้ย (บาท)', type:'money', sums:true,
+        hint:'ไม่ถูกนำไปลดยอดหนี้' },
+      { key:'_total',  label:'รวมที่โอน', type:'computed', from:['principal','interest'],
+        hint:'ตรวจให้ตรงกับยอดในสลิป · ระบบคิดให้อัตโนมัติ' },
       { key:'installment', label:'งวดที่', ph:'เช่น 9/2569' },
       { key:'debtId',  label:'ผูกกับก้อนหนี้', type:'select',
         options: debts.map(function(d){ return { value:d.id, label:d.title }; }),

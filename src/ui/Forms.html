@@ -36,12 +36,17 @@ function fieldsHtml(specs, rec){
         'onchange="previewPicked(this,\'' + id + '\')"></label>' +
         '<div id="' + id + '_preview" class="thumbs mt8"></div>';
 
+    } else if (f.type === 'computed') {
+      inner = '<div class="inp" id="' + id + '" style="background:var(--surface-2);font-weight:600;' +
+              'font-variant-numeric:tabular-nums;cursor:default">0</div>';
+
     } else if (f.type === 'date') {
       inner = '<input type="date" class="inp" id="' + id + '" value="' + esc(v || '') + '">';
 
     } else if (f.type === 'number' || f.type === 'money') {
       inner = '<input type="number" step="' + (f.type === 'money' ? '0.01' : '1') + '" class="inp" id="' + id + '" ' +
-              'value="' + (v == null || v === '' ? '' : esc(v)) + '" placeholder="' + esc(f.ph||'') + '" inputmode="decimal">';
+              'value="' + (v == null || v === '' ? '' : esc(v)) + '" placeholder="' + esc(f.ph||'') + '" inputmode="decimal"' +
+              (f.sums ? ' oninput="recalcSums()"' : '') + '>';
 
     } else {
       inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(v || '') + '" placeholder="' + esc(f.ph||'') + '">';
@@ -51,6 +56,22 @@ function fieldsHtml(specs, rec){
       '<label for="' + id + '">' + esc(f.label) + (f.required ? ' <span style="color:var(--danger)">*</span>' : '') + '</label>' +
       inner + (f.hint ? '<div class="hint">' + esc(f.hint) + '</div>' : '') + '</div>';
   }).join('') + '</div>';
+}
+
+/** อัปเดตช่องผลรวมทุกช่องในฟอร์มปัจจุบัน */
+function recalcSums(){
+  (FORM.specs || []).forEach(function(f){
+    if (f.type !== 'computed' || !f.from) return;
+    var el = document.getElementById('f_' + f.key);
+    if (!el) return;
+    var total = 0;
+    f.from.forEach(function(k){
+      var i = document.getElementById('f_' + k);
+      if (i) total += Number(i.value) || 0;
+    });
+    el.textContent = total.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ฿';
+    el.style.color = total > 0 ? 'var(--ok)' : 'var(--muted)';
+  });
 }
 
 function existingFilesHtml(key){
@@ -87,6 +108,7 @@ function readForm(specs, bucket){
   var uploads = [];
 
   specs.forEach(function(f){
+    if (f.type === 'computed') return;          // ช่องคำนวณ ไม่ต้องบันทึก
     var el = document.getElementById('f_' + f.key);
     if (!el) return;
     if (f.type === 'files') {
@@ -118,6 +140,8 @@ function openForm(opts){
   if (rec.id && opts.onDelete) {
     document.getElementById('fDel').onclick = function(){ closeModal(); opts.onDelete(rec.id); };
   }
+
+  recalcSums();
 
   document.getElementById('fSave').onclick = function(){
     var btn = this;
@@ -187,15 +211,18 @@ function formDebtPayment(rec, ledger){
   var debts = (S.cache[S.page] && S.cache[S.page].debts) || [];
   openForm({
     title: rec && rec.id ? 'แก้ไขรายการชำระ' : 'บันทึกการโอนใช้หนี้',
-    record: rec || { payDate: today(), kind: 'เงินต้น', channel: 'โอน QR' },
+    record: rec || { payDate: today(), channel: 'โอน QR' },
     action: 'debt.savePayment', base: { ledger: ledger }, bucket: 'debt',
     onDelete: delDebtPayment,
     fields: [
       { key:'payDate', label:'วันที่ชำระ', type:'date', required:true },
-      { key:'amount',  label:'จำนวนเงิน (บาท)', type:'money', required:true },
-      { key:'kind',    label:'ประเภทการชำระ', type:'select', options:opt('payKinds'), blank:false,
-        hint:'"ดอกเบี้ย" จะไม่ถูกนำไปลดยอดเงินต้น' },
       { key:'channel', label:'ช่องทาง', type:'select', options:opt('payChannels') },
+      { key:'principal', label:'เงินต้น (บาท)', type:'money', sums:true,
+        hint:'ส่วนที่ไปลดยอดหนี้จริง' },
+      { key:'interest',  label:'ดอกเบี้ย (บาท)', type:'money', sums:true,
+        hint:'ไม่ถูกนำไปลดยอดหนี้' },
+      { key:'_total',  label:'รวมที่โอน', type:'computed', from:['principal','interest'],
+        hint:'ตรวจให้ตรงกับยอดในสลิป · ระบบคิดให้อัตโนมัติ' },
       { key:'installment', label:'งวดที่', ph:'เช่น 9/2569' },
       { key:'debtId',  label:'ผูกกับก้อนหนี้', type:'select',
         options: debts.map(function(d){ return { value:d.id, label:d.title }; }),

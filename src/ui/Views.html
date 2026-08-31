@@ -171,8 +171,8 @@ function renderDebt(d){
 
   var byYear = d.byYear.length ? card('📅 ยอดชำระแยกตามปี',
     '<div class="tw"><table class="t"><thead><tr>' +
-    '<th>ปี</th><th class="num">เงินต้น</th><th class="num">ดอกเบี้ย</th><th class="num">รวม</th>' +
-    '<th class="num">จำนวนครั้ง</th><th class="num">สะสม</th><th style="width:26%">ความคืบหน้าสะสม</th>' +
+    '<th>ปี</th><th class="num">เงินต้น</th><th class="num">ดอกเบี้ย</th><th class="num">รวมที่โอน</th>' +
+    '<th class="num">จำนวนครั้ง</th><th class="num">เงินต้นสะสม</th><th style="width:26%">ความคืบหน้าสะสม</th>' +
     '</tr></thead><tbody>' +
     d.byYear.map(function(y){
       var cum = y.cumulative != null ? y.cumulative : 0;
@@ -181,7 +181,7 @@ function renderDebt(d){
         '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
         '<td class="num">' + money(y.principal) + '</td>' +
         '<td class="num">' + (y.interest ? money(y.interest) : '–') + '</td>' +
-        '<td class="num"><b>' + money(y.principal + y.interest + y.fee) + '</b></td>' +
+        '<td class="num"><b>' + money(y.principal + y.interest) + '</b></td>' +
         '<td class="num">' + y.count + '</td>' +
         '<td class="num">' + money(cum) + '</td>' +
         '<td>' + progress(p) + '</td></tr>';
@@ -190,14 +190,16 @@ function renderDebt(d){
   var rows = d.payments;
   var list = card('🧾 รายการโอนใช้หนี้ · ' + yearLabel + ' (' + rows.length + ')',
     rows.length ? '<div class="tw"><table class="t"><thead><tr>' +
-      '<th>วันที่</th><th>งวด</th><th class="num">จำนวนเงิน</th><th>ประเภท</th><th>ช่องทาง</th>' +
+      '<th>วันที่</th><th>งวด</th><th class="num">เงินต้น</th><th class="num">ดอกเบี้ย</th>' +
+      '<th class="num">รวมที่โอน</th><th>ช่องทาง</th>' +
       '<th>สลิป</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>' +
       rows.map(function(p){
         return '<tr>' +
           '<td class="nowrap">' + thDate(p.payDate) + '</td>' +
           '<td class="nowrap">' + esc(p.installment || '–') + '</td>' +
+          '<td class="num">' + (p.principal ? '<b style="color:var(--ok)">' + money(p.principal) + '</b>' : '<span class="faint">–</span>') + '</td>' +
+          '<td class="num">' + (p.interest ? '<b style="color:var(--warn)">' + money(p.interest) + '</b>' : '<span class="faint">–</span>') + '</td>' +
           '<td class="num"><b>' + money(p.amount) + '</b></td>' +
-          '<td>' + (p.kind === 'ดอกเบี้ย' ? '<span class="b warn">ดอกเบี้ย</span>' : (p.kind === 'ค่าธรรมเนียม' ? '<span class="b mute">ค่าธรรมเนียม</span>' : '<span class="b ok">เงินต้น</span>')) + '</td>' +
           '<td class="fs12">' + esc(p.channel || '–') + '</td>' +
           '<td>' + thumbsHtml(p.slipRefs) + '</td>' +
           '<td class="fs12 muted clip">' + esc(p.note || '') + '</td>' +

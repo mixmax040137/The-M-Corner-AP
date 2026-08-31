@@ -386,7 +386,7 @@ function seedDebtPayments_() {
     return {
       id: uid_('PAY'), debtId: '', ledger: 'หนี้หลัก',
       payDate: p.payDate, year: Number(p.payDate.slice(0, 4)),
-      installment: p.installment, amount: p.amount, kind: 'เงินต้น',
+      installment: p.installment, principal: p.amount, interest: 0, amount: p.amount,
       channel: 'โอนธนาคาร', payer: '', slips: [],
       note: 'นำเข้าจากชีตเดิม', updatedAt: new Date()
     };
@@ -395,7 +395,7 @@ function seedDebtPayments_() {
     return {
       id: uid_('PAY'), debtId: '', ledger: 'หนี้รอง',
       payDate: p.payDate, year: Number(p.payDate.slice(0, 4)),
-      installment: '', amount: p.amount, kind: 'ดอกเบี้ย',
+      installment: '', principal: 0, interest: p.amount, amount: p.amount,
       channel: 'โอน QR', payer: '', slips: [],
       note: 'ดอกเบี้ยป้าตา — นำเข้าจากชีตเดิม', updatedAt: new Date()
     };

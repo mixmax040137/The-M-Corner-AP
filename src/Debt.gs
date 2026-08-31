@@ -42,9 +42,8 @@ function debtSummary_(ledger, year) {
   var allPayments = listDebtPayments_(ledger, 'all');
 
   var totalDebt = sum_(debts, function (d) { return d.principal; });
-  var principalPaid = sum_(allPayments.filter(isPrincipal_), function (p) { return p.amount; });
-  var interestPaid = sum_(allPayments.filter(function (p) { return p.kind === 'ดอกเบี้ย'; }), function (p) { return p.amount; });
-  var feePaid = sum_(allPayments.filter(function (p) { return p.kind === 'ค่าธรรมเนียม'; }), function (p) { return p.amount; });
+  var principalPaid = sum_(allPayments, function (p) { return p.principal; });
+  var interestPaid = sum_(allPayments, function (p) { return p.interest; });
   var remaining = totalDebt - principalPaid;
   var percent = totalDebt > 0 ? Math.min(100, (principalPaid / totalDebt) * 100) : 0;
 
@@ -53,11 +52,9 @@ function debtSummary_(ledger, year) {
   allPayments.forEach(function (p) {
     var y = p.year || yearOf_(p.payDate);
     if (!y) return;
-    if (!byYearMap[y]) byYearMap[y] = { year: Number(y), principal: 0, interest: 0, fee: 0, count: 0 };
-    var amt = toNumber_(p.amount) || 0;
-    if (isPrincipal_(p)) byYearMap[y].principal += amt;
-    else if (p.kind === 'ดอกเบี้ย') byYearMap[y].interest += amt;
-    else byYearMap[y].fee += amt;
+    if (!byYearMap[y]) byYearMap[y] = { year: Number(y), principal: 0, interest: 0, count: 0 };
+    byYearMap[y].principal += toNumber_(p.principal) || 0;
+    byYearMap[y].interest += toNumber_(p.interest) || 0;
     byYearMap[y].count++;
   });
   var byYear = Object.keys(byYearMap)
@@ -72,11 +69,11 @@ function debtSummary_(ledger, year) {
   // ความคืบหน้ารายก้อนหนี้ (เฉลี่ยตามสัดส่วนยอดตั้งต้น เมื่อไม่ได้ผูก debtId)
   var perDebt = debts.map(function (d) {
     var direct = sum_(allPayments.filter(function (p) {
-      return isPrincipal_(p) && String(p.debtId) === String(d.id);
-    }), function (p) { return p.amount; });
+      return String(p.debtId) === String(d.id);
+    }), function (p) { return p.principal; });
     var unlinked = sum_(allPayments.filter(function (p) {
-      return isPrincipal_(p) && !String(p.debtId || '').trim();
-    }), function (p) { return p.amount; });
+      return !String(p.debtId || '').trim();
+    }), function (p) { return p.principal; });
     var share = totalDebt > 0 ? (toNumber_(d.principal) || 0) / totalDebt : 0;
     var paid = round2_(direct + unlinked * share);
     var principal = toNumber_(d.principal) || 0;
@@ -106,21 +103,16 @@ function debtSummary_(ledger, year) {
     remaining: round2_(remaining),
     percent: round2_(percent),
     interestPaid: round2_(interestPaid),
-    feePaid: round2_(feePaid),
     paymentCount: allPayments.length,
     years: byYear.map(function (y) { return y.year; }),
     byYear: byYear,
     debts: perDebt,
     forecast: forecast,
     selectedYear: year || 'all',
-    selectedYearPaid: round2_(sum_(yearFiltered.filter(isPrincipal_), function (p) { return p.amount; })),
-    selectedYearInterest: round2_(sum_(yearFiltered.filter(function (p) { return p.kind === 'ดอกเบี้ย'; }), function (p) { return p.amount; })),
+    selectedYearPaid: round2_(sum_(yearFiltered, function (p) { return p.principal; })),
+    selectedYearInterest: round2_(sum_(yearFiltered, function (p) { return p.interest; })),
     selectedYearCount: yearFiltered.length
   };
-}
-
-function isPrincipal_(p) {
-  return !p.kind || p.kind === 'เงินต้น';
 }
 
 /** ประเมินว่าอีกกี่เดือนจะปิดหนี้ จากค่าเฉลี่ยการชำระ 12 เดือนล่าสุด */
@@ -128,11 +120,10 @@ function forecastPayoff_(payments, remaining) {
   if (remaining <= 0) return { monthsLeft: 0, avgPerMonth: 0, payoffDate: '' };
   var cutoff = addMonths_(new Date(), -12);
   var recent = payments.filter(function (p) {
-    if (!isPrincipal_(p)) return false;
     var d = toDate_(p.payDate);
     return d && cutoff && d >= cutoff;
   });
-  var total = sum_(recent, function (p) { return p.amount; });
+  var total = sum_(recent, function (p) { return p.principal; });
   var avg = total / 12;
   if (avg <= 0) return { monthsLeft: null, avgPerMonth: 0, payoffDate: '' };
   var months = Math.ceil(remaining / avg);
@@ -172,20 +163,23 @@ function deleteDebt_(id) {
 function saveDebtPayment_(obj) {
   var now = new Date();
   obj.year = yearOf_(obj.payDate) || obj.year || new Date().getFullYear();
-  obj.kind = obj.kind || 'เงินต้น';
   obj.ledger = obj.ledger || LEDGER_MAIN;
+  // "รวมที่โอน" คิดให้เองเสมอ เพื่อให้ตรงกับสลิปและกันกรอกไม่ตรงกัน
+  obj.principal = toNumber_(obj.principal) || 0;
+  obj.interest = toNumber_(obj.interest) || 0;
+  obj.amount = round2_(obj.principal + obj.interest);
 
   if (obj.id) {
     var found = findRow_(SHEETS.DEBT_PAYMENTS, obj.id);
     if (found) {
       var merged = Object.assign({}, found, obj, { updatedAt: now });
-      logActivity_('แก้ไขรายการชำระหนี้', obj.id, obj.amount);
+      logActivity_('แก้ไขรายการชำระหนี้', obj.id, 'เงินต้น ' + obj.principal + ' · ดอกเบี้ย ' + obj.interest);
       return updateRow_(SHEETS.DEBT_PAYMENTS, found._row, merged);
     }
   }
   obj.id = obj.id || uid_('PAY');
   obj.updatedAt = now;
-  logActivity_('เพิ่มรายการชำระหนี้', obj.id, obj.ledger + ' ' + obj.amount);
+  logActivity_('เพิ่มรายการชำระหนี้', obj.id, obj.ledger + ' เงินต้น ' + obj.principal + ' · ดอกเบี้ย ' + obj.interest);
   return insertRow_(SHEETS.DEBT_PAYMENTS, obj);
 }
 

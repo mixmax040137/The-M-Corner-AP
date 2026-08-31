@@ -1,10 +1,10 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 16:26 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 16:48 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
- * ประกอบด้วย: Config.gs, Util.gs, Setup.gs, Auth.gs, Drive.gs, Seed.gs, Finance.gs, Backup.gs, Debt.gs, Purchase.gs, Maintenance.gs, Building.gs, Dashboard.gs, Api.gs, Notify.gs, Web.gs
+ * ประกอบด้วย: Config.gs, Util.gs, Setup.gs, Auth.gs, Drive.gs, Seed.gs, Finance.gs, Migrate.gs, Backup.gs, Debt.gs, Purchase.gs, Maintenance.gs, Building.gs, Dashboard.gs, Api.gs, Notify.gs, Web.gs
  */
 
 
@@ -93,8 +93,9 @@ SCHEMA[SHEETS.DEBT_PAYMENTS] = [
   { key: 'payDate',  label: 'วันที่ชำระ',      type: 'date' },
   { key: 'year',     label: 'ปี (ค.ศ.)',      type: 'number' },
   { key: 'installment', label: 'งวดที่',      type: 'text' },
-  { key: 'amount',   label: 'จำนวนเงิน',      type: 'money' },
-  { key: 'kind',     label: 'ประเภทการชำระ',  type: 'select', options: ['เงินต้น', 'ดอกเบี้ย', 'ค่าธรรมเนียม'] },
+  { key: 'principal', label: 'เงินต้น',       type: 'money' },
+  { key: 'interest', label: 'ดอกเบี้ย',       type: 'money' },
+  { key: 'amount',   label: 'รวมที่โอน',      type: 'money' },
   { key: 'channel',  label: 'ช่องทาง',        type: 'select', options: ['โอน QR', 'โอนธนาคาร', 'เงินสด', 'บัตรเครดิต', 'อื่น ๆ'] },
   { key: 'payer',    label: 'ผู้ชำระ',        type: 'text' },
   { key: 'slips',    label: 'สลิปการโอน',     type: 'files' },
@@ -248,6 +249,12 @@ var YEAR_SHEETS = [
   SHEETS.DEBT_PAYMENTS, SHEETS.PURCHASES,
   SHEETS.AC_SERVICE, SHEETS.ROOM_REPAIRS, SHEETS.BUILDING_REPAIRS, SHEETS.FINANCE
 ];
+
+/**
+ * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
+ * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
+ */
+var SCHEMA_VERSION = 2;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -612,6 +619,7 @@ function setupSystem() {
   seedRooms_();
   seedSettings_();
   ensureTokens_();
+  runMigrations_();      // ย้ายคอลัมน์ให้ตรงรุ่นใหม่ ก่อนใครจะอ่านข้อมูล
   ensureDriveFolders_();
 
   var msg = 'ติดตั้งระบบเรียบร้อย\n\n' +
@@ -1491,7 +1499,7 @@ function seedDebtPayments_() {
     return {
       id: uid_('PAY'), debtId: '', ledger: 'หนี้หลัก',
       payDate: p.payDate, year: Number(p.payDate.slice(0, 4)),
-      installment: p.installment, amount: p.amount, kind: 'เงินต้น',
+      installment: p.installment, principal: p.amount, interest: 0, amount: p.amount,
       channel: 'โอนธนาคาร', payer: '', slips: [],
       note: 'นำเข้าจากชีตเดิม', updatedAt: new Date()
     };
@@ -1500,7 +1508,7 @@ function seedDebtPayments_() {
     return {
       id: uid_('PAY'), debtId: '', ledger: 'หนี้รอง',
       payDate: p.payDate, year: Number(p.payDate.slice(0, 4)),
-      installment: '', amount: p.amount, kind: 'ดอกเบี้ย',
+      installment: '', principal: 0, interest: p.amount, amount: p.amount,
       channel: 'โอน QR', payer: '', slips: [],
       note: 'ดอกเบี้ยป้าตา — นำเข้าจากชีตเดิม', updatedAt: new Date()
     };
@@ -1770,6 +1778,128 @@ function missingBills_() {
 
 
 /* ══════════════════════════════════════════════════════════════
+   Migrate.gs
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Migrate.gs — ย้ายโครงสร้างคอลัมน์เมื่ออัปเดตโค้ด โดยไม่ทำข้อมูลเดิมหาย
+ *
+ * ปัญหาที่ต้องแก้: ถ้าเพิ่ม/ลบ/สลับคอลัมน์ใน SCHEMA แล้วเขียนหัวตารางทับเฉย ๆ
+ * ข้อมูลในแถวเดิมจะเลื่อนไปอยู่ผิดคอลัมน์ทันที ตัวนี้จึงอ่านข้อมูลเดิม
+ * "โดยอ้างจากชื่อหัวตาราง" แล้วเขียนกลับตามลำดับใหม่
+ */
+
+/** เรียกทุกครั้งที่ติดตั้ง — ทำงานจริงเฉพาะตอนรุ่นโครงสร้างเปลี่ยน */
+function runMigrations_() {
+  var from = Number(props_().getProperty('SCHEMA_VERSION') || 0);
+  if (from >= SCHEMA_VERSION) return { migrated: false, from: from, to: SCHEMA_VERSION };
+
+  var done = [];
+  if (from < 2) done.push(migrateV2SplitPayment_());
+
+  props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
+  logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
+  return { migrated: true, from: from, to: SCHEMA_VERSION, steps: done };
+}
+
+/**
+ * รุ่น 2 — แยก "จำนวนเงิน + ประเภทการชำระ" ออกเป็น "เงินต้น" กับ "ดอกเบี้ย"
+ *
+ *   ประเภทเดิม = ดอกเบี้ย        → ดอกเบี้ย = ยอดเดิม
+ *   ประเภทเดิม = ค่าธรรมเนียม    → ดอกเบี้ย = ยอดเดิม (ต่อท้ายหมายเหตุไว้)
+ *   ประเภทเดิม = เงินต้น / ว่าง   → เงินต้น = ยอดเดิม
+ */
+function migrateV2SplitPayment_() {
+  var name = SHEETS.DEBT_PAYMENTS;
+  var old = readByHeader_(name);
+  if (!old) return name + ': ไม่มีชีต ข้ามไป';
+
+  var rows = old.rows.map(function (r) {
+    var amt = toNumber_(r['จำนวนเงิน']);
+    if (amt === null) amt = toNumber_(r['รวมที่โอน']);
+    var kind = String(r['ประเภทการชำระ'] || '').trim();
+
+    var principal = toNumber_(r['เงินต้น']);
+    var interest = toNumber_(r['ดอกเบี้ย']);
+
+    // ถ้ายังไม่เคยแยก ให้แยกจากประเภทเดิม
+    if (principal === null && interest === null) {
+      if (kind === 'ดอกเบี้ย' || kind === 'ค่าธรรมเนียม') { interest = amt; principal = 0; }
+      else { principal = amt; interest = 0; }
+    }
+    principal = principal || 0;
+    interest = interest || 0;
+
+    var note = String(r['หมายเหตุ'] || '');
+    if (kind === 'ค่าธรรมเนียม' && note.indexOf('ค่าธรรมเนียม') < 0) {
+      note = (note ? note + ' · ' : '') + 'เดิมบันทึกเป็นค่าธรรมเนียม';
+    }
+
+    return {
+      id: r['รหัส'], debtId: r['รหัสหนี้'], ledger: r['ประเภทบัญชี'],
+      payDate: r['วันที่ชำระ'], year: r['ปี (ค.ศ.)'], installment: r['งวดที่'],
+      principal: principal, interest: interest, amount: round2_(principal + interest),
+      channel: r['ช่องทาง'], payer: r['ผู้ชำระ'], slips: r['สลิปการโอน'],
+      note: note, updatedAt: r['แก้ไขล่าสุด']
+    };
+  });
+
+  rewriteSheet_(name, rows);
+  return name + ': แยกเงินต้น/ดอกเบี้ย ' + rows.length + ' รายการ';
+}
+
+/* ------------------------------------------------------------------ */
+/*  ตัวช่วย                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * อ่านทั้งชีตโดยใช้ "หัวตารางที่มีอยู่จริง" เป็นกุญแจ
+ * คืน null ถ้ายังไม่มีชีตนั้น
+ */
+function readByHeader_(name) {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName(name);
+  if (!sh) return null;
+
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return { headers: [], rows: [] };
+
+  var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+  var values = lastRow > 1 ? sh.getRange(2, 1, lastRow - 1, lastCol).getValues() : [];
+
+  var rows = [];
+  values.forEach(function (row) {
+    if (row.every(function (v) { return v === '' || v === null; })) return;
+    var o = {};
+    headers.forEach(function (h, i) { if (h) o[h] = row[i]; });
+    rows.push(o);
+  });
+  return { headers: headers, rows: rows };
+}
+
+/** เขียนทั้งชีตใหม่ตามลำดับคอลัมน์ปัจจุบันของ SCHEMA */
+function rewriteSheet_(name, objects) {
+  var sh = ensureSheet_(name);
+  var cols = SCHEMA[name];
+
+  var lastRow = sh.getLastRow();
+  var lastCol = Math.max(sh.getLastColumn(), cols.length);
+  if (lastRow > 0) sh.getRange(1, 1, lastRow, lastCol).clearContent();
+
+  sh.getRange(1, 1, 1, cols.length).setValues([cols.map(function (c) { return c.label; })]);
+  if (objects.length) {
+    var matrix = objects.map(function (o) {
+      return cols.map(function (c) { return serializeValue_(o[c.key], c.type); });
+    });
+    sh.getRange(2, 1, matrix.length, cols.length).setValues(matrix);
+  }
+  applyFormatting_(name);
+  return objects.length;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
    Backup.gs
    ══════════════════════════════════════════════════════════════ */
 
@@ -2009,9 +2139,8 @@ function debtSummary_(ledger, year) {
   var allPayments = listDebtPayments_(ledger, 'all');
 
   var totalDebt = sum_(debts, function (d) { return d.principal; });
-  var principalPaid = sum_(allPayments.filter(isPrincipal_), function (p) { return p.amount; });
-  var interestPaid = sum_(allPayments.filter(function (p) { return p.kind === 'ดอกเบี้ย'; }), function (p) { return p.amount; });
-  var feePaid = sum_(allPayments.filter(function (p) { return p.kind === 'ค่าธรรมเนียม'; }), function (p) { return p.amount; });
+  var principalPaid = sum_(allPayments, function (p) { return p.principal; });
+  var interestPaid = sum_(allPayments, function (p) { return p.interest; });
   var remaining = totalDebt - principalPaid;
   var percent = totalDebt > 0 ? Math.min(100, (principalPaid / totalDebt) * 100) : 0;
 
@@ -2020,11 +2149,9 @@ function debtSummary_(ledger, year) {
   allPayments.forEach(function (p) {
     var y = p.year || yearOf_(p.payDate);
     if (!y) return;
-    if (!byYearMap[y]) byYearMap[y] = { year: Number(y), principal: 0, interest: 0, fee: 0, count: 0 };
-    var amt = toNumber_(p.amount) || 0;
-    if (isPrincipal_(p)) byYearMap[y].principal += amt;
-    else if (p.kind === 'ดอกเบี้ย') byYearMap[y].interest += amt;
-    else byYearMap[y].fee += amt;
+    if (!byYearMap[y]) byYearMap[y] = { year: Number(y), principal: 0, interest: 0, count: 0 };
+    byYearMap[y].principal += toNumber_(p.principal) || 0;
+    byYearMap[y].interest += toNumber_(p.interest) || 0;
     byYearMap[y].count++;
   });
   var byYear = Object.keys(byYearMap)
@@ -2039,11 +2166,11 @@ function debtSummary_(ledger, year) {
   // ความคืบหน้ารายก้อนหนี้ (เฉลี่ยตามสัดส่วนยอดตั้งต้น เมื่อไม่ได้ผูก debtId)
   var perDebt = debts.map(function (d) {
     var direct = sum_(allPayments.filter(function (p) {
-      return isPrincipal_(p) && String(p.debtId) === String(d.id);
-    }), function (p) { return p.amount; });
+      return String(p.debtId) === String(d.id);
+    }), function (p) { return p.principal; });
     var unlinked = sum_(allPayments.filter(function (p) {
-      return isPrincipal_(p) && !String(p.debtId || '').trim();
-    }), function (p) { return p.amount; });
+      return !String(p.debtId || '').trim();
+    }), function (p) { return p.principal; });
     var share = totalDebt > 0 ? (toNumber_(d.principal) || 0) / totalDebt : 0;
     var paid = round2_(direct + unlinked * share);
     var principal = toNumber_(d.principal) || 0;
@@ -2073,21 +2200,16 @@ function debtSummary_(ledger, year) {
     remaining: round2_(remaining),
     percent: round2_(percent),
     interestPaid: round2_(interestPaid),
-    feePaid: round2_(feePaid),
     paymentCount: allPayments.length,
     years: byYear.map(function (y) { return y.year; }),
     byYear: byYear,
     debts: perDebt,
     forecast: forecast,
     selectedYear: year || 'all',
-    selectedYearPaid: round2_(sum_(yearFiltered.filter(isPrincipal_), function (p) { return p.amount; })),
-    selectedYearInterest: round2_(sum_(yearFiltered.filter(function (p) { return p.kind === 'ดอกเบี้ย'; }), function (p) { return p.amount; })),
+    selectedYearPaid: round2_(sum_(yearFiltered, function (p) { return p.principal; })),
+    selectedYearInterest: round2_(sum_(yearFiltered, function (p) { return p.interest; })),
     selectedYearCount: yearFiltered.length
   };
-}
-
-function isPrincipal_(p) {
-  return !p.kind || p.kind === 'เงินต้น';
 }
 
 /** ประเมินว่าอีกกี่เดือนจะปิดหนี้ จากค่าเฉลี่ยการชำระ 12 เดือนล่าสุด */
@@ -2095,11 +2217,10 @@ function forecastPayoff_(payments, remaining) {
   if (remaining <= 0) return { monthsLeft: 0, avgPerMonth: 0, payoffDate: '' };
   var cutoff = addMonths_(new Date(), -12);
   var recent = payments.filter(function (p) {
-    if (!isPrincipal_(p)) return false;
     var d = toDate_(p.payDate);
     return d && cutoff && d >= cutoff;
   });
-  var total = sum_(recent, function (p) { return p.amount; });
+  var total = sum_(recent, function (p) { return p.principal; });
   var avg = total / 12;
   if (avg <= 0) return { monthsLeft: null, avgPerMonth: 0, payoffDate: '' };
   var months = Math.ceil(remaining / avg);
@@ -2139,20 +2260,23 @@ function deleteDebt_(id) {
 function saveDebtPayment_(obj) {
   var now = new Date();
   obj.year = yearOf_(obj.payDate) || obj.year || new Date().getFullYear();
-  obj.kind = obj.kind || 'เงินต้น';
   obj.ledger = obj.ledger || LEDGER_MAIN;
+  // "รวมที่โอน" คิดให้เองเสมอ เพื่อให้ตรงกับสลิปและกันกรอกไม่ตรงกัน
+  obj.principal = toNumber_(obj.principal) || 0;
+  obj.interest = toNumber_(obj.interest) || 0;
+  obj.amount = round2_(obj.principal + obj.interest);
 
   if (obj.id) {
     var found = findRow_(SHEETS.DEBT_PAYMENTS, obj.id);
     if (found) {
       var merged = Object.assign({}, found, obj, { updatedAt: now });
-      logActivity_('แก้ไขรายการชำระหนี้', obj.id, obj.amount);
+      logActivity_('แก้ไขรายการชำระหนี้', obj.id, 'เงินต้น ' + obj.principal + ' · ดอกเบี้ย ' + obj.interest);
       return updateRow_(SHEETS.DEBT_PAYMENTS, found._row, merged);
     }
   }
   obj.id = obj.id || uid_('PAY');
   obj.updatedAt = now;
-  logActivity_('เพิ่มรายการชำระหนี้', obj.id, obj.ledger + ' ' + obj.amount);
+  logActivity_('เพิ่มรายการชำระหนี้', obj.id, obj.ledger + ' เงินต้น ' + obj.principal + ' · ดอกเบี้ย ' + obj.interest);
   return insertRow_(SHEETS.DEBT_PAYMENTS, obj);
 }
 
@@ -3088,7 +3212,6 @@ var API_ROUTES = {
         buildingStatuses: fieldOptions_(SHEETS.BUILDING_REPAIRS, 'status'),
         roomStatuses: fieldOptions_(SHEETS.ROOMS, 'status'),
         debtStatuses: fieldOptions_(SHEETS.DEBTS, 'status'),
-        payKinds: fieldOptions_(SHEETS.DEBT_PAYMENTS, 'kind'),
         payChannels: fieldOptions_(SHEETS.DEBT_PAYMENTS, 'channel'),
         assetStatuses: fieldOptions_(SHEETS.ASSETS, 'status'),
         financeKinds: fieldOptions_(SHEETS.FINANCE, 'kind'),
@@ -3350,6 +3473,11 @@ function doGet(e) {
   var role = resolveRole_(key);
 
   if (role === ROLE.NONE) return denyPage_();
+
+  // อัปเดตโค้ดแล้วเปิดเว็บเลยโดยไม่ได้รัน START_HERE ก็ต้องย้ายคอลัมน์ให้ทัน
+  // ไม่งั้นโค้ดใหม่จะอ่านชีตโครงเก่าแล้วข้อมูลเลื่อนคอลัมน์
+  // (ถ้าย้ายไปแล้วจะเป็นแค่การอ่านค่า property หนึ่งครั้ง ไม่หน่วง)
+  runMigrations_();
 
   rememberExecUrl_();   // ตอนนี้โค้ดทำงานอยู่ใน /exec จริง จึงจดที่อยู่ไว้ใช้ตอนแสดงลิงก์
 

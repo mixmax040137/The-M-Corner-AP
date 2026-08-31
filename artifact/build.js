@@ -11,7 +11,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 
-const GS = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs',
+const GS = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs','Migrate.gs',
             'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs','Api.gs','Notify.gs'];
 
 /* ---- 1. เตรียมข้อมูลตั้งต้นด้วย runtime จำลอง ---- */

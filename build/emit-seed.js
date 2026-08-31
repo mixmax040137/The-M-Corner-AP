@@ -2,7 +2,7 @@
 require('../test/mock-gas.js');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const SRC = path.join(__dirname, '..', 'src');
-['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs',
+['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs','Migrate.gs',
  'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs','Api.gs','Notify.gs']
   .forEach(f => vm.runInThisContext(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f }));
 

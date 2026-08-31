@@ -3,7 +3,7 @@ require('./mock-gas.js');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const order = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs',
+const order = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs','Migrate.gs',
                'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs',
                'Api.gs','Web.gs','Notify.gs'];
 order.forEach(f => vm.runInThisContext(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f }));
@@ -61,6 +61,79 @@ const sub = debtSummary_('หนี้รอง', 'all');
 near('หนี้รอง ยอดตั้งต้น 1,000,000', sub.totalDebt, 1000000, 0);
 near('หนี้รอง ดอกเบี้ยที่จ่าย 47,600', sub.interestPaid, 2200 * 7 + 32200, 0);
 near('หนี้รอง เงินต้นยังไม่ลด', sub.paid, 0, 0);
+
+console.log('\n── 4b. แยกเงินต้น/ดอกเบี้ย ──');
+{
+  const pay = saveDebtPayment_({ ledger: 'หนี้รอง', payDate: '2026-08-30', principal: 30000, interest: 2200 });
+  check('บันทึกทั้งสองช่องได้', [pay.principal, pay.interest], [30000, 2200]);
+  check('รวมที่โอนคิดให้อัตโนมัติ', pay.amount, 32200);
+  const before = debtSummary_('หนี้รอง', 'all');
+  check('เงินต้นไปลดยอดหนี้', before.paid, 30000);
+  check('ดอกเบี้ยไม่ลดยอดหนี้ แต่ถูกนับแยก', before.interestPaid, 2200 * 7 + 32200 + 2200);
+  check('คงเหลือ = ตั้งต้น − เงินต้น', before.remaining, 1000000 - 30000);
+
+  const edited = saveDebtPayment_(Object.assign({}, pay, { principal: 25000, interest: 2200 }));
+  check('แก้แล้วรวมใหม่ให้เอง', edited.amount, 27200);
+  check('ยอดคงเหลือขยับตาม', debtSummary_('หนี้รอง', 'all').remaining, 1000000 - 25000);
+
+  const only = saveDebtPayment_({ ledger: 'หนี้รอง', payDate: '2026-09-20', interest: 2200 });
+  check('กรอกแค่ดอกเบี้ยได้ เงินต้นเป็น 0', [only.principal, only.amount], [0, 2200]);
+  check('เงินต้นรวมไม่เปลี่ยน', debtSummary_('หนี้รอง', 'all').paid, 25000);
+
+  deleteDebtPayment_(pay.id); deleteDebtPayment_(only.id);
+  check('ลบแล้วยอดกลับเป็น 0', debtSummary_('หนี้รอง', 'all').paid, 0);
+}
+
+console.log('\n── 4c. ย้ายข้อมูลจากโครงเดิม (คอลัมน์ต้องไม่เลื่อน) ──');
+{
+  // จำลองชีตรุ่นเก่า: จำนวนเงิน + ประเภทการชำระ
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const name = SHEETS.DEBT_PAYMENTS;
+  const oldHeaders = ['รหัส','รหัสหนี้','ประเภทบัญชี','วันที่ชำระ','ปี (ค.ศ.)','งวดที่',
+                      'จำนวนเงิน','ประเภทการชำระ','ช่องทาง','ผู้ชำระ','สลิปการโอน','หมายเหตุ','แก้ไขล่าสุด'];
+  const oldRows = [
+    ['PAY-A','','หนี้หลัก','2026-01-21',2026,'1/2569', 80000,'เงินต้น','โอนธนาคาร','','', 'งวดเดือนมกราคม',''],
+    ['PAY-B','','หนี้รอง','2026-08-30',2026,'',        32200,'ดอกเบี้ย','โอน QR','','',  'ดอกเบี้ยป้าตา',''],
+    ['PAY-C','','หนี้หลัก','2026-03-13',2026,'3/2569', 80000,'',        'โอนธนาคาร','','','ไม่ระบุประเภท',''],
+    ['PAY-D','','หนี้รอง','2026-02-10',2026,'',          500,'ค่าธรรมเนียม','เงินสด','','','ค่าโอน','']
+  ];
+  const sh = ss.getSheetByName(name);
+  sh.getRange(1, 1, sh.getLastRow(), Math.max(sh.getLastColumn(), oldHeaders.length)).clearContent();
+  sh.getRange(1, 1, 1, oldHeaders.length).setValues([oldHeaders]);
+  sh.getRange(2, 1, oldRows.length, oldHeaders.length).setValues(oldRows);
+  PropertiesService.getScriptProperties().deleteProperty('SCHEMA_VERSION');
+
+  const res = runMigrations_();
+  check('ตัวย้ายข้อมูลทำงาน', res.migrated, true);
+  check('จำนวนแถวครบเท่าเดิม', readRows_(name).length, 4);
+
+  const byId = {};
+  readRows_(name).forEach(r => { byId[r.id] = r; });
+
+  check('เงินต้นเดิม → ช่องเงินต้น', [byId['PAY-A'].principal, byId['PAY-A'].interest], [80000, 0]);
+  check('ดอกเบี้ยเดิม → ช่องดอกเบี้ย', [byId['PAY-B'].principal, byId['PAY-B'].interest], [0, 32200]);
+  check('ไม่ระบุประเภท → นับเป็นเงินต้น', [byId['PAY-C'].principal, byId['PAY-C'].interest], [80000, 0]);
+  check('ค่าธรรมเนียมเดิม → ดอกเบี้ย', [byId['PAY-D'].principal, byId['PAY-D'].interest], [0, 500]);
+  check('ค่าธรรมเนียมเดิมมีบันทึกไว้ในหมายเหตุ',
+    byId['PAY-D'].note.indexOf('เดิมบันทึกเป็นค่าธรรมเนียม') >= 0, true);
+
+  check('คอลัมน์อื่นไม่เลื่อน: วันที่', byId['PAY-A'].payDate, '2026-01-21');
+  check('คอลัมน์อื่นไม่เลื่อน: งวด', byId['PAY-A'].installment, '1/2569');
+  check('คอลัมน์อื่นไม่เลื่อน: ช่องทาง', byId['PAY-B'].channel, 'โอน QR');
+  check('คอลัมน์อื่นไม่เลื่อน: หมายเหตุ', byId['PAY-B'].note, 'ดอกเบี้ยป้าตา');
+  check('คอลัมน์อื่นไม่เลื่อน: บัญชี', byId['PAY-B'].ledger, 'หนี้รอง');
+  check('รวมที่โอนถูกเติมให้', [byId['PAY-A'].amount, byId['PAY-B'].amount], [80000, 32200]);
+
+  check('ยอดชำระหลังย้าย', debtSummary_('หนี้หลัก', 'all').paid, 160000);
+  check('ดอกเบี้ยหลังย้าย', debtSummary_('หนี้รอง', 'all').interestPaid, 32700);
+
+  check('รันย้ายซ้ำไม่ทำอะไรอีก', runMigrations_().migrated, false);
+  check('ข้อมูลยังครบหลังรันซ้ำ', readRows_(name).length, 4);
+
+  // คืนสภาพเดิมให้เทสต์ข้อถัดไป
+  clearSheet_(name);
+  seedDebtPayments_();
+}
 
 console.log('\n── 5. รายการซื้อของ ──');
 const buy = purchaseSummary_('all');

@@ -38,7 +38,6 @@ var API_ROUTES = {
         buildingStatuses: fieldOptions_(SHEETS.BUILDING_REPAIRS, 'status'),
         roomStatuses: fieldOptions_(SHEETS.ROOMS, 'status'),
         debtStatuses: fieldOptions_(SHEETS.DEBTS, 'status'),
-        payKinds: fieldOptions_(SHEETS.DEBT_PAYMENTS, 'kind'),
         payChannels: fieldOptions_(SHEETS.DEBT_PAYMENTS, 'channel'),
         assetStatuses: fieldOptions_(SHEETS.ASSETS, 'status'),
         financeKinds: fieldOptions_(SHEETS.FINANCE, 'kind'),

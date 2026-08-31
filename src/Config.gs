@@ -79,8 +79,9 @@ SCHEMA[SHEETS.DEBT_PAYMENTS] = [
   { key: 'payDate',  label: 'วันที่ชำระ',      type: 'date' },
   { key: 'year',     label: 'ปี (ค.ศ.)',      type: 'number' },
   { key: 'installment', label: 'งวดที่',      type: 'text' },
-  { key: 'amount',   label: 'จำนวนเงิน',      type: 'money' },
-  { key: 'kind',     label: 'ประเภทการชำระ',  type: 'select', options: ['เงินต้น', 'ดอกเบี้ย', 'ค่าธรรมเนียม'] },
+  { key: 'principal', label: 'เงินต้น',       type: 'money' },
+  { key: 'interest', label: 'ดอกเบี้ย',       type: 'money' },
+  { key: 'amount',   label: 'รวมที่โอน',      type: 'money' },
   { key: 'channel',  label: 'ช่องทาง',        type: 'select', options: ['โอน QR', 'โอนธนาคาร', 'เงินสด', 'บัตรเครดิต', 'อื่น ๆ'] },
   { key: 'payer',    label: 'ผู้ชำระ',        type: 'text' },
   { key: 'slips',    label: 'สลิปการโอน',     type: 'files' },
@@ -234,6 +235,12 @@ var YEAR_SHEETS = [
   SHEETS.DEBT_PAYMENTS, SHEETS.PURCHASES,
   SHEETS.AC_SERVICE, SHEETS.ROOM_REPAIRS, SHEETS.BUILDING_REPAIRS, SHEETS.FINANCE
 ];
+
+/**
+ * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
+ * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
+ */
+var SCHEMA_VERSION = 2;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];

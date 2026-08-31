@@ -321,7 +321,7 @@ var SEED_FINANCE = [
 function seedHistoricalData() {
   if (props_().getProperty(SEED_FLAG) === 'done') {
     var already = 'นำเข้าข้อมูลเดิมไปแล้ว — ถ้าต้องการนำเข้าซ้ำ ให้รัน resetSeedFlag() ก่อน';
-    try { SpreadsheetApp.getUi().alert(already); } catch (e) { console.log(already); }
+    alert_(already);
     return already;
   }
 
@@ -333,7 +333,7 @@ function seedHistoricalData() {
     props_().setProperty(SEED_FLAG, 'done');
     var msg0 = 'ชีตนี้มีข้อมูลอยู่แล้ว (' + existing + ' รายการ) จึงข้ามการนำเข้าเพื่อไม่ให้ข้อมูลซ้ำ\n\n' +
                'ถ้าต้องการนำเข้าใหม่จริง ๆ ให้ลบข้อมูลในชีตก่อน แล้วรัน resetSeedFlag() ตามด้วย seedHistoricalData()';
-    try { SpreadsheetApp.getUi().alert(msg0); } catch (e) { console.log(msg0); }
+    alert_(msg0);
     return msg0;
   }
 
@@ -360,7 +360,7 @@ function seedHistoricalData() {
     '• ซ่อมแซมตึกโดยรวม: ' + stat.building + ' รายการ\n' +
     '• รายรับ-รายจ่ายรายเดือน: ' + stat.finance + ' รายการ\n' +
     '• ทรัพย์สินประจำห้อง: ' + stat.assets + ' รายการ';
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
+  alert_(msg);
   return msg;
 }
 

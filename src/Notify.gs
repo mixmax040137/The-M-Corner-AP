@@ -11,7 +11,7 @@ function installWeeklyTrigger() {
     .inTimezone(APP.TIMEZONE).create();
 
   var msg = 'ตั้งการแจ้งเตือนอัตโนมัติแล้ว — ทุกวันจันทร์ 08:00 น.';
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
+  alert_(msg);
   return msg;
 }
 

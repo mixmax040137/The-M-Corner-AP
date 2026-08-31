@@ -2,9 +2,20 @@
  * Setup.gs — ติดตั้งระบบครั้งแรก และเมนูใน Google Sheet
  */
 
+/** ปิดเสียงกล่องข้อความชั่วคราว ตอนตัวติดตั้งรวบยอดเรียกหลายขั้นตอนต่อกัน */
+var QUIET_ = false;
+
+function alert_(msg) {
+  if (QUIET_) { console.log(msg); return msg; }
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
+  return msg;
+}
+
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('🏢 ' + APP.NAME)
+    .addItem('🚀 ติดตั้งทั้งหมดในคลิกเดียว', 'START_HERE')
+    .addSeparator()
     .addItem('⚙️ ติดตั้งระบบ (สร้างชีตทั้งหมด)', 'setupSystem')
     .addItem('🌱 นำเข้าข้อมูลเดิม (Seed)', 'seedHistoricalData')
     .addSeparator()
@@ -45,8 +56,7 @@ function setupSystem() {
     'ชีตที่สร้างใหม่: ' + (created.length ? created.join(', ') : '(ไม่มี — มีครบอยู่แล้ว)') + '\n' +
     'ห้องทั้งหมด: ' + ROOMS.length + ' ห้อง\n' +
     'โฟลเดอร์ไฟล์แนบ: ' + (props_().getProperty(PROP.DRIVE_FOLDER_ID) || '-');
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
-  return msg;
+  return alert_(msg);
 }
 
 /** จัดรูปแบบคอลัมน์ (วันที่/เงิน) + ความกว้าง + dropdown */
@@ -142,7 +152,7 @@ function showWebAppUrl() {
   var url = '';
   try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { }
   if (!url) {
-    SpreadsheetApp.getUi().alert('ยังไม่ได้ Deploy — ไปที่ Deploy > New deployment > Web app แล้วค่อยเปิดเมนูนี้อีกครั้ง');
+    alert_('ยังไม่ได้ Deploy — ไปที่ Deploy > New deployment > Web app แล้วค่อยเปิดเมนูนี้อีกครั้ง');
     return;
   }
   ensureTokens_();
@@ -152,11 +162,79 @@ function showWebAppUrl() {
     '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้คนอื่นได้)\n' +
     url + '?key=' + getSetting_('view_token', '') + '\n\n' +
     'เปิดในมือถือแล้วกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป';
-  SpreadsheetApp.getUi().alert(msg);
+  return alert_(msg);
 }
 
 function rotateShareLink() {
   var r = rotateViewToken_();
-  SpreadsheetApp.getUi().alert(
-    'ออกลิงก์แชร์ชุดใหม่แล้ว — ลิงก์เดิมใช้ไม่ได้อีกต่อไป\n\n' + r.url);
+  return alert_('ออกลิงก์แชร์ชุดใหม่แล้ว — ลิงก์เดิมใช้ไม่ได้อีกต่อไป\n\n' + r.url);
 }
+
+
+/* ------------------------------------------------------------------ */
+/*  ตัวติดตั้งรวบยอด — รันฟังก์ชันเดียวจบ                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * START_HERE — รันฟังก์ชันนี้ฟังก์ชันเดียวหลังวางโค้ดเสร็จ
+ *
+ * ทำให้ครบในรอบเดียว:
+ *   1. สร้างชีต 11 แท็บ + ทะเบียน 24 ห้อง + โฟลเดอร์ไฟล์แนบใน Drive
+ *   2. นำเข้าข้อมูลเดิมทั้งหมด (ข้ามให้เองถ้าชีตมีข้อมูลอยู่แล้ว)
+ *   3. สุ่มกุญแจผู้ดูแลกับกุญแจแชร์
+ *   4. ตั้งสำรองข้อมูลลง Drive อัตโนมัติทุกวัน
+ *   5. ตั้งแจ้งเตือนสรุปงานเข้าอีเมลทุกวันจันทร์
+ *   6. บอกลิงก์เข้าใช้งาน (ถ้า deploy แล้ว) หรือบอกว่าต้องทำอะไรต่อ
+ *
+ * รันซ้ำได้ ไม่ทำข้อมูลซ้ำและไม่สร้าง trigger ซ้ำ
+ */
+function START_HERE() {
+  var log = [];
+  var wasQuiet = QUIET_;
+  QUIET_ = true;
+
+  try {
+    setupSystem();
+    log.push('✅ สร้างชีต 11 แท็บ · ทะเบียน 24 ห้อง · โฟลเดอร์ไฟล์แนบ');
+
+    var before = readRows_(SHEETS.PURCHASES).length;
+    seedHistoricalData();
+    var after = readRows_(SHEETS.PURCHASES).length;
+    log.push(after > before
+      ? '✅ นำเข้าข้อมูลเดิมครบทุกโมดูล'
+      : '✅ ข้อมูลเดิมมีอยู่แล้ว (' + after + ' รายการซื้อ) — ข้ามการนำเข้า');
+
+    log.push('✅ ออกกุญแจผู้ดูแลและกุญแจแชร์แล้ว');
+
+    try { installBackupTrigger(); log.push('✅ สำรองข้อมูลลง Drive อัตโนมัติ ทุกวันตี 2'); }
+    catch (e) { log.push('⚠️ ตั้งสำรองอัตโนมัติไม่ได้: ' + e.message); }
+
+    try { installWeeklyTrigger(); log.push('✅ แจ้งเตือนสรุปงานเข้าอีเมล ทุกวันจันทร์ 08:00'); }
+    catch (e) { log.push('⚠️ ตั้งแจ้งเตือนอีเมลไม่ได้: ' + e.message); }
+  } finally {
+    QUIET_ = wasQuiet;
+  }
+
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { }
+
+  var msg = 'The M Corner AP — ติดตั้งเรียบร้อย\n\n' + log.join('\n') + '\n\n';
+  msg += url
+    ? '━━━━━━━━━━━━━━━━━━━━━━\n' +
+      '🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' + url + '?key=' + getSetting_('admin_token', '') + '\n\n' +
+      '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้ใครก็ได้)\n' + url + '?key=' + getSetting_('view_token', '') + '\n' +
+      '━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+      'เปิดลิงก์แรกได้เลย · บนมือถือกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป'
+    : '⏭️ เหลืออีกขั้นตอนเดียว — สร้างลิงก์เข้าใช้งาน\n\n' +
+      '1. กด Deploy (มุมขวาบน) → New deployment\n' +
+      '2. กดเฟือง ⚙️ ข้าง Select type → เลือก Web app\n' +
+      '3. Execute as = Me   |   Who has access = Anyone\n' +
+      '4. กด Deploy → Done\n' +
+      '5. กลับมาที่ Google Sheet กด F5 แล้วเลือกเมนู\n' +
+      '   🏢 The M Corner AP → 🔗 แสดงลิงก์เข้าใช้งาน';
+
+  return alert_(msg);
+}
+
+/** ชื่อไทยของ START_HERE เผื่อหาในรายการฟังก์ชันง่ายขึ้น */
+function ติดตั้งทั้งหมด() { return START_HERE(); }

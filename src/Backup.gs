@@ -162,7 +162,7 @@ function backupNow() {
   var msg = 'สำรองข้อมูลเรียบร้อย\n\n' + r.name +
     '\nเก็บไว้ที่โฟลเดอร์ "' + BACKUP_FOLDER + '"' +
     (r.removed ? '\n(ลบไฟล์เก่าออก ' + r.removed + ' ชุด)' : '');
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
+  alert_(msg);
   return msg;
 }
 
@@ -177,7 +177,7 @@ function installBackupTrigger() {
 
   var msg = 'ตั้งสำรองข้อมูลอัตโนมัติแล้ว — ทุกวันตอนตี 2\n' +
             'เก็บย้อนหลัง ' + getSetting_('backup_keep', 30) + ' ชุด (แก้ได้ในชีต Settings)';
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
+  alert_(msg);
   return msg;
 }
 

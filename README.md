@@ -4,11 +4,14 @@
 
 ## ▶️ เริ่มที่นี่
 
-**[docs/DEPLOY.md](docs/DEPLOY.md) — ติดตั้งบน Google ครั้งเดียว ~10 นาที**
+**[docs/DEPLOY.md](docs/DEPLOY.md) — ติดตั้ง 5 ขั้นตอน ~5 นาที**
+
+วางโค้ดไฟล์เดียว → กด Run ฟังก์ชัน `START_HERE` → กด Deploy → กด Run อีกครั้งเพื่อรับลิงก์
 
 เตรียมไว้ให้แล้วในไดรฟ์ของคุณ:
 📁 [โฟลเดอร์ The M Corner AP](https://drive.google.com/drive/folders/1jIGt_ebYv-8TvIrSoRrsp1QPnDZ9-kMM) ·
-📊 [Google Sheet ฐานข้อมูล](https://docs.google.com/spreadsheets/d/1frGWki1sBDG3T4eJxNm5wUZQkXUFcdEIPwKZLaQuSrg/edit)
+📊 [Google Sheet ฐานข้อมูล](https://docs.google.com/spreadsheets/d/1frGWki1sBDG3T4eJxNm5wUZQkXUFcdEIPwKZLaQuSrg/edit) ·
+📄 [โค้ดไฟล์เดียวที่ต้องคัดลอก](https://github.com/mixmax040137/The-M-Corner-AP/blob/claude/m-corner-ap-system-18u8bz/build/AllInOne.gs)
 
 เสร็จแล้วจะได้ **ลิงก์ 2 อัน**
 
@@ -125,8 +128,9 @@ src/
     └── Forms.html       ฟอร์มเพิ่ม/แก้ไขทุกโมดูล
 
 build/                   ไฟล์สำหรับคัดลอกวางลง Apps Script (สร้างด้วย node build/bundle.js)
-├── Code.gs              โค้ดฝั่งเซิร์ฟเวอร์ทั้งหมดรวมไฟล์เดียว
-├── Index.html           หน้าเว็บทั้งหมดรวมไฟล์เดียว
+├── AllInOne.gs          ⭐ ทุกอย่างในไฟล์เดียว — วางไฟล์นี้ไฟล์เดียวจบ
+├── Code.gs              ทางเลือก: เฉพาะโค้ดเซิร์ฟเวอร์ (คู่กับ Index.html)
+├── Index.html           ทางเลือก: เฉพาะหน้าเว็บ
 ├── bundle.js            ตัวรวมไฟล์
 └── verify-bundle.js     ทดสอบไฟล์ที่รวมแล้วด้วยเบราว์เซอร์จริง
 
@@ -152,9 +156,9 @@ test/
 ## ทดสอบ
 
 ```bash
-node test/run.js             # ทดสอบตรรกะฝั่งเซิร์ฟเวอร์ รวมระบบสิทธิ์ (114 ข้อ)
-node build/bundle.js         # รวมซอร์สเหลือ 2 ไฟล์สำหรับ Apps Script
-node build/verify-bundle.js  # เปิด 2 ไฟล์นั้นด้วย Chromium จริง (24 ข้อ)
+node test/run.js             # ทดสอบตรรกะฝั่งเซิร์ฟเวอร์ รวมระบบสิทธิ์ (122 ข้อ)
+node build/bundle.js         # รวมซอร์สเป็นไฟล์สำหรับ Apps Script
+node build/verify-bundle.js  # เปิดไฟล์ที่รวมแล้วด้วย Chromium จริง (28 ข้อ)
 node artifact/build.js       # ประกอบเว็บแอปหน้าเดียว
 node artifact/verify.js      # ทดสอบการบันทึกข้าม 3 รุ่น (26 ข้อ)
 node test/gen-demo.js        # สร้างหน้าตัวอย่างแบบอ่านอย่างเดียว

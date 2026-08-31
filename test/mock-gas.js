@@ -78,7 +78,12 @@ global.Utilities = {
   formatDate: fmt,
   formatString: (f, ...a) => { let i = 0; return f.replace(/%s/g, () => a[i++]); },
   base64Decode: s => Buffer.from(s, 'base64'),
-  newBlob: (b, m, n) => ({ b, m, n })
+  base64Encode: b => Buffer.from(b).toString('base64'),
+  newBlob: (b, m, n) => ({
+    b, m, n,
+    getDataAsString: (cs) => Buffer.from(b).toString(cs ? String(cs).toLowerCase().replace('-', '') : 'utf8'),
+    getBytes: () => b, getName: () => n, getContentType: () => m
+  })
 };
 let fileSeq = 0;
 store.folders = new Map();          // ชื่อโฟลเดอร์ -> รายชื่อไฟล์ข้างใน

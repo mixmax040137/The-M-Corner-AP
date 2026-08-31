@@ -195,7 +195,28 @@ check('ออกลิงก์ใหม่ไม่กระทบกุญแ�
 global.Session.getActiveUser = realUser;
 check('เจ้าของชีตเข้าได้แม้ไม่มีกุญแจ', resolveRole_(''), 'admin');
 
-console.log('\n── 13. อัปเดตสด & สำรองลง Drive ──');
+console.log('\n── 13. ตัวติดตั้งรวบยอด START_HERE ──');
+{
+  // ล้างทุกอย่างแล้วติดตั้งใหม่ด้วยฟังก์ชันเดียว เหมือนที่ผู้ใช้จะกดจริง
+  const st = require('./mock-gas.js').store;
+  st.sheets.clear();
+  Object.keys(PropertiesService.getScriptProperties()).length;
+  ['SEEDED_V1'].forEach(k => PropertiesService.getScriptProperties().deleteProperty(k));
+  const out = START_HERE();
+  check('START_HERE รันจบและคืนสรุป', typeof out === 'string' && out.indexOf('ติดตั้งเรียบร้อย') > 0, true);
+  check('สร้างชีตครบ 11 แท็บ',
+    Object.keys(SHEETS).every(k => !!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS[k])), true);
+  check('นำเข้าข้อมูลครบ 94 รายการซื้อ', readRows_(SHEETS.PURCHASES).length, 94);
+  check('ทะเบียนห้อง 24 ห้อง', readRows_(SHEETS.ROOMS).length, 24);
+  check('ออกกุญแจให้แล้วทั้งสองชุด',
+    getSetting_('admin_token', '').length >= 20 && getSetting_('view_token', '').length >= 20, true);
+  check('บอกวิธี deploy ต่อเมื่อยังไม่ได้ deploy', out.indexOf('Web app') > 0 || out.indexOf('ลิงก์ของคุณ') > 0, true);
+  const again = START_HERE();
+  check('รันซ้ำไม่ทำข้อมูลซ้ำ', readRows_(SHEETS.PURCHASES).length, 94);
+  check('รันซ้ำไม่สร้างห้องซ้ำ', readRows_(SHEETS.ROOMS).length, 24);
+}
+
+console.log('\n── 14. อัปเดตสด & สำรองลง Drive ──');
 const v1 = dataVersion_();
 check('รุ่นข้อมูลเป็นตัวเลขเวลา', typeof v1 === 'number' && v1 > 0, true);
 require('./mock-gas.js').store.lastUpdated = new Date(v1 + 60000);
@@ -211,7 +232,7 @@ backupToDrive_(); backupToDrive_(); backupToDrive_();
 check('เก็บย้อนหลังตามที่ตั้งไว้ (2 ชุด)', listBackups_().length, 2);
 setSetting_('backup_keep', '30');
 
-console.log('\n── 14. ค้นหา & แจ้งเตือน ──');
+console.log('\n── 15. ค้นหา & แจ้งเตือน ──');
 check('ค้นหา "ยาแนว" เจอ', globalSearch_('ยาแนว').length > 0, true);
 check('ค้นหาสั้นเกินไปคืนว่าง', globalSearch_('ก').length, 0);
 const digest = buildDigest_();

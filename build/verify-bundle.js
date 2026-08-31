@@ -32,6 +32,21 @@ check('มีกุญแจผู้ดูแลและกุญแจแช�
 check('doGet ไม่มีกุญแจ → หน้าปฏิเสธ',
   /ไม่มีสิทธิ์เข้าใช้งาน/.test(String(denyPage_().getContent ? denyPage_().getContent() : '')), true);
 
+/* ---------- 1b) ไฟล์เดียวจบ ---------- */
+console.log('\n── build/AllInOne.gs ──');
+{
+  const vmAll = require('vm').createContext(Object.assign({}, global, { console }));
+  const allSrc = fs.readFileSync(path.join(ROOT, 'build', 'AllInOne.gs'), 'utf8');
+  require('vm').runInContext(allSrc, vmAll, { filename: 'AllInOne.gs' });
+  const embedded = vmAll.indexHtml_();
+  const original = fs.readFileSync(path.join(ROOT, 'build', 'Index.html'), 'utf8');
+  check('HTML ที่ฝังไว้ถอดกลับตรงกับต้นฉบับเป๊ะ', embedded === original,
+        'ยาว ' + embedded.length + ' vs ' + original.length);
+  check('มีทั้งโค้ดเซิร์ฟเวอร์และหน้าเว็บในไฟล์เดียว',
+        typeof vmAll.START_HERE === 'function' && typeof vmAll.doGet === 'function' && embedded.length > 100000);
+  check('ไม่เรียกไฟล์ HTML แยกอีกแล้ว', allSrc.indexOf("createTemplateFromFile('Index')") < 0);
+}
+
 /* ---------- 2) ฝั่งหน้าเว็บ ---------- */
 (async () => {
   console.log('\n── build/Index.html ──');

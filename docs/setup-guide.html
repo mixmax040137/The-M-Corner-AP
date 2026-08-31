@@ -1,0 +1,687 @@
+<title>ติดตั้ง The M Corner AP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ── tokens: กระดาษเย็นอมน้ำเงิน + สีหลักเดียวกับตัวระบบ ── */
+:root{
+  --paper:#f6f8fc; --card:#fff; --card-2:#fafbfe;
+  --ink:#0e1626; --ink-2:#46536b; --muted:#6b7893; --faint:#98a3b8;
+  --line:#dfe5f0; --line-2:#edf1f8;
+  --brand:#2c5cc5; --brand-ink:#fff; --brand-soft:#e7edff;
+  --ok:#0e8a5f; --ok-soft:#e4f5ee;
+  --warn:#b26a00; --warn-soft:#fdf2e1;
+  --danger:#c62828; --danger-soft:#fdeceb;
+  --sh:0 1px 2px rgba(14,22,38,.05),0 2px 8px rgba(14,22,38,.05);
+  --sh-lg:0 10px 30px rgba(14,22,38,.10);
+  --f-display:'Bai Jamjuree','IBM Plex Sans Thai',system-ui,sans-serif;
+  --f-body:'IBM Plex Sans Thai','Noto Sans Thai',system-ui,sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0b1018; --card:#141b27; --card-2:#19212f;
+    --ink:#e7edf7; --ink-2:#c0cadb; --muted:#8894aa; --faint:#67738a;
+    --line:#242e3f; --line-2:#1c2533;
+    --brand:#6f9bff; --brand-ink:#0a0f1a; --brand-soft:#182545;
+    --ok:#37c98b; --ok-soft:#0f2a20;
+    --warn:#e0a340; --warn-soft:#2b2113;
+    --danger:#f0716b; --danger-soft:#2e1817;
+    --sh:0 1px 2px rgba(0,0,0,.45); --sh-lg:0 14px 36px rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0b1018; --card:#141b27; --card-2:#19212f;
+  --ink:#e7edf7; --ink-2:#c0cadb; --muted:#8894aa; --faint:#67738a;
+  --line:#242e3f; --line-2:#1c2533;
+  --brand:#6f9bff; --brand-ink:#0a0f1a; --brand-soft:#182545;
+  --ok:#37c98b; --ok-soft:#0f2a20;
+  --warn:#e0a340; --warn-soft:#2b2113;
+  --danger:#f0716b; --danger-soft:#2e1817;
+  --sh:0 1px 2px rgba(0,0,0,.45); --sh-lg:0 14px 36px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--f-body); font-size:15.5px; line-height:1.72;
+  -webkit-font-smoothing:antialiased;
+}
+img{max-width:100%}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--brand); outline-offset:2px; border-radius:5px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+a{color:var(--brand)}
+code,kbd,.mono{font-family:var(--f-mono); font-size:.9em}
+kbd{
+  background:var(--card-2); border:1px solid var(--line); border-bottom-width:2px;
+  border-radius:5px; padding:1px 6px; font-size:.82em; white-space:nowrap; color:var(--ink-2);
+}
+
+/* ── แถบความคืบหน้าติดบนสุด ── */
+.bar{
+  position:sticky; top:0; z-index:50; background:color-mix(in srgb,var(--paper) 88%,transparent);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+}
+.bar-in{max-width:760px; margin:0 auto; padding:9px 20px; display:flex; align-items:center; gap:12px}
+.bar b{font-family:var(--f-display); font-size:14px; font-weight:600; white-space:nowrap}
+.track{flex:1; height:6px; border-radius:99px; background:var(--line); overflow:hidden}
+.track>i{display:block; height:100%; width:0; background:var(--brand); border-radius:99px; transition:width .35s ease}
+.bar .n{font-family:var(--f-mono); font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap}
+
+.wrap{max-width:760px; margin:0 auto; padding:0 20px 90px}
+
+/* ── หัวเรื่อง ── */
+header.top{padding:44px 0 8px}
+header.top .eyebrow{
+  font-family:var(--f-mono); font-size:11.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--brand); font-weight:600;
+}
+header.top h1{
+  font-family:var(--f-display); font-size:clamp(28px,6vw,38px); line-height:1.2; font-weight:700;
+  margin:10px 0 12px; letter-spacing:-.5px; text-wrap:balance;
+}
+header.top p{margin:0; color:var(--ink-2); max-width:60ch}
+
+/* ── กล่องทั่วไป ── */
+.card{background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--sh)}
+.pad{padding:20px 22px}
+
+.note{border-radius:12px; padding:14px 16px; font-size:14.5px; line-height:1.66; display:flex; gap:11px}
+.note .ic{flex:0 0 auto; font-size:16px; line-height:1.5}
+.note.info{background:var(--brand-soft); color:var(--ink)}
+.note.warn{background:var(--warn-soft); color:var(--ink)}
+.note.ok{background:var(--ok-soft); color:var(--ink)}
+.note b{font-weight:600}
+
+.outcome{display:grid; gap:10px; margin:26px 0 8px}
+.oc{display:flex; gap:12px; align-items:flex-start; background:var(--card); border:1px solid var(--line);
+  border-radius:12px; padding:13px 16px; box-shadow:var(--sh)}
+.oc .k{font-size:19px; line-height:1.35}
+.oc .t{font-weight:600; font-size:14.5px}
+.oc .d{font-size:13.5px; color:var(--muted); line-height:1.6}
+
+/* ── ขั้นตอน ── */
+.steps{display:flex; flex-direction:column; gap:18px; margin-top:34px}
+.step{
+  background:var(--card); border:1px solid var(--line); border-radius:16px;
+  box-shadow:var(--sh); overflow:hidden; transition:opacity .3s;
+}
+.step.done{opacity:.62}
+.step.done .head h2{text-decoration:line-through; text-decoration-color:var(--faint)}
+.head{display:flex; gap:14px; align-items:flex-start; padding:20px 22px 0}
+.num{
+  flex:0 0 auto; width:38px; height:38px; border-radius:11px;
+  background:var(--brand); color:var(--brand-ink);
+  font-family:var(--f-display); font-weight:700; font-size:18px;
+  display:grid; place-items:center; font-variant-numeric:tabular-nums;
+}
+.step.done .num{background:var(--ok)}
+.head h2{margin:0; font-family:var(--f-display); font-size:19px; font-weight:600; line-height:1.35; letter-spacing:-.2px; text-wrap:balance}
+.head .est{font-family:var(--f-mono); font-size:11.5px; color:var(--faint); margin-top:3px}
+.body{padding:14px 22px 20px 74px}
+@media (max-width:560px){ .body{padding-left:22px} }
+.body>*+*{margin-top:13px}
+.body p{margin:0}
+.body ol,.body ul{margin:0; padding-left:20px}
+.body li+li{margin-top:7px}
+.body ol{counter-reset:none}
+
+.tick{
+  display:flex; align-items:center; gap:10px; margin:16px 22px 18px 74px;
+  padding:11px 15px; border:1px solid var(--line); border-radius:11px;
+  background:var(--card-2); cursor:pointer; user-select:none; font-size:14.5px; font-weight:500;
+}
+@media (max-width:560px){ .tick{margin-left:22px} }
+.tick:hover{border-color:var(--brand)}
+.tick input{width:18px; height:18px; accent-color:var(--brand); cursor:pointer; margin:0}
+.tick.on{background:var(--ok-soft); border-color:var(--ok); color:var(--ok); font-weight:600}
+
+/* ── ปุ่มลิงก์ ── */
+.go{
+  display:flex; align-items:center; gap:12px; text-decoration:none;
+  background:var(--brand); color:var(--brand-ink); border-radius:11px;
+  padding:13px 17px; font-weight:600; font-size:15px; box-shadow:var(--sh);
+}
+.go:hover{filter:brightness(1.08)}
+.go .arrow{margin-left:auto; opacity:.85}
+.go small{display:block; font-weight:400; font-size:12px; opacity:.85; font-family:var(--f-mono)}
+
+/* ── ภาพจำลองหน้าจอ Google ── */
+.shot{
+  border:1px solid var(--line); border-radius:12px; overflow:hidden;
+  background:var(--card-2); font-size:13px; box-shadow:var(--sh);
+}
+.shot .cap{
+  background:var(--card); border-bottom:1px solid var(--line); padding:7px 13px;
+  font-family:var(--f-mono); font-size:11px; color:var(--muted);
+  display:flex; align-items:center; gap:7px;
+}
+.dots{display:flex; gap:4px}
+.dots i{width:8px; height:8px; border-radius:99px; background:var(--line); display:block}
+.shot .in{padding:15px 16px; display:flex; flex-direction:column; gap:11px}
+.shot .row{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+.shot .lbl{color:var(--muted); font-size:12.5px; min-width:106px}
+.fake{
+  border:1px solid var(--line); border-radius:7px; background:var(--card);
+  padding:6px 11px; font-size:13px; color:var(--ink-2);
+}
+.fake.wide{flex:1; min-width:130px}
+.fake.btn{background:var(--card-2); font-weight:500}
+.fake.blue{background:var(--brand); color:var(--brand-ink); border-color:var(--brand); font-weight:600}
+.hl{
+  position:relative; outline:2.5px solid var(--brand); outline-offset:2px;
+  border-radius:7px; box-shadow:0 0 0 6px var(--brand-soft);
+}
+.tag{
+  display:inline-flex; align-items:center; gap:5px; background:var(--brand); color:var(--brand-ink);
+  border-radius:99px; padding:2px 10px; font-size:11px; font-weight:600; font-family:var(--f-mono);
+  white-space:nowrap;
+}
+.shot .hint{font-size:12px; color:var(--muted); font-style:italic}
+.shot .menu{border:1px solid var(--line); border-radius:9px; background:var(--card); overflow:hidden}
+.shot .menu div{padding:7px 13px; border-bottom:1px solid var(--line-2); color:var(--ink-2)}
+.shot .menu div:last-child{border-bottom:0}
+.shot .menu div.on{background:var(--brand-soft); color:var(--brand); font-weight:600}
+.shot pre{
+  margin:0; font-family:var(--f-mono); font-size:12px; line-height:1.6; color:var(--ink-2);
+  background:var(--card); border:1px solid var(--line); border-radius:8px; padding:11px 13px;
+  overflow-x:auto; white-space:pre;
+}
+
+.seq{display:flex; flex-direction:column; gap:12px}
+.seq .lead{
+  font-family:var(--f-mono); font-size:11.5px; color:var(--brand); font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase;
+}
+
+/* ── ตาราง ── */
+.tw{overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--card)}
+table{width:100%; border-collapse:collapse; font-size:14px; min-width:440px}
+th{
+  text-align:left; padding:10px 14px; background:var(--card-2); border-bottom:1px solid var(--line);
+  font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600;
+}
+td{padding:11px 14px; border-bottom:1px solid var(--line-2); vertical-align:top; line-height:1.6}
+tr:last-child td{border-bottom:0}
+
+h3.sec{
+  font-family:var(--f-display); font-size:22px; font-weight:600; letter-spacing:-.3px;
+  margin:46px 0 4px; text-wrap:balance;
+}
+h3.sec+p{margin:0 0 16px; color:var(--muted); font-size:14.5px}
+h4{font-family:var(--f-display); font-size:16px; font-weight:600; margin:0 0 6px}
+
+footer{margin-top:52px; padding-top:22px; border-top:1px solid var(--line); color:var(--faint); font-size:13px}
+</style>
+
+<div class="bar">
+  <div class="bar-in">
+    <b>ความคืบหน้า</b>
+    <div class="track"><i id="pf"></i></div>
+    <span class="n" id="pn">0/5</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">คู่มือติดตั้ง · ทำครั้งเดียว</div>
+  <h1>ยกระบบหอพักขึ้น Google</h1>
+  <p>ทำตาม 5 ขั้นตอนนี้ครั้งเดียว แล้วระบบทั้งหมดจะออนไลน์อยู่ในบัญชี Google ของคุณ
+  เปิดจากมือถือ แท็บเล็ต หรือคอมเครื่องไหนก็ได้ ข้อมูลตรงกันทุกเครื่องตลอดเวลา</p>
+</header>
+
+<div class="outcome">
+  <div class="oc"><span class="k">🔑</span><div>
+    <div class="t">ลิงก์ของคุณ</div>
+    <div class="d">เพิ่ม แก้ ลบข้อมูลได้ทุกอย่าง เก็บไว้ใช้เอง</div></div></div>
+  <div class="oc"><span class="k">👀</span><div>
+    <div class="t">ลิงก์แชร์</div>
+    <div class="d">ส่งให้ใครก็ได้ เปิดดูอย่างเดียว ไม่ต้องมีบัญชี Google และไม่เห็น Google Sheet ของคุณ</div></div></div>
+  <div class="oc"><span class="k">📊</span><div>
+    <div class="t">ข้อมูลอยู่ใน Google Sheet ของคุณเอง</div>
+    <div class="d">แก้จากเว็บหรือพิมพ์ในชีตตรง ๆ ก็ได้ พร้อมสำรองลง Drive อัตโนมัติทุกวัน</div></div></div>
+</div>
+
+<div class="note warn" style="margin-top:22px">
+  <span class="ic">💻</span>
+  <div><b>ขั้นตอนติดตั้งนี้ต้องทำบนคอมพิวเตอร์</b> เพราะต้องคัดลอกโค้ดก้อนใหญ่และกดปุ่มในหน้าจอที่ไม่รองรับมือถือ —
+  <b>แต่หลังติดตั้งเสร็จ ใช้งานได้จากทุกอุปกรณ์</b> รวมถึงมือถือ</div>
+</div>
+
+<div class="steps">
+
+  <!-- ══════════ 1 ══════════ -->
+  <section class="step" id="s1">
+    <div class="head">
+      <div class="num">1</div>
+      <div><h2>เปิดตัวแก้ไขสคริปต์</h2><div class="est">≈ 1 นาที</div></div>
+    </div>
+    <div class="body">
+      <a class="go" href="https://docs.google.com/spreadsheets/d/1frGWki1sBDG3T4eJxNm5wUZQkXUFcdEIPwKZLaQuSrg/edit" target="_blank" rel="noopener">
+        <span>📊</span>
+        <span>เปิด Google Sheet ของระบบ<small>The M Corner AP — ฐานข้อมูล</small></span>
+        <span class="arrow">↗</span>
+      </a>
+      <p>ชีตนี้ผมสร้างไว้ให้แล้วในไดรฟ์ของคุณ ตอนนี้ยังว่างอยู่ ขั้นตอนที่ 3 จะเติมข้อมูลให้เอง</p>
+      <p>บนแถบเมนูด้านบนของชีต กด <b>ส่วนขยาย</b> แล้วเลือก <b>Apps Script</b></p>
+
+      <div class="shot">
+        <div class="cap"><span class="dots"><i></i><i></i><i></i></span> Google Sheets — แถบเมนูด้านบน</div>
+        <div class="in">
+          <div class="row" style="gap:14px">
+            <span style="color:var(--muted)">ไฟล์</span>
+            <span style="color:var(--muted)">แก้ไข</span>
+            <span style="color:var(--muted)">ดู</span>
+            <span style="color:var(--muted)">แทรก</span>
+            <span style="color:var(--muted)">รูปแบบ</span>
+            <span style="color:var(--muted)">ข้อมูล</span>
+            <span style="color:var(--muted)">เครื่องมือ</span>
+            <span class="hl" style="font-weight:600">ส่วนขยาย</span>
+            <span style="color:var(--muted)">ความช่วยเหลือ</span>
+          </div>
+          <div class="menu" style="max-width:270px">
+            <div>Add-ons</div>
+            <div class="on">Apps Script  ←  เลือกอันนี้</div>
+            <div>AppSheet</div>
+          </div>
+        </div>
+      </div>
+
+      <p>จะเปิดแท็บใหม่ขึ้นมา หน้าตาแบบนี้ — มีไฟล์ชื่อ <code>Code.gs</code> และโค้ดตัวอย่างไม่กี่บรรทัด</p>
+
+      <div class="shot">
+        <div class="cap"><span class="dots"><i></i><i></i><i></i></span> Apps Script — หน้าจอที่จะเห็น</div>
+        <div class="in">
+          <div class="row">
+            <span class="fake">โปรเจกต์ที่ไม่มีชื่อ</span>
+            <span style="margin-left:auto"></span>
+            <span class="fake btn">▷ เรียกใช้</span>
+            <span class="fake btn">🐞 แก้ไขข้อบกพร่อง</span>
+            <span class="fake blue">Deploy ▾</span>
+          </div>
+          <div class="row" style="align-items:flex-start">
+            <div style="flex:0 0 118px">
+              <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">ไฟล์  +</div>
+              <div class="fake" style="background:var(--brand-soft);border-color:var(--brand);color:var(--brand);font-weight:600">Code.gs</div>
+            </div>
+            <pre>function myFunction() {
+
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="note info"><span class="ic">💡</span>
+        <div>อย่าเพิ่งปิดแท็บนี้ — ขั้นตอนที่ 2–5 ทำในหน้านี้ทั้งหมด</div></div>
+    </div>
+    <label class="tick" data-step="1"><input type="checkbox"> เปิดหน้า Apps Script ได้แล้ว</label>
+  </section>
+
+  <!-- ══════════ 2 ══════════ -->
+  <section class="step" id="s2">
+    <div class="head">
+      <div class="num">2</div>
+      <div><h2>วางโค้ดลงไป</h2><div class="est">≈ 2 นาที · วางไฟล์เดียวจบ</div></div>
+    </div>
+    <div class="body">
+      <a class="go" href="https://github.com/mixmax040137/The-M-Corner-AP/blob/claude/m-corner-ap-system-18u8bz/build/AllInOne.gs" target="_blank" rel="noopener">
+        <span>📄</span>
+        <span>เปิดไฟล์โค้ดใน GitHub<small>build/AllInOne.gs</small></span>
+        <span class="arrow">↗</span>
+      </a>
+
+      <p>ที่มุมขวาบนของกล่องโค้ดจะมีแถวไอคอนเล็ก ๆ กดไอคอน <b>สองแผ่นซ้อนกัน</b> (Copy raw file)
+      โค้ดทั้งหมดจะถูกคัดลอกไว้ในคลิปบอร์ด</p>
+
+      <div class="shot">
+        <div class="cap"><span class="dots"><i></i><i></i><i></i></span> GitHub — แถบเครื่องมือเหนือกล่องโค้ด</div>
+        <div class="in">
+          <div class="row">
+            <span style="color:var(--muted);font-family:var(--f-mono);font-size:12px">AllInOne.gs · 4,199 บรรทัด · 348 KB</span>
+            <span style="margin-left:auto"></span>
+            <span style="color:var(--muted)">Blame</span>
+            <span class="hl"><span class="tag">⧉ Copy raw file</span></span>
+            <span style="color:var(--muted)">⤓</span>
+            <span style="color:var(--muted)">✎</span>
+          </div>
+          <div class="hint">ถ้าหาไอคอนไม่เจอ ให้กดในกล่องโค้ดแล้วกด Ctrl+A ตามด้วย Ctrl+C ก็ได้เหมือนกัน</div>
+        </div>
+      </div>
+
+      <p>กลับมาที่แท็บ Apps Script แล้วทำ 3 อย่างนี้ตามลำดับ:</p>
+      <ol>
+        <li>คลิกลงไปในช่องโค้ด (ที่มีคำว่า <code>function myFunction()</code>)</li>
+        <li>กด <kbd>Ctrl</kbd>+<kbd>A</kbd> <span class="mono">(Mac: <kbd>⌘</kbd>+<kbd>A</kbd>)</span> เพื่อเลือกทั้งหมด แล้วกด <kbd>Delete</kbd> ให้ว่างเปล่า</li>
+        <li>กด <kbd>Ctrl</kbd>+<kbd>V</kbd> <span class="mono">(Mac: <kbd>⌘</kbd>+<kbd>V</kbd>)</span> เพื่อวางโค้ดที่คัดลอกมา</li>
+      </ol>
+
+      <div class="note warn"><span class="ic">⏳</span>
+        <div><b>โค้ดยาว 4,199 บรรทัด</b> — หลังวางแล้วหน้าจออาจนิ่งไป 5–15 วินาที เป็นเรื่องปกติ
+        <b>รอให้เลขบรรทัดขึ้นครบก่อน</b> แล้วค่อยกดบันทึก</div></div>
+
+      <p>กด <kbd>Ctrl</kbd>+<kbd>S</kbd> เพื่อบันทึก แล้วเปลี่ยนชื่อโปรเจกต์ตรงมุมบนซ้าย
+      (ที่เขียนว่า <i>โปรเจกต์ที่ไม่มีชื่อ</i>) เป็น <code>The M Corner AP</code></p>
+
+      <div class="note info"><span class="ic">✅</span>
+        <div><b>ไม่ต้องสร้างไฟล์อื่นเพิ่ม</b> — หน้าเว็บทั้งหมดฝังอยู่ในไฟล์นี้แล้ว
+        ถ้าเห็นแค่ <code>Code.gs</code> ไฟล์เดียวแปลว่าถูกต้อง</div></div>
+    </div>
+    <label class="tick" data-step="2"><input type="checkbox"> วางโค้ดและบันทึกเรียบร้อย</label>
+  </section>
+
+  <!-- ══════════ 3 ══════════ -->
+  <section class="step" id="s3">
+    <div class="head">
+      <div class="num">3</div>
+      <div><h2>กด Run แล้วอนุญาตสิทธิ์</h2><div class="est">≈ 2 นาที · ขั้นที่คนสะดุดบ่อยที่สุด</div></div>
+    </div>
+    <div class="body">
+      <p>บนแถบด้านบนจะมีช่องเลื่อนเลือกฟังก์ชัน เปลี่ยนเป็น <code>START_HERE</code> แล้วกด <b>▷ เรียกใช้ (Run)</b></p>
+
+      <div class="shot">
+        <div class="cap"><span class="dots"><i></i><i></i><i></i></span> Apps Script — แถบเครื่องมือ</div>
+        <div class="in">
+          <div class="row">
+            <span class="fake btn hl">▷ เรียกใช้</span>
+            <span class="fake btn">🐞 แก้ไขข้อบกพร่อง</span>
+            <span class="lbl" style="min-width:0">ฟังก์ชัน</span>
+            <span class="fake hl" style="font-family:var(--f-mono);font-weight:600">START_HERE ▾</span>
+          </div>
+          <div class="hint">ถ้าในรายการไม่มี START_HERE แปลว่ายังบันทึกไม่เสร็จ — กด Ctrl+S อีกครั้ง</div>
+        </div>
+      </div>
+
+      <p>Google จะขออนุญาตให้สคริปต์เข้าถึงชีตและไดรฟ์ของคุณ <b>มี 4 หน้าจอต่อกัน</b> ทำตามนี้:</p>
+
+      <div class="seq">
+        <div class="lead">หน้าจอที่ 1</div>
+        <div class="shot"><div class="cap">ต้องมีการให้สิทธิ์ · Authorization required</div>
+          <div class="in">
+            <div style="color:var(--muted)">สคริปต์นี้ต้องได้รับอนุญาตจึงจะทำงานได้</div>
+            <div class="row"><span class="fake btn">ยกเลิก</span><span class="fake blue hl">ตรวจสอบสิทธิ์</span></div>
+          </div></div>
+
+        <div class="lead">หน้าจอที่ 2</div>
+        <div class="shot"><div class="cap">เลือกบัญชี · Choose an account</div>
+          <div class="in">
+            <div class="menu" style="max-width:330px">
+              <div class="on">🙂 mixmax040137@gmail.com  ←  เลือกบัญชีของคุณ</div>
+              <div>ใช้บัญชีอื่น</div>
+            </div>
+          </div></div>
+
+        <div class="lead">หน้าจอที่ 3 — หน้าที่คนมักหยุดตรงนี้</div>
+        <div class="shot"><div class="cap">Google ยังไม่ได้ยืนยันแอปนี้</div>
+          <div class="in">
+            <div style="color:var(--muted)">แอปนี้ยังไม่ผ่านการตรวจสอบจาก Google</div>
+            <div class="row"><span class="hl" style="color:var(--brand);font-weight:600">ขั้นสูง (Advanced)</span>
+              <span class="hint">← กดตรงนี้ก่อน จะมีลิงก์โผล่ขึ้นมา</span></div>
+            <div class="row" style="padding-left:16px">
+              <span class="hl" style="color:var(--brand);font-weight:600">ไปที่ The M Corner AP (ไม่ปลอดภัย)</span>
+            </div>
+          </div></div>
+
+        <div class="lead">หน้าจอที่ 4</div>
+        <div class="shot"><div class="cap">The M Corner AP ต้องการเข้าถึงบัญชี Google ของคุณ</div>
+          <div class="in">
+            <div style="color:var(--muted);font-size:12.5px;line-height:1.9">
+              ▪ ดูและแก้ไขสเปรดชีตของคุณ<br>
+              ▪ ดู สร้าง และลบไฟล์ใน Google Drive<br>
+              ▪ ส่งอีเมลในชื่อของคุณ
+            </div>
+            <div class="row"><span class="fake btn">ยกเลิก</span><span class="fake blue hl">อนุญาต (Allow)</span></div>
+          </div></div>
+      </div>
+
+      <div class="note info"><span class="ic">🔍</span>
+        <div><b>ทำไมขึ้นว่า "ไม่ปลอดภัย"?</b> เพราะเป็นสคริปต์ที่เขียนขึ้นเอง ยังไม่ได้ส่งให้ Google ตรวจสอบ
+        Google จึงเตือนไว้ก่อนกับทุกสคริปต์ที่ไม่ได้มาจากร้านค้า — สคริปต์นี้ทำงานอยู่ในบัญชีคุณเท่านั้น
+        และโค้ดทั้งหมดเปิดให้อ่านได้ใน GitHub</div></div>
+
+      <p>เมื่ออนุญาตแล้ว สคริปต์จะทำงานประมาณ 20–40 วินาที แล้วขึ้นกล่องสรุปแบบนี้:</p>
+
+      <div class="shot"><div class="cap">ผลลัพธ์ที่ควรได้</div>
+        <div class="in"><pre>The M Corner AP — ติดตั้งเรียบร้อย
+
+✅ สร้างชีต 11 แท็บ · ทะเบียน 24 ห้อง · โฟลเดอร์ไฟล์แนบ
+✅ นำเข้าข้อมูลเดิมครบทุกโมดูล
+✅ ออกกุญแจผู้ดูแลและกุญแจแชร์แล้ว
+✅ สำรองข้อมูลลง Drive อัตโนมัติ ทุกวันตี 2
+✅ แจ้งเตือนสรุปงานเข้าอีเมล ทุกวันจันทร์ 08:00
+
+⏭️ เหลืออีกขั้นตอนเดียว — สร้างลิงก์เข้าใช้งาน</pre></div></div>
+
+      <div class="note ok"><span class="ic">🎉</span>
+        <div>ตอนนี้ข้อมูลเดิมของคุณเข้าไปอยู่ในชีตครบแล้ว — ลองสลับไปดูแท็บในชีตได้เลย
+        จะเห็นรายการซื้อของ 94 รายการ ประวัติล้างแอร์ 41 ครั้ง และอื่น ๆ</div></div>
+    </div>
+    <label class="tick" data-step="3"><input type="checkbox"> เห็นข้อความ “ติดตั้งเรียบร้อย” แล้ว</label>
+  </section>
+
+  <!-- ══════════ 4 ══════════ -->
+  <section class="step" id="s4">
+    <div class="head">
+      <div class="num">4</div>
+      <div><h2>เผยแพร่เป็นเว็บแอป</h2><div class="est">≈ 2 นาที · ตั้งค่าให้ตรงเป๊ะ 2 ช่อง</div></div>
+    </div>
+    <div class="body">
+      <p>มุมขวาบน กดปุ่มสีน้ำเงิน <b>Deploy</b> แล้วเลือก <b>New deployment</b></p>
+      <p>ในหน้าต่างที่เปิดขึ้นมา ให้กด <b>รูปเฟือง ⚙️</b> ที่อยู่ข้างคำว่า <i>Select type</i> แล้วเลือก <b>Web app</b></p>
+
+      <div class="shot">
+        <div class="cap"><span class="dots"><i></i><i></i><i></i></span> New deployment</div>
+        <div class="in">
+          <div class="row">
+            <span class="hl fake btn">⚙️</span>
+            <span style="color:var(--muted)">Select type</span>
+            <div class="menu" style="max-width:190px;margin-left:8px">
+              <div class="on">Web app  ← เลือก</div>
+              <div>Add-on</div>
+              <div>Library</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p>จากนั้นจะมีช่องให้กรอก <b>ตั้งค่าให้ตรงตามนี้เป๊ะ ๆ</b> โดยเฉพาะสองช่องล่าง:</p>
+
+      <div class="shot">
+        <div class="cap"><span class="dots"><i></i><i></i><i></i></span> การตั้งค่าที่ต้องใช้</div>
+        <div class="in">
+          <div class="row"><span class="lbl">Description</span><span class="fake wide">v1</span></div>
+          <div class="row"><span class="lbl">Execute as</span>
+            <span class="fake wide hl" style="font-weight:600">Me (mixmax040137@gmail.com) ▾</span></div>
+          <div class="row"><span class="lbl">Who has access</span>
+            <span class="fake wide hl" style="font-weight:600">Anyone ▾</span></div>
+          <div class="row" style="justify-content:flex-end"><span class="fake blue">Deploy</span></div>
+        </div>
+      </div>
+
+      <div class="note warn"><span class="ic">⚠️</span>
+        <div>ช่อง <b>Who has access</b> ต้องเลือก <b>“Anyone”</b> ไม่ใช่ <i>“Anyone with Google account”</i><br>
+        ถ้าเลือกผิด คนที่รับลิงก์แชร์ไปจะต้องมีบัญชี Google ถึงจะเปิดดูได้</div></div>
+
+      <p>กด <b>Deploy</b> — ถ้าถามให้อนุญาตสิทธิ์อีกครั้ง ให้กดผ่านเหมือนขั้นตอนที่ 3
+      เสร็จแล้วกด <b>Done</b> เพื่อปิดหน้าต่าง</p>
+
+      <div class="note info"><span class="ic">🔒</span>
+        <div><b>“Anyone” ปลอดภัยไหม?</b> ปลอดภัย — ถ้ามีคนได้ลิงก์เปล่า ๆ ไปโดยไม่มีกุญแจต่อท้าย
+        จะเจอหน้า “ไม่มีสิทธิ์เข้าใช้งาน” ทันที ระบบตรวจกุญแจที่ฝั่งเซิร์ฟเวอร์ก่อนทำงานทุกครั้ง
+        ไม่ใช่แค่ซ่อนปุ่ม</div></div>
+    </div>
+    <label class="tick" data-step="4"><input type="checkbox"> Deploy เสร็จและกด Done แล้ว</label>
+  </section>
+
+  <!-- ══════════ 5 ══════════ -->
+  <section class="step" id="s5">
+    <div class="head">
+      <div class="num">5</div>
+      <div><h2>รับลิงก์เข้าใช้งาน</h2><div class="est">≈ 30 วินาที</div></div>
+    </div>
+    <div class="body">
+      <p>กลับมาที่หน้าโค้ด เลือกฟังก์ชัน <code>START_HERE</code> อีกครั้ง แล้วกด <b>▷ เรียกใช้</b> ซ้ำ</p>
+      <p>คราวนี้ระบบรู้แล้วว่า deploy เสร็จ จึงพ่นลิงก์ออกมาให้เลย:</p>
+
+      <div class="shot"><div class="cap">ผลลัพธ์ที่จะได้</div>
+        <div class="in"><pre>━━━━━━━━━━━━━━━━━━━━━━
+🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)
+https://script.google.com/macros/s/AKfy.../exec?key=Xk7mQ...
+
+👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้ใครก็ได้)
+https://script.google.com/macros/s/AKfy.../exec?key=Rt9wZ...
+━━━━━━━━━━━━━━━━━━━━━━</pre></div></div>
+
+      <p><b>คัดลอกทั้งสองลิงก์เก็บไว้</b> — ส่งเข้าไลน์ตัวเอง บันทึกใน Google Keep หรือทำ bookmark ก็ได้</p>
+
+      <div class="note ok"><span class="ic">✅</span>
+        <div><b>เปิดลิงก์แรกดูเลย</b> ถ้าเห็นหน้าแดชบอร์ดพร้อมตัวเลขยอดหนี้คงเหลือ 8,101,346 บาท
+        แปลว่าติดตั้งสำเร็จครบถ้วน</div></div>
+
+      <div class="note warn"><span class="ic">🔁</span>
+        <div>ถ้ายังขึ้นข้อความ “เหลืออีกขั้นตอนเดียว” อยู่ แปลว่า deployment ยังไม่ถูกบันทึก —
+        กลับไปทำขั้นตอนที่ 4 ใหม่ แล้วตรวจว่าได้กด <b>Done</b> จนหน้าต่างปิดจริง ๆ</div></div>
+
+      <p>อีกทางหนึ่ง: กลับไปที่ Google Sheet กด <kbd>F5</kbd> จะมีเมนูใหม่ชื่อ
+      <b>🏢 The M Corner AP</b> โผล่มาบนแถบเมนู เลือก <b>🔗 แสดงลิงก์เข้าใช้งาน</b> ก็ได้ลิงก์เหมือนกัน</p>
+    </div>
+    <label class="tick" data-step="5"><input type="checkbox"> ได้ลิงก์ทั้งสองอันแล้ว 🎉</label>
+  </section>
+
+</div>
+
+<!-- ══════════ หลังติดตั้ง ══════════ -->
+<h3 class="sec">ใช้จากทุกอุปกรณ์</h3>
+<p>ระบบอยู่บนเซิร์ฟเวอร์ของ Google แล้ว เปิดลิงก์จากเครื่องไหนก็เห็นข้อมูลชุดเดียวกัน</p>
+
+<div class="card pad" style="display:grid;gap:18px">
+  <div>
+    <h4>📱 ทำให้เหมือนแอปบนมือถือ</h4>
+    <p style="margin:0;color:var(--ink-2);font-size:14.5px">
+      เปิด <b>ลิงก์ของคุณ</b> บนมือถือ แล้ว:<br>
+      <b>iPhone</b> — Safari → ปุ่มแชร์ <span class="mono">⬆️</span> → <i>เพิ่มไปยังหน้าจอโฮม</i><br>
+      <b>Android</b> — Chrome → เมนู <span class="mono">⋮</span> → <i>เพิ่มลงในหน้าจอหลัก</i><br>
+      จะได้ไอคอนกดเปิดได้ทันที ถ่ายรูปแนบงานซ่อมจากกล้องได้เลย
+    </p>
+  </div>
+  <div style="border-top:1px solid var(--line-2);padding-top:16px">
+    <h4>🔴 ข้อมูลอัปเดตสด</h4>
+    <p style="margin:0;color:var(--ink-2);font-size:14.5px">
+      ทุกหน้าจะเช็คทุก 25 วินาทีว่าชีตถูกแก้หรือยัง ถ้าเปลี่ยนก็โหลดใหม่ให้เอง
+      ครอบคลุมทั้งการแก้ผ่านเว็บและการพิมพ์แก้ในชีตโดยตรง —
+      มุมขวาบนจะมีจุด <b>● สด</b> บอกว่ากำลังเช็คอยู่
+    </p>
+  </div>
+  <div style="border-top:1px solid var(--line-2);padding-top:16px">
+    <h4>👀 แชร์ให้คนอื่นดู</h4>
+    <p style="margin:0;color:var(--ink-2);font-size:14.5px">
+      ส่ง <b>ลิงก์แชร์</b> ให้ใครก็ได้ เขาจะเห็นข้อมูลทั้งหมดแต่ปุ่มแก้ไขและลบจะหายไปหมด
+      ถ้าวันหนึ่งลิงก์หลุด กดเมนูในชีต <b>🔁 ออกลิงก์แชร์ใหม่</b> ลิงก์เดิมจะใช้ไม่ได้ทันที
+      โดยลิงก์ของคุณไม่ถูกกระทบ
+    </p>
+  </div>
+  <div style="border-top:1px solid var(--line-2);padding-top:16px">
+    <h4>💾 ข้อมูลปลอดภัยแค่ไหน</h4>
+    <p style="margin:0;color:var(--ink-2);font-size:14.5px">
+      ข้อมูลจริงอยู่ใน Google Sheet ของคุณ แก้ในชีตตรง ๆ ได้ตลอด (แค่อย่าลบหัวตารางแถวแรก)
+      ระบบยังเขียนไฟล์สำรองลงโฟลเดอร์ <i>สำรองข้อมูล</i> ใน Drive ทุกวันตอนตี 2 เก็บย้อนหลัง 30 ชุด
+      และบันทึกทุกการเพิ่ม-แก้-ลบไว้ในแท็บ <code>ActivityLog</code>
+    </p>
+  </div>
+</div>
+
+<h3 class="sec">ถ้าติดปัญหา</h3>
+<p>อาการที่เจอบ่อยและวิธีแก้</p>
+
+<div class="tw">
+<table>
+  <thead><tr><th style="width:38%">อาการ</th><th>วิธีแก้</th></tr></thead>
+  <tbody>
+    <tr><td>ในช่องเลือกฟังก์ชันไม่มี <code>START_HERE</code></td>
+        <td>ยังบันทึกไม่เสร็จ กด <kbd>Ctrl</kbd>+<kbd>S</kbd> รอสักครู่ แล้วกดที่ช่องเลื่อนใหม่อีกครั้ง</td></tr>
+    <tr><td>กด Run แล้วขึ้น <code>Script function not found</code></td>
+        <td>เหมือนข้อบน — โค้ดยังบันทึกไม่ครบ ลองบันทึกใหม่แล้วรีเฟรชหน้า Apps Script</td></tr>
+    <tr><td>หาปุ่ม “ขั้นสูง / Advanced” ไม่เจอ</td>
+        <td>อยู่มุมซ้ายล่างของกล่องข้อความ เป็นตัวอักษรเล็ก ๆ ไม่ใช่ปุ่ม ต้องกดที่ข้อความนั้นตรง ๆ</td></tr>
+    <tr><td>เปิดลิงก์แล้วขึ้น 🔒 ไม่มีสิทธิ์เข้าใช้งาน</td>
+        <td>ลิงก์ขาดส่วน <code>?key=...</code> ต่อท้าย — รัน <code>START_HERE</code> อีกครั้งเพื่อดูลิงก์เต็ม</td></tr>
+    <tr><td>เปิดลิงก์แล้วหน้าขาว หรือขึ้น error</td>
+        <td>กด <b>Deploy → Manage deployments → ✏️ → Version: New version → Deploy</b> เพื่อเผยแพร่รุ่นใหม่</td></tr>
+    <tr><td>ไม่มีเมนู 🏢 ในชีต</td>
+        <td>โหลดหน้าชีตใหม่ด้วย <kbd>F5</kbd> เมนูจะขึ้นหลังโหลดเสร็จประมาณ 2–3 วินาที</td></tr>
+    <tr><td>ข้อมูลเข้าซ้ำสองรอบ</td>
+        <td>ไม่เกิดขึ้น ระบบข้ามให้เองถ้าชีตมีข้อมูลอยู่แล้ว รัน <code>START_HERE</code> ซ้ำได้ปลอดภัย</td></tr>
+    <tr><td>อยากให้คนอื่นแก้ไขข้อมูลได้ด้วย</td>
+        <td>ใส่อีเมลเขาในชีตแท็บ <code>Settings</code> แถว <code>admin_emails</code> คั่นด้วยจุลภาค</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 class="sec">แก้โค้ดในอนาคต</h3>
+<p>ถ้ามีการปรับปรุงระบบ ให้ทำแบบนี้</p>
+<div class="card pad">
+  <ol style="margin:0;padding-left:20px;color:var(--ink-2);font-size:14.5px">
+    <li>คัดลอกไฟล์ <code>build/AllInOne.gs</code> เวอร์ชันใหม่จาก GitHub</li>
+    <li>วางทับใน Apps Script แล้วบันทึก</li>
+    <li><b>Deploy → Manage deployments → ✏️ → Version: New version → Deploy</b></li>
+  </ol>
+  <p style="margin:12px 0 0;color:var(--muted);font-size:13.5px">
+    ลิงก์เดิมใช้ได้ต่อ ไม่ต้องแจกลิงก์ใหม่ และข้อมูลในชีตไม่หาย
+  </p>
+</div>
+
+<footer>
+  The M Corner AP · หอพัก 24 ห้อง · ระบบทำงานบน Google Apps Script + Google Sheets + Google Drive<br>
+  ติ๊กถูกที่ทำไว้จะจำได้เฉพาะบนอุปกรณ์ที่คุณเปิดหน้านี้
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var KEY = 'mcorner.setup.progress';
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.tick'));
+
+  function read(){
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  function write(state){
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* โหมดส่วนตัว — ข้ามไป */ }
+  }
+
+  function paint(){
+    var done = 0;
+    boxes.forEach(function(label){
+      var on = label.querySelector('input').checked;
+      if (on) done++;
+      label.classList.toggle('on', on);
+      var step = label.closest('.step');
+      if (step) step.classList.toggle('done', on);
+    });
+    var pct = boxes.length ? (done / boxes.length * 100) : 0;
+    document.getElementById('pf').style.width = pct + '%';
+    document.getElementById('pn').textContent = done + '/' + boxes.length;
+  }
+
+  var saved = read();
+  boxes.forEach(function(label){
+    var input = label.querySelector('input');
+    var id = label.getAttribute('data-step');
+    input.checked = !!saved[id];
+    input.addEventListener('change', function(){
+      var s = read();
+      s[id] = input.checked;
+      write(s);
+      paint();
+    });
+  });
+  paint();
+})();
+</script>

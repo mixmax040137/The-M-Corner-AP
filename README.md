@@ -4,9 +4,10 @@
 
 ## ▶️ เริ่มที่นี่
 
-**[docs/DEPLOY.md](docs/DEPLOY.md) — ติดตั้ง 5 ขั้นตอน ~5 นาที**
+**[📖 คู่มือติดตั้งแบบจับมือทำ](https://claude.ai/code/artifact/7d099531-5469-4bae-b96e-c4522613aa1d)** — มีภาพจำลองทุกหน้าจอที่ต้องกด และติ๊กความคืบหน้าได้
+(ฉบับข้อความ: [docs/DEPLOY.md](docs/DEPLOY.md))
 
-วางโค้ดไฟล์เดียว → กด Run ฟังก์ชัน `START_HERE` → กด Deploy → กด Run อีกครั้งเพื่อรับลิงก์
+วางโค้ดไฟล์เดียว → กด Run ฟังก์ชัน `START_HERE` → กด Deploy → กด Run อีกครั้งเพื่อรับลิงก์ · ประมาณ 5 นาที
 
 เตรียมไว้ให้แล้วในไดรฟ์ของคุณ:
 📁 [โฟลเดอร์ The M Corner AP](https://drive.google.com/drive/folders/1jIGt_ebYv-8TvIrSoRrsp1QPnDZ9-kMM) ·

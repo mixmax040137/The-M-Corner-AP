@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 16:48 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 17:17 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -75,6 +75,7 @@ SCHEMA[SHEETS.DEBTS] = [
   { key: 'id',        label: 'รหัส',            type: 'text' },
   { key: 'ledger',    label: 'ประเภทบัญชี',      type: 'select', options: ['หนี้หลัก', 'หนี้รอง'] },
   { key: 'title',     label: 'รายการหนี้',       type: 'text' },
+  { key: 'parentId',  label: 'เป็นส่วนหนึ่งของ',  type: 'text' },
   { key: 'creditor',  label: 'เจ้าหนี้',         type: 'text' },
   { key: 'startDate', label: 'วันที่ก่อหนี้',     type: 'date' },
   { key: 'principal', label: 'ยอดหนี้ตั้งต้น',   type: 'money' },
@@ -254,7 +255,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 2;
+var SCHEMA_VERSION = 3;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -1485,12 +1486,21 @@ function resetSeedFlag() {
 function seedDebts_() {
   var rows = SEED_DEBTS.map(function (d) {
     return {
-      id: uid_('DEBT'), ledger: d.ledger, title: d.title, creditor: d.creditor,
+      id: uid_('DEBT'), ledger: d.ledger, title: d.title, parentId: '', creditor: d.creditor,
       startDate: d.startDate, principal: d.principal, interestPerMonth: d.interestPerMonth,
       dueDay: d.dueDay, planPerMonth: d.planPerMonth, status: d.status,
       note: d.note, updatedAt: new Date()
     };
   });
+
+  // เงินยืมป้าตาคือทุนที่ใช้ซื้อที่ดิน จึงเป็นส่วนหนึ่งของหนี้ซื้อที่ดิน ไม่ใช่หนี้อีกก้อน
+  var land = null, pata = null;
+  rows.forEach(function (d) {
+    if (!land && d.title.indexOf('ซื้อที่ดิน') >= 0) land = d;
+    if (!pata && d.title.indexOf('ป้าตา') >= 0) pata = d;
+  });
+  if (land && pata) pata.parentId = land.id;
+
   return bulkInsert_(SHEETS.DEBTS, rows);
 }
 
@@ -1796,6 +1806,7 @@ function runMigrations_() {
 
   var done = [];
   if (from < 2) done.push(migrateV2SplitPayment_());
+  if (from < 3) done.push(migrateV3DebtParent_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -1846,6 +1857,44 @@ function migrateV2SplitPayment_() {
 
   rewriteSheet_(name, rows);
   return name + ': แยกเงินต้น/ดอกเบี้ย ' + rows.length + ' รายการ';
+}
+
+/**
+ * รุ่น 3 — ก้อนหนี้ผูกกันเป็นแม่-ลูกได้ (คอลัมน์ "เป็นส่วนหนึ่งของ")
+ *
+ * ผูกให้อัตโนมัติ: เงินยืมป้าตา เป็นส่วนหนึ่งของหนี้ซื้อที่ดิน
+ * เพราะเงินก้อนนั้นคือทุนที่ใช้ซื้อที่ดิน ไม่ใช่หนี้เพิ่มอีกก้อน
+ */
+function migrateV3DebtParent_() {
+  var name = SHEETS.DEBTS;
+  var old = readByHeader_(name);
+  if (!old) return name + ': ไม่มีชีต ข้ามไป';
+
+  var rows = old.rows.map(function (r) {
+    return {
+      id: r['รหัส'], ledger: r['ประเภทบัญชี'], title: r['รายการหนี้'],
+      parentId: r['เป็นส่วนหนึ่งของ'] || '',
+      creditor: r['เจ้าหนี้'], startDate: r['วันที่ก่อหนี้'],
+      principal: r['ยอดหนี้ตั้งต้น'], interestPerMonth: r['ดอกเบี้ย/เดือน'],
+      dueDay: r['กำหนดชำระ (วันที่)'], planPerMonth: r['ยอดผ่อนต่อเดือน'],
+      status: r['สถานะ'], note: r['หมายเหตุ'], updatedAt: r['แก้ไขล่าสุด']
+    };
+  });
+
+  var land = null, pata = null;
+  rows.forEach(function (d) {
+    var t = String(d.title || '');
+    if (!land && t.indexOf('ซื้อที่ดิน') >= 0) land = d;
+    if (!pata && t.indexOf('ป้าตา') >= 0) pata = d;
+  });
+  var linked = '';
+  if (land && pata && !String(pata.parentId || '').trim() && land.id !== pata.id) {
+    pata.parentId = land.id;
+    linked = ' · ผูก "' + pata.title + '" เข้ากับ "' + land.title + '"';
+  }
+
+  rewriteSheet_(name, rows);
+  return name + ': เพิ่มคอลัมน์แม่-ลูก ' + rows.length + ' รายการ' + linked;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2098,13 +2147,21 @@ function scheduledBackup() {
 /**
  * Debt.gs — บัญชีหนี้หลัก (รายการสรุปรวม) และหนี้รอง (หนี้สิน)
  *
- * โครงคิด:
+ * โครงคิด
  *   Debts        = ก้อนหนี้ (ยอดตั้งต้น)
- *   DebtPayments = รายการโอนใช้หนี้แต่ละครั้ง
+ *   DebtPayments = รายการโอนใช้หนี้แต่ละครั้ง แยกเงินต้นกับดอกเบี้ย
  *
- *   ยอดหนี้ทั้งหมด = ผลรวม principal ของก้อนหนี้ในบัญชีนั้น
- *   ชำระแล้ว      = ผลรวมรายการชำระ "เงินต้น" (ดอกเบี้ย/ค่าธรรมเนียมไม่ลดเงินต้น)
- *   คงเหลือ       = ยอดหนี้ทั้งหมด - ชำระแล้ว
+ * ก้อนหนี้ผูกกันเป็นแม่-ลูกได้ผ่านคอลัมน์ "เป็นส่วนหนึ่งของ" (parentId)
+ * ใช้กับกรณีที่เงินก้อนหนึ่งเป็น "ทุน" ของอีกก้อน เช่น
+ *
+ *   ซื้อที่ดิน 4,700,000            ← ก้อนแม่
+ *     └─ เงินยืมป้าตา 1,000,000     ← ก้อนลูก (เป็นส่วนหนึ่งของ 4.7 ล้านนั้น)
+ *
+ * กติกาที่ตามมา
+ *   1. จ่ายคืนลูก 1 บาท = แม่ลดลง 1 บาทด้วย (ยอดชำระไหลขึ้นตามสายเสมอ)
+ *   2. ยอดตั้งต้นของลูก "อยู่ใน" ยอดของแม่แล้ว ตอนรวมยอดทั้งระบบ
+ *      จึงนับเฉพาะก้อนที่ไม่มีแม่ ไม่งั้นจะนับซ้ำ
+ *   3. ดอกเบี้ยไม่ไหลขึ้น เพราะเป็นค่าใช้จ่าย ไม่ได้ลดเงินต้นของแม่
  */
 
 var LEDGER_MAIN = 'หนี้หลัก';
@@ -2116,6 +2173,7 @@ function listDebts_(ledger) {
   return rows;
 }
 
+/** @param {string|null} ledger ใส่ null เพื่อเอาทุกบัญชี */
 function listDebtPayments_(ledger, year) {
   var rows = readRows_(SHEETS.DEBT_PAYMENTS);
   if (ledger) rows = rows.filter(function (p) { return p.ledger === ledger; });
@@ -2129,51 +2187,161 @@ function listDebtPayments_(ledger, year) {
   });
 }
 
+/* ------------------------------------------------------------------ */
+/*  เครื่องคิดยอด — ปันส่วนการชำระ แล้วไหลขึ้นตามสายแม่-ลูก              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ปันส่วนรายการชำระให้แต่ละก้อนหนี้
+ *   ระบุก้อนหนี้ไว้     → เข้าก้อนนั้นเต็มจำนวน
+ *   ไม่ได้ระบุ          → เฉลี่ยตามสัดส่วนยอดตั้งต้น ให้ก้อนระดับบนสุดของบัญชีนั้น
+ */
+function debtGraph_(debts, payments) {
+  var byId = {};
+  debts.forEach(function (d) { byId[String(d.id)] = d; });
+
+  function parentOf(d) {
+    var pid = String((d && d.parentId) || '').trim();
+    return pid && byId[pid] && byId[pid] !== d ? byId[pid] : null;
+  }
+
+  /** ก้อนระดับบนสุด "ของบัญชีนั้น" — ไม่มีแม่ หรือแม่อยู่คนละบัญชี */
+  function isLedgerRoot(d) {
+    var p = parentOf(d);
+    return !p || p.ledger !== d.ledger;
+  }
+
+  var children = {};
+  debts.forEach(function (d) {
+    var p = parentOf(d);
+    if (p) (children[String(p.id)] = children[String(p.id)] || []).push(d);
+  });
+
+  var rootTotal = {};
+  debts.forEach(function (d) {
+    if (!isLedgerRoot(d)) return;
+    rootTotal[d.ledger] = (rootTotal[d.ledger] || 0) + (toNumber_(d.principal) || 0);
+  });
+
+  var own = {};
+  debts.forEach(function (d) { own[String(d.id)] = { principal: 0, interest: 0 }; });
+
+  payments.forEach(function (p) {
+    var pr = toNumber_(p.principal) || 0;
+    var it = toNumber_(p.interest) || 0;
+    var id = String(p.debtId || '').trim();
+    p._toDebts = [];
+
+    if (id && own[id]) {
+      own[id].principal += pr;
+      own[id].interest += it;
+      p._toDebts.push(id);
+      return;
+    }
+    var tot = rootTotal[p.ledger] || 0;
+    debts.forEach(function (d) {
+      if (d.ledger !== p.ledger || !isLedgerRoot(d)) return;
+      var w = tot > 0 ? (toNumber_(d.principal) || 0) / tot : 0;
+      own[String(d.id)].principal += pr * w;
+      own[String(d.id)].interest += it * w;
+      p._toDebts.push(String(d.id));
+    });
+  });
+
+  /** ยอดของก้อนหนึ่ง = ของตัวเอง + เงินต้นของลูกทุกชั้น */
+  function paidOf(d, guard) {
+    guard = guard || 0;
+    if (guard > 20) return { principal: 0, interest: 0, fromChildren: 0 };
+    var mine = own[String(d.id)] || { principal: 0, interest: 0 };
+    var fromChildren = 0;
+    (children[String(d.id)] || []).forEach(function (c) {
+      var r = paidOf(c, guard + 1);
+      fromChildren += r.principal;
+    });
+    return {
+      principal: mine.principal + fromChildren,
+      interest: mine.interest,
+      fromChildren: fromChildren
+    };
+  }
+
+  /** บัญชีทั้งหมดที่รายการชำระนี้ส่งผลถึง (ไล่ขึ้นตามสายแม่) */
+  function ledgersTouched(p) {
+    var set = {};
+    (p._toDebts || []).forEach(function (id) {
+      var d = byId[id], guard = 0;
+      while (d && guard++ < 20) { set[d.ledger] = true; d = parentOf(d); }
+    });
+    if (!Object.keys(set).length) set[p.ledger] = true;
+    return set;
+  }
+
+  return {
+    byId: byId, children: children, parentOf: parentOf,
+    isLedgerRoot: isLedgerRoot, paidOf: paidOf, ledgersTouched: ledgersTouched
+  };
+}
+
 /**
  * สรุปยอดของบัญชีหนี้หนึ่งบัญชี
  * @param {string} ledger 'หนี้หลัก' | 'หนี้รอง'
  * @param {string|number} year ปี ค.ศ. หรือ 'all'
  */
 function debtSummary_(ledger, year) {
-  var debts = listDebts_(ledger);
-  var allPayments = listDebtPayments_(ledger, 'all');
+  var allDebts = readRows_(SHEETS.DEBTS);
+  var allPayments = listDebtPayments_(null, 'all');
+  var g = debtGraph_(allDebts, allPayments);
+
+  var debts = allDebts.filter(function (d) { return d.ledger === ledger; });
+
+  // รายการชำระที่ส่งผลถึงบัญชีนี้
+  //   • ของบัญชีตัวเอง — เอาทั้งหมด
+  //   • ของก้อนลูกที่อยู่คนละบัญชี — เอาเฉพาะที่มีเงินต้น เพราะดอกเบี้ยของลูก
+  //     ไม่ได้ลดยอดหนี้ของแม่ ถ้านับมาด้วยจำนวนรายการกับยอดรายปีจะเกินจริง
+  var scoped = allPayments.filter(function (p) {
+    if (p.ledger === ledger) return true;
+    if (!((toNumber_(p.principal) || 0) > 0)) return false;
+    return !!g.ledgersTouched(p)[ledger];
+  });
 
   var totalDebt = sum_(debts, function (d) { return d.principal; });
-  var principalPaid = sum_(allPayments, function (p) { return p.principal; });
-  var interestPaid = sum_(allPayments, function (p) { return p.interest; });
+
+  var principalPaid = 0;
+  debts.forEach(function (d) {
+    if (!g.isLedgerRoot(d)) return;          // ก้อนลูกในบัญชีเดียวกันถูกนับผ่านแม่แล้ว
+    principalPaid += g.paidOf(d).principal;
+  });
+  var interestPaid = sum_(allPayments.filter(function (p) { return p.ledger === ledger; }),
+    function (p) { return p.interest; });
+
   var remaining = totalDebt - principalPaid;
   var percent = totalDebt > 0 ? Math.min(100, (principalPaid / totalDebt) * 100) : 0;
 
   // แยกตามปี
   var byYearMap = {};
-  allPayments.forEach(function (p) {
+  scoped.forEach(function (p) {
     var y = p.year || yearOf_(p.payDate);
     if (!y) return;
     if (!byYearMap[y]) byYearMap[y] = { year: Number(y), principal: 0, interest: 0, count: 0 };
     byYearMap[y].principal += toNumber_(p.principal) || 0;
-    byYearMap[y].interest += toNumber_(p.interest) || 0;
+    byYearMap[y].interest += (p.ledger === ledger ? (toNumber_(p.interest) || 0) : 0);
     byYearMap[y].count++;
   });
   var byYear = Object.keys(byYearMap)
     .map(function (k) { return byYearMap[k]; })
     .sort(function (a, b) { return b.year - a.year; });
 
-  // ยอดสะสมย้อนหลัง (ไว้วาดกราฟความคืบหน้า)
   var asc = byYear.slice().sort(function (a, b) { return a.year - b.year; });
   var run = 0;
   asc.forEach(function (y) { run += y.principal; y.cumulative = round2_(run); });
 
-  // ความคืบหน้ารายก้อนหนี้ (เฉลี่ยตามสัดส่วนยอดตั้งต้น เมื่อไม่ได้ผูก debtId)
+  // ความคืบหน้ารายก้อนหนี้
   var perDebt = debts.map(function (d) {
-    var direct = sum_(allPayments.filter(function (p) {
-      return String(p.debtId) === String(d.id);
-    }), function (p) { return p.principal; });
-    var unlinked = sum_(allPayments.filter(function (p) {
-      return !String(p.debtId || '').trim();
-    }), function (p) { return p.principal; });
-    var share = totalDebt > 0 ? (toNumber_(d.principal) || 0) / totalDebt : 0;
-    var paid = round2_(direct + unlinked * share);
+    var r = g.paidOf(d);
     var principal = toNumber_(d.principal) || 0;
+    var paid = round2_(r.principal);
+    var parent = g.parentOf(d);
+    var kids = (g.children[String(d.id)] || []);
     return {
       id: d.id, title: d.title, creditor: d.creditor, ledger: d.ledger,
       startDate: d.startDate, status: d.status, note: d.note,
@@ -2182,16 +2350,27 @@ function debtSummary_(ledger, year) {
       paid: Math.min(paid, principal),
       remaining: round2_(Math.max(0, principal - paid)),
       percent: principal > 0 ? Math.min(100, (paid / principal) * 100) : 0,
-      estimatedShare: !String(d.id) ? false : true
+      paidFromChildren: round2_(r.fromChildren),
+      parentId: String(d.parentId || ''),
+      parentTitle: parent ? parent.title : '',
+      children: kids.map(function (c) {
+        var cr = g.paidOf(c);
+        var cp = toNumber_(c.principal) || 0;
+        return {
+          id: c.id, title: c.title, ledger: c.ledger, creditor: c.creditor,
+          principal: cp, paid: round2_(Math.min(cr.principal, cp)),
+          remaining: round2_(Math.max(0, cp - cr.principal)),
+          percent: cp > 0 ? Math.min(100, (cr.principal / cp) * 100) : 0
+        };
+      })
     };
   });
 
-  // ประมาณการปิดหนี้จากอัตราชำระ 12 เดือนล่าสุด
-  var forecast = forecastPayoff_(allPayments, remaining);
+  var forecast = forecastPayoff_(scoped, remaining);
 
   var yearFiltered = (year && year !== 'all')
-    ? allPayments.filter(function (p) { return String(p.year || yearOf_(p.payDate)) === String(year); })
-    : allPayments;
+    ? scoped.filter(function (p) { return String(p.year || yearOf_(p.payDate)) === String(year); })
+    : scoped;
 
   return {
     ledger: ledger,
@@ -2200,15 +2379,43 @@ function debtSummary_(ledger, year) {
     remaining: round2_(remaining),
     percent: round2_(percent),
     interestPaid: round2_(interestPaid),
-    paymentCount: allPayments.length,
+    paymentCount: scoped.length,
     years: byYear.map(function (y) { return y.year; }),
     byYear: byYear,
     debts: perDebt,
     forecast: forecast,
     selectedYear: year || 'all',
     selectedYearPaid: round2_(sum_(yearFiltered, function (p) { return p.principal; })),
-    selectedYearInterest: round2_(sum_(yearFiltered, function (p) { return p.interest; })),
+    selectedYearInterest: round2_(sum_(yearFiltered.filter(function (p) { return p.ledger === ledger; }),
+      function (p) { return p.interest; })),
     selectedYearCount: yearFiltered.length
+  };
+}
+
+/**
+ * ยอดรวมทั้งระบบแบบไม่นับซ้ำ — นับเฉพาะก้อนหนี้ที่ไม่มีแม่
+ * ใช้บนแดชบอร์ด เพราะการเอายอดของแต่ละบัญชีมาบวกกันตรง ๆ
+ * จะนับก้อนลูกซ้ำกับที่อยู่ในก้อนแม่อยู่แล้ว
+ */
+function debtOverview_() {
+  var allDebts = readRows_(SHEETS.DEBTS);
+  var allPayments = listDebtPayments_(null, 'all');
+  var g = debtGraph_(allDebts, allPayments);
+
+  var total = 0, paid = 0;
+  allDebts.forEach(function (d) {
+    if (g.parentOf(d)) return;                  // ยอดของลูกอยู่ในแม่แล้ว
+    total += toNumber_(d.principal) || 0;
+    paid += g.paidOf(d).principal;
+  });
+  var interest = sum_(allPayments, function (p) { return p.interest; });
+
+  return {
+    totalDebt: round2_(total),
+    paid: round2_(Math.min(paid, total)),
+    remaining: round2_(Math.max(0, total - paid)),
+    percent: total > 0 ? round2_(Math.min(100, paid / total * 100)) : 0,
+    interestPaid: round2_(interest)
   };
 }
 
@@ -2233,8 +2440,27 @@ function forecastPayoff_(payments, remaining) {
 
 /* ---------- CRUD ---------- */
 
+/** กันผูกวน เช่น A เป็นลูกของ B แล้ว B เป็นลูกของ A */
+function assertNoCycle_(debtId, parentId) {
+  if (!parentId) return;
+  if (String(parentId) === String(debtId)) {
+    throw new Error('ก้อนหนี้ผูกเป็นส่วนหนึ่งของตัวเองไม่ได้');
+  }
+  var byId = {};
+  readRows_(SHEETS.DEBTS).forEach(function (d) { byId[String(d.id)] = d; });
+  var cur = byId[String(parentId)], guard = 0;
+  while (cur && guard++ < 20) {
+    if (String(cur.id) === String(debtId)) {
+      throw new Error('ผูกแบบนี้จะวนกลับมาหาตัวเอง — เลือกก้อนหนี้อื่น');
+    }
+    cur = byId[String(cur.parentId || '')];
+  }
+}
+
 function saveDebt_(obj) {
   var now = new Date();
+  obj.parentId = String(obj.parentId || '').trim();
+  if (obj.parentId) assertNoCycle_(obj.id, obj.parentId);
   if (obj.id) {
     var found = findRow_(SHEETS.DEBTS, obj.id);
     if (found) {
@@ -2921,6 +3147,7 @@ function dashboard_(year) {
 
   var main = debtSummary_(LEDGER_MAIN, y);
   var sub = debtSummary_(LEDGER_SUB, y);
+  var overview = debtOverview_();   // ยอดรวมจริง ไม่นับก้อนลูกซ้ำกับก้อนแม่
   var buy = purchaseSummary_(y);
   var ac = acMatrix_(y);
   var fix = repairMatrix_(y);
@@ -2959,6 +3186,7 @@ function dashboard_(year) {
       vacant: vacant,
       occupancy: ROOMS.length ? round2_((occupied / ROOMS.length) * 100) : 0
     },
+    debtAll: overview,
     debtMain: {
       total: main.totalDebt, paid: main.paid, remaining: main.remaining,
       percent: main.percent, thisYear: main.selectedYearPaid, forecast: main.forecast
@@ -3238,6 +3466,7 @@ var API_ROUTES = {
 
   /* ---------- หนี้ (ใช้ร่วมกันทั้งหนี้หลักและหนี้รอง) ---------- */
   'debt.summary': function (p) { return debtSummary_(p.ledger || LEDGER_MAIN, p.year); },
+  'debt.overview': function () { return debtOverview_(); },
   'debt.payments': function (p) { return listDebtPayments_(p.ledger || LEDGER_MAIN, p.year); },
   'debt.list': function (p) { return listDebts_(p.ledger); },
   'debt.save': function (p) { return saveDebt_(p.record); },

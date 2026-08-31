@@ -398,6 +398,8 @@ var S = {
   busy: false
 };
 
+var ALL_DEBTS = [];
+
 var PAGES = [
   { id:'dashboard', ic:'📊', label:'ภาพรวม',              sub:'แดชบอร์ดรวมทุกส่วนของหอพัก',        sec:'ภาพรวม' },
   { id:'debtMain',  ic:'💰', label:'รายการสรุปรวม',       sub:'บัญชีโอนใช้หนี้หลักของหอพัก',        sec:'การเงิน' },
@@ -802,7 +804,8 @@ ROUTES.dashboard = {
   render: function(d){
     var b = d.building;
     var kpis =
-      kpi('ยอดหนี้คงเหลือทั้งหมด', baht(d.debtMain.remaining + d.debtSub.remaining), 'หนี้หลัก + หนี้รอง', 'accent') +
+      kpi('ยอดหนี้คงเหลือทั้งหมด', baht(d.debtAll.remaining),
+          'จากยอดหนี้ ' + baht(d.debtAll.totalDebt) + ' · ชำระแล้ว ' + pct(d.debtAll.percent), 'accent') +
       kpi('ชำระแล้ว (หนี้หลัก)', pct(d.debtMain.percent), baht(d.debtMain.paid) + ' จาก ' + baht(d.debtMain.total), 'good') +
       kpi('ค่าใช้จ่ายปี ' + d.year, baht(d.spendThisYear), 'ซื้อของ + ซ่อมแซม + ล้างแอร์') +
       kpi('งานซ่อมค้าง', d.repairs.openJobs + ' งาน', d.repairs.overdue + ' งานเกินกำหนด', d.repairs.overdue ? 'bad' : '');
@@ -920,11 +923,21 @@ function debtRoute(ledger, title){
         return d;
       });
     },
-    render: renderDebt
+    render: renderDebt,
+    after: cacheAllDebts
   };
 }
 ROUTES.debtMain = debtRoute('หนี้หลัก', 'รายการสรุปรวม The M Corner AP');
 ROUTES.debtSub  = debtRoute('หนี้รอง', 'หนี้สิน');
+
+/** เก็บรายชื่อก้อนหนี้ทุกบัญชีไว้ให้ฟอร์มเลือก "เป็นส่วนหนึ่งของ" */
+function cacheAllDebts(){
+  callApi('debt.list', {}).then(function(list){
+    ALL_DEBTS = list.map(function(d){
+      return { id: d.id, title: d.title, ledger: d.ledger, parentId: d.parentId || '' };
+    });
+  }).catch(function(){});
+}
 
 function renderDebt(d){
   var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
@@ -949,8 +962,23 @@ function renderDebt(d){
       '<div class="clip" style="font-weight:650;font-size:13.5px;min-height:38px">' + esc(x.title) + '</div>' +
       '<div class="row fs12 muted mb8">' + statusBadge(x.status) +
         '<span>' + esc(x.creditor || '–') + (x.startDate ? ' · ' + thDate(x.startDate) : '') + '</span></div>' +
+      (x.parentTitle
+        ? '<div class="b info mb8" title="ยอดก้อนนี้อยู่ในก้อนแม่แล้ว จ่ายคืนก้อนนี้ก้อนแม่จะลดตาม">' +
+          '↳ เป็นส่วนหนึ่งของ ' + esc(x.parentTitle) + '</div>'
+        : '') +
       progress(x.percent) +
       '<div class="pmeta"><span>ชำระ <b>' + baht(x.paid) + '</b></span><span>คงเหลือ <b>' + baht(x.remaining) + '</b></span></div>' +
+      (x.children && x.children.length
+        ? '<div class="hr" style="margin:12px 0 10px"></div>' +
+          '<div class="fs12 muted mb8">ในยอดนี้มีก้อนย่อยอยู่ ' + x.children.length + ' ก้อน</div>' +
+          x.children.map(function(c){
+            return '<div class="mb8">' +
+              '<div class="row fs12"><span>↳ ' + esc(c.title) + '</span>' +
+              '<span class="sp mono">' + money(c.paid) + ' / ' + money(c.principal) + '</span></div>' +
+              progress(c.percent, 'ok') + '</div>';
+          }).join('') +
+          (x.paidFromChildren ? '<div class="fs12 muted">รวมยอดที่มาจากก้อนย่อย ' + baht(x.paidFromChildren) + '</div>' : '')
+        : '') +
       (x.interestPerMonth ? '<div class="fs12 muted mt8">ดอกเบี้ย ' + baht(x.interestPerMonth) + '/เดือน</div>' : '') +
       (x.planPerMonth ? '<div class="fs12 muted">แผนผ่อน ' + baht(x.planPerMonth) + '/เดือน</div>' : '') +
       '<div class="row mt12"><button class="btn sm" onclick=\'formDebt(' + attr(x) + ',"' + d.ledger + '")\'>แก้ไข</button>' +
@@ -1791,6 +1819,8 @@ function today(){ return new Date().toISOString().slice(0,10); }
    ฟอร์ม: ก้อนหนี้
    ============================================================ */
 function formDebt(rec, ledger){
+  // เลือกแม่ได้จากทุกบัญชี ยกเว้นตัวเอง
+  var all = (ALL_DEBTS || []).filter(function(d){ return !rec || d.id !== rec.id; });
   openForm({
     title: rec && rec.id ? 'แก้ไขก้อนหนี้' : 'เพิ่มก้อนหนี้',
     record: rec, action: 'debt.save', base: { ledger: ledger },
@@ -1799,6 +1829,10 @@ function formDebt(rec, ledger){
       { key:'title',    label:'รายการหนี้', required:true, full:true, ph:'เช่น ค่าก่อสร้าง The M Corner AP' },
       { key:'ledger',   label:'ประเภทบัญชี', type:'select', options:['หนี้หลัก','หนี้รอง'], blank:false },
       { key:'creditor', label:'เจ้าหนี้', ph:'เช่น ครอบครัว / ธนาคาร / ป้าตา' },
+      { key:'parentId', label:'เป็นส่วนหนึ่งของก้อนหนี้', type:'select', full:true,
+        options: all.map(function(d){ return { value:d.id, label:d.title + ' (' + d.ledger + ')' }; }),
+        hint:'ใช้เมื่อเงินก้อนนี้เป็นทุนของอีกก้อน เช่น เงินยืมป้าตาเป็นส่วนหนึ่งของหนี้ซื้อที่ดิน — ' +
+             'จ่ายคืนก้อนนี้แล้วก้อนแม่จะลดตามไปด้วย และยอดรวมจะไม่ถูกนับซ้ำ' },
       { key:'startDate', label:'วันที่ก่อหนี้', type:'date' },
       { key:'principal', label:'ยอดหนี้ตั้งต้น (บาท)', type:'money', required:true },
       { key:'interestPerMonth', label:'ดอกเบี้ยต่อเดือน (บาท)', type:'money' },

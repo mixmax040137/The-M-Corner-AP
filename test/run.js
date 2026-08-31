@@ -135,6 +135,102 @@ console.log('\n── 4c. ย้ายข้อมูลจากโครงเ
   seedDebtPayments_();
 }
 
+console.log('\n── 4c-2. ย้ายชีตก้อนหนี้ไปโครงแม่-ลูก ──');
+{
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const name = SHEETS.DEBTS;
+  const oldHeaders = ['รหัส','ประเภทบัญชี','รายการหนี้','เจ้าหนี้','วันที่ก่อหนี้','ยอดหนี้ตั้งต้น',
+                      'ดอกเบี้ย/เดือน','กำหนดชำระ (วันที่)','ยอดผ่อนต่อเดือน','สถานะ','หมายเหตุ','แก้ไขล่าสุด'];
+  const oldRows = [
+    ['D1','หนี้หลัก','ซื้อที่ดิน The M Corner AP','ครอบครัว','2018-03-07',4700000,'',20,80000,'กำลังผ่อน','ยืมป้าตา',''],
+    ['D2','หนี้หลัก','ค่าก่อสร้าง The M Corner AP','ครอบครัว','2021-01-04',8400000,'',20,80000,'กำลังผ่อน','',''],
+    ['D3','หนี้รอง','เงินยืมป้าตา (ทุนซื้อที่ดิน)','ป้าตา','2018-03-07',1000000,2200,20,'','กำลังผ่อน','','']
+  ];
+  const sh = ss.getSheetByName(name);
+  sh.getRange(1, 1, sh.getLastRow(), Math.max(sh.getLastColumn(), oldHeaders.length)).clearContent();
+  sh.getRange(1, 1, 1, oldHeaders.length).setValues([oldHeaders]);
+  sh.getRange(2, 1, oldRows.length, oldHeaders.length).setValues(oldRows);
+  PropertiesService.getScriptProperties().setProperty('SCHEMA_VERSION', '2');
+
+  runMigrations_();
+  const after = {};
+  readRows_(name).forEach(r => { after[r.id] = r; });
+  check('จำนวนก้อนหนี้ครบ', Object.keys(after).length, 3);
+  check('ผูกป้าตาเข้ากับที่ดินให้ตอนย้ายข้อมูล', after['D3'].parentId, 'D1');
+  check('ก้อนอื่นไม่ถูกผูกมั่ว', [after['D1'].parentId, after['D2'].parentId], ['', '']);
+  check('คอลัมน์ไม่เลื่อน: เจ้าหนี้', after['D3'].creditor, 'ป้าตา');
+  check('คอลัมน์ไม่เลื่อน: ยอดตั้งต้น', after['D3'].principal, 1000000);
+  check('คอลัมน์ไม่เลื่อน: ดอกเบี้ย/เดือน', after['D3'].interestPerMonth, 2200);
+  check('คอลัมน์ไม่เลื่อน: สถานะ', after['D2'].status, 'กำลังผ่อน');
+  near('ยอดรวมหลังย้ายไม่นับซ้ำ', debtOverview_().totalDebt, 13100000, 0);
+
+  clearSheet_(name);
+  seedDebts_();
+}
+
+console.log('\n── 4d. ก้อนหนี้แม่-ลูก (ป้าตาเป็นส่วนหนึ่งของที่ดิน) ──');
+{
+  const debts = readRows_(SHEETS.DEBTS);
+  const land = debts.find(d => d.title.indexOf('ซื้อที่ดิน') >= 0);
+  const pata = debts.find(d => d.title.indexOf('ป้าตา') >= 0);
+  check('ผูกป้าตาเข้ากับที่ดินให้อัตโนมัติ', pata.parentId, land.id);
+
+  // ── ก่อนจ่ายคืนป้าตา ──
+  const ov0 = debtOverview_();
+  near('ยอดหนี้รวมไม่นับซ้ำ = 13,151,000 (ไม่ใช่ 14,151,000)', ov0.totalDebt, 13151000, 0);
+  near('คงเหลือรวม = 8,101,346', ov0.remaining, 8101346, 1);
+  near('หนี้หลักชำระแล้ว 5,049,654', debtSummary_('หนี้หลัก','all').paid, 5049654, 0);
+  near('หนี้รองยังไม่จ่ายเงินต้น', debtSummary_('หนี้รอง','all').paid, 0, 0);
+  near('หนี้รองจ่ายดอกเบี้ยแล้ว 47,600', debtSummary_('หนี้รอง','all').interestPaid, 47600, 0);
+  check('หนี้หลักนับเฉพาะรายการของตัวเอง 32 รายการ', debtSummary_('หนี้หลัก','all').paymentCount, 32);
+
+  // ── จ่ายคืนป้าตา 100,000 (เงินต้น) ──
+  const pay = saveDebtPayment_({ ledger:'หนี้รอง', debtId: pata.id, payDate:'2026-09-15',
+                                 principal: 100000, interest: 2200 });
+
+  const sub = debtSummary_('หนี้รอง','all');
+  near('หนี้รอง: ชำระแล้ว 100,000', sub.paid, 100000, 0);
+  near('หนี้รอง: คงเหลือ 900,000', sub.remaining, 900000, 0);
+
+  const main = debtSummary_('หนี้หลัก','all');
+  check('หนี้หลัก: นับรายการของป้าตาที่มีเงินต้นเข้ามาด้วย', main.paymentCount, 33);
+  near('หนี้หลัก: ยอดชำระเพิ่มตามป้าตา', main.paid, 5049654 + 100000, 0);
+  near('หนี้หลัก: คงเหลือลดลง 100,000', main.remaining, 8101346 - 100000, 1);
+  near('หนี้หลัก: ยอดหนี้ตั้งต้นไม่เปลี่ยน', main.totalDebt, 13151000, 0);
+
+  const landCard = main.debts.find(x => x.id === land.id);
+  near('การ์ดที่ดิน: ยอดที่มาจากก้อนย่อย = 100,000', landCard.paidFromChildren, 100000, 0);
+  check('การ์ดที่ดิน: แสดงก้อนย่อย 1 ก้อน', landCard.children.length, 1);
+  check('การ์ดที่ดิน: ก้อนย่อยคือป้าตา', landCard.children[0].id, pata.id);
+  near('การ์ดที่ดิน: ก้อนย่อยคงเหลือ 900,000', landCard.children[0].remaining, 900000, 0);
+
+  const pataCard = debtSummary_('หนี้รอง','all').debts.find(x => x.id === pata.id);
+  check('การ์ดป้าตา: บอกว่าเป็นส่วนหนึ่งของที่ดิน', pataCard.parentTitle, land.title);
+
+  const ov1 = debtOverview_();
+  near('ยอดรวม: ชำระแล้วเพิ่ม 100,000', ov1.paid, 5049654 + 100000, 0);
+  near('ยอดรวม: คงเหลือลด 100,000', ov1.remaining, 8101346 - 100000, 1);
+  near('ยอดรวม: ยอดหนี้ยังเท่าเดิม', ov1.totalDebt, 13151000, 0);
+  near('ยอดรวม: ดอกเบี้ยรวมทั้งระบบ', ov1.interestPaid, 47600 + 2200, 0);
+
+  const y2026 = debtSummary_('หนี้หลัก','all').byYear.find(y => y.year === 2026);
+  check('ตารางรายปีของหนี้หลักนับรายการของป้าตาด้วย', y2026.principal >= 100000, true);
+
+  // ── ลบแล้วต้องกลับเป็นเดิมทุกตัวเลข ──
+  deleteDebtPayment_(pay.id);
+  near('ลบแล้วหนี้หลักกลับเป็นเดิม', debtSummary_('หนี้หลัก','all').paid, 5049654, 0);
+  near('ลบแล้วยอดรวมกลับเป็นเดิม', debtOverview_().remaining, 8101346, 1);
+
+  // ── กันผูกวน ──
+  let cycle = false;
+  try { saveDebt_(Object.assign({}, land, { parentId: pata.id })); } catch (e) { cycle = true; }
+  check('ผูกวนกลับมาหาตัวเองไม่ได้', cycle, true);
+  let self = false;
+  try { saveDebt_(Object.assign({}, land, { parentId: land.id })); } catch (e) { self = true; }
+  check('ผูกเป็นส่วนหนึ่งของตัวเองไม่ได้', self, true);
+  near('ที่ดินยังไม่มีแม่หลังลองผูกวน', debtOverview_().totalDebt, 13151000, 0);
+}
+
 console.log('\n── 5. รายการซื้อของ ──');
 const buy = purchaseSummary_('all');
 near('ยอดรวมทั้งหมด = 856,404', buy.grandTotal, 856404, 0);
@@ -195,7 +291,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 53);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 54);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);

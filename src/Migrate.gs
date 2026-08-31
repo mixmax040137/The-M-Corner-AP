@@ -13,6 +13,7 @@ function runMigrations_() {
 
   var done = [];
   if (from < 2) done.push(migrateV2SplitPayment_());
+  if (from < 3) done.push(migrateV3DebtParent_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -63,6 +64,44 @@ function migrateV2SplitPayment_() {
 
   rewriteSheet_(name, rows);
   return name + ': แยกเงินต้น/ดอกเบี้ย ' + rows.length + ' รายการ';
+}
+
+/**
+ * รุ่น 3 — ก้อนหนี้ผูกกันเป็นแม่-ลูกได้ (คอลัมน์ "เป็นส่วนหนึ่งของ")
+ *
+ * ผูกให้อัตโนมัติ: เงินยืมป้าตา เป็นส่วนหนึ่งของหนี้ซื้อที่ดิน
+ * เพราะเงินก้อนนั้นคือทุนที่ใช้ซื้อที่ดิน ไม่ใช่หนี้เพิ่มอีกก้อน
+ */
+function migrateV3DebtParent_() {
+  var name = SHEETS.DEBTS;
+  var old = readByHeader_(name);
+  if (!old) return name + ': ไม่มีชีต ข้ามไป';
+
+  var rows = old.rows.map(function (r) {
+    return {
+      id: r['รหัส'], ledger: r['ประเภทบัญชี'], title: r['รายการหนี้'],
+      parentId: r['เป็นส่วนหนึ่งของ'] || '',
+      creditor: r['เจ้าหนี้'], startDate: r['วันที่ก่อหนี้'],
+      principal: r['ยอดหนี้ตั้งต้น'], interestPerMonth: r['ดอกเบี้ย/เดือน'],
+      dueDay: r['กำหนดชำระ (วันที่)'], planPerMonth: r['ยอดผ่อนต่อเดือน'],
+      status: r['สถานะ'], note: r['หมายเหตุ'], updatedAt: r['แก้ไขล่าสุด']
+    };
+  });
+
+  var land = null, pata = null;
+  rows.forEach(function (d) {
+    var t = String(d.title || '');
+    if (!land && t.indexOf('ซื้อที่ดิน') >= 0) land = d;
+    if (!pata && t.indexOf('ป้าตา') >= 0) pata = d;
+  });
+  var linked = '';
+  if (land && pata && !String(pata.parentId || '').trim() && land.id !== pata.id) {
+    pata.parentId = land.id;
+    linked = ' · ผูก "' + pata.title + '" เข้ากับ "' + land.title + '"';
+  }
+
+  rewriteSheet_(name, rows);
+  return name + ': เพิ่มคอลัมน์แม่-ลูก ' + rows.length + ' รายการ' + linked;
 }
 
 /* ------------------------------------------------------------------ */

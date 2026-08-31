@@ -177,6 +177,8 @@ function today(){ return new Date().toISOString().slice(0,10); }
    ฟอร์ม: ก้อนหนี้
    ============================================================ */
 function formDebt(rec, ledger){
+  // เลือกแม่ได้จากทุกบัญชี ยกเว้นตัวเอง
+  var all = (ALL_DEBTS || []).filter(function(d){ return !rec || d.id !== rec.id; });
   openForm({
     title: rec && rec.id ? 'แก้ไขก้อนหนี้' : 'เพิ่มก้อนหนี้',
     record: rec, action: 'debt.save', base: { ledger: ledger },
@@ -185,6 +187,10 @@ function formDebt(rec, ledger){
       { key:'title',    label:'รายการหนี้', required:true, full:true, ph:'เช่น ค่าก่อสร้าง The M Corner AP' },
       { key:'ledger',   label:'ประเภทบัญชี', type:'select', options:['หนี้หลัก','หนี้รอง'], blank:false },
       { key:'creditor', label:'เจ้าหนี้', ph:'เช่น ครอบครัว / ธนาคาร / ป้าตา' },
+      { key:'parentId', label:'เป็นส่วนหนึ่งของก้อนหนี้', type:'select', full:true,
+        options: all.map(function(d){ return { value:d.id, label:d.title + ' (' + d.ledger + ')' }; }),
+        hint:'ใช้เมื่อเงินก้อนนี้เป็นทุนของอีกก้อน เช่น เงินยืมป้าตาเป็นส่วนหนึ่งของหนี้ซื้อที่ดิน — ' +
+             'จ่ายคืนก้อนนี้แล้วก้อนแม่จะลดตามไปด้วย และยอดรวมจะไม่ถูกนับซ้ำ' },
       { key:'startDate', label:'วันที่ก่อหนี้', type:'date' },
       { key:'principal', label:'ยอดหนี้ตั้งต้น (บาท)', type:'money', required:true },
       { key:'interestPerMonth', label:'ดอกเบี้ยต่อเดือน (บาท)', type:'money' },

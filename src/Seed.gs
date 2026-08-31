@@ -372,12 +372,21 @@ function resetSeedFlag() {
 function seedDebts_() {
   var rows = SEED_DEBTS.map(function (d) {
     return {
-      id: uid_('DEBT'), ledger: d.ledger, title: d.title, creditor: d.creditor,
+      id: uid_('DEBT'), ledger: d.ledger, title: d.title, parentId: '', creditor: d.creditor,
       startDate: d.startDate, principal: d.principal, interestPerMonth: d.interestPerMonth,
       dueDay: d.dueDay, planPerMonth: d.planPerMonth, status: d.status,
       note: d.note, updatedAt: new Date()
     };
   });
+
+  // เงินยืมป้าตาคือทุนที่ใช้ซื้อที่ดิน จึงเป็นส่วนหนึ่งของหนี้ซื้อที่ดิน ไม่ใช่หนี้อีกก้อน
+  var land = null, pata = null;
+  rows.forEach(function (d) {
+    if (!land && d.title.indexOf('ซื้อที่ดิน') >= 0) land = d;
+    if (!pata && d.title.indexOf('ป้าตา') >= 0) pata = d;
+  });
+  if (land && pata) pata.parentId = land.id;
+
   return bulkInsert_(SHEETS.DEBTS, rows);
 }
 

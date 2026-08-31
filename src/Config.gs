@@ -61,6 +61,7 @@ SCHEMA[SHEETS.DEBTS] = [
   { key: 'id',        label: 'รหัส',            type: 'text' },
   { key: 'ledger',    label: 'ประเภทบัญชี',      type: 'select', options: ['หนี้หลัก', 'หนี้รอง'] },
   { key: 'title',     label: 'รายการหนี้',       type: 'text' },
+  { key: 'parentId',  label: 'เป็นส่วนหนึ่งของ',  type: 'text' },
   { key: 'creditor',  label: 'เจ้าหนี้',         type: 'text' },
   { key: 'startDate', label: 'วันที่ก่อหนี้',     type: 'date' },
   { key: 'principal', label: 'ยอดหนี้ตั้งต้น',   type: 'money' },
@@ -240,7 +241,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 2;
+var SCHEMA_VERSION = 3;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];

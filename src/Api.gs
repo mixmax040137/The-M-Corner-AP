@@ -64,6 +64,7 @@ var API_ROUTES = {
 
   /* ---------- หนี้ (ใช้ร่วมกันทั้งหนี้หลักและหนี้รอง) ---------- */
   'debt.summary': function (p) { return debtSummary_(p.ledger || LEDGER_MAIN, p.year); },
+  'debt.overview': function () { return debtOverview_(); },
   'debt.payments': function (p) { return listDebtPayments_(p.ledger || LEDGER_MAIN, p.year); },
   'debt.list': function (p) { return listDebts_(p.ledger); },
   'debt.save': function (p) { return saveDebt_(p.record); },

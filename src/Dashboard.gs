@@ -8,6 +8,7 @@ function dashboard_(year) {
 
   var main = debtSummary_(LEDGER_MAIN, y);
   var sub = debtSummary_(LEDGER_SUB, y);
+  var overview = debtOverview_();   // ยอดรวมจริง ไม่นับก้อนลูกซ้ำกับก้อนแม่
   var buy = purchaseSummary_(y);
   var ac = acMatrix_(y);
   var fix = repairMatrix_(y);
@@ -46,6 +47,7 @@ function dashboard_(year) {
       vacant: vacant,
       occupancy: ROOMS.length ? round2_((occupied / ROOMS.length) * 100) : 0
     },
+    debtAll: overview,
     debtMain: {
       total: main.totalDebt, paid: main.paid, remaining: main.remaining,
       percent: main.percent, thisYear: main.selectedYearPaid, forecast: main.forecast

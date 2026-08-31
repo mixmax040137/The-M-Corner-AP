@@ -13,7 +13,8 @@ ROUTES.dashboard = {
   render: function(d){
     var b = d.building;
     var kpis =
-      kpi('ยอดหนี้คงเหลือทั้งหมด', baht(d.debtMain.remaining + d.debtSub.remaining), 'หนี้หลัก + หนี้รอง', 'accent') +
+      kpi('ยอดหนี้คงเหลือทั้งหมด', baht(d.debtAll.remaining),
+          'จากยอดหนี้ ' + baht(d.debtAll.totalDebt) + ' · ชำระแล้ว ' + pct(d.debtAll.percent), 'accent') +
       kpi('ชำระแล้ว (หนี้หลัก)', pct(d.debtMain.percent), baht(d.debtMain.paid) + ' จาก ' + baht(d.debtMain.total), 'good') +
       kpi('ค่าใช้จ่ายปี ' + d.year, baht(d.spendThisYear), 'ซื้อของ + ซ่อมแซม + ล้างแอร์') +
       kpi('งานซ่อมค้าง', d.repairs.openJobs + ' งาน', d.repairs.overdue + ' งานเกินกำหนด', d.repairs.overdue ? 'bad' : '');
@@ -131,11 +132,21 @@ function debtRoute(ledger, title){
         return d;
       });
     },
-    render: renderDebt
+    render: renderDebt,
+    after: cacheAllDebts
   };
 }
 ROUTES.debtMain = debtRoute('หนี้หลัก', 'รายการสรุปรวม The M Corner AP');
 ROUTES.debtSub  = debtRoute('หนี้รอง', 'หนี้สิน');
+
+/** เก็บรายชื่อก้อนหนี้ทุกบัญชีไว้ให้ฟอร์มเลือก "เป็นส่วนหนึ่งของ" */
+function cacheAllDebts(){
+  callApi('debt.list', {}).then(function(list){
+    ALL_DEBTS = list.map(function(d){
+      return { id: d.id, title: d.title, ledger: d.ledger, parentId: d.parentId || '' };
+    });
+  }).catch(function(){});
+}
 
 function renderDebt(d){
   var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
@@ -160,8 +171,23 @@ function renderDebt(d){
       '<div class="clip" style="font-weight:650;font-size:13.5px;min-height:38px">' + esc(x.title) + '</div>' +
       '<div class="row fs12 muted mb8">' + statusBadge(x.status) +
         '<span>' + esc(x.creditor || '–') + (x.startDate ? ' · ' + thDate(x.startDate) : '') + '</span></div>' +
+      (x.parentTitle
+        ? '<div class="b info mb8" title="ยอดก้อนนี้อยู่ในก้อนแม่แล้ว จ่ายคืนก้อนนี้ก้อนแม่จะลดตาม">' +
+          '↳ เป็นส่วนหนึ่งของ ' + esc(x.parentTitle) + '</div>'
+        : '') +
       progress(x.percent) +
       '<div class="pmeta"><span>ชำระ <b>' + baht(x.paid) + '</b></span><span>คงเหลือ <b>' + baht(x.remaining) + '</b></span></div>' +
+      (x.children && x.children.length
+        ? '<div class="hr" style="margin:12px 0 10px"></div>' +
+          '<div class="fs12 muted mb8">ในยอดนี้มีก้อนย่อยอยู่ ' + x.children.length + ' ก้อน</div>' +
+          x.children.map(function(c){
+            return '<div class="mb8">' +
+              '<div class="row fs12"><span>↳ ' + esc(c.title) + '</span>' +
+              '<span class="sp mono">' + money(c.paid) + ' / ' + money(c.principal) + '</span></div>' +
+              progress(c.percent, 'ok') + '</div>';
+          }).join('') +
+          (x.paidFromChildren ? '<div class="fs12 muted">รวมยอดที่มาจากก้อนย่อย ' + baht(x.paidFromChildren) + '</div>' : '')
+        : '') +
       (x.interestPerMonth ? '<div class="fs12 muted mt8">ดอกเบี้ย ' + baht(x.interestPerMonth) + '/เดือน</div>' : '') +
       (x.planPerMonth ? '<div class="fs12 muted">แผนผ่อน ' + baht(x.planPerMonth) + '/เดือน</div>' : '') +
       '<div class="row mt12"><button class="btn sm" onclick=\'formDebt(' + attr(x) + ',"' + d.ledger + '")\'>แก้ไข</button>' +

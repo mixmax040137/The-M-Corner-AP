@@ -46,6 +46,8 @@ put('app.bootstrap', {});
   put('finance.list', { year, kind: '' });
   put('report.costPerRoom', { year });
 });
+put('debt.list', {});
+put('debt.overview', {});
 put('room.list', {});
 put('report.upcoming', { days: 90 });
 put('backup.sheets', {});

@@ -26,7 +26,7 @@ check('สร้างครบ 11 ชีต', Object.keys(SHEETS).length === 11
 check('รายการซื้อ 94 รายการ', readRows_(SHEETS.PURCHASES).length === 94);
 check('ยอดชำระหนี้ 5,049,654', Math.round(debtSummary_('หนี้หลัก', 'all').paid) === 5049654);
 check('รายรับ-รายจ่าย 32 รายการ', readRows_(SHEETS.FINANCE).length === 32);
-check('มีคำสั่ง API ครบ 53 คำสั่ง', Object.keys(API_ROUTES).length === 53);
+check('มีคำสั่ง API ครบ 54 คำสั่ง', Object.keys(API_ROUTES).length === 54);
 const adminKey = getSetting_('admin_token', ''), viewKey = getSetting_('view_token', '');
 check('มีกุญแจผู้ดูแลและกุญแจแชร์', !!(adminKey && viewKey && adminKey !== viewKey), true);
 check('doGet ไม่มีกุญแจ → หน้าปฏิเสธ',

@@ -1,0 +1,9 @@
+{
+  "scriptId": "<<< วาง Script ID ของโปรเจกต์ Apps Script ที่นี่ >>>",
+  "rootDir": "src",
+  "fileExtension": "js",
+  "filePushOrder": [
+    "src/Config.gs",
+    "src/Util.gs"
+  ]
+}

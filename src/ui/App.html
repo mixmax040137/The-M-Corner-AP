@@ -1,0 +1,321 @@
+<script>
+/* =========================================================
+   App.html — core: state, api, router, format, modal, upload
+   ========================================================= */
+
+var S = {
+  boot: null,          // ข้อมูลตั้งต้นจาก app.bootstrap
+  page: 'dashboard',
+  year: String(new Date().getFullYear()),
+  cache: {},           // เก็บผลลัพธ์ล่าสุดของแต่ละหน้า
+  params: {},          // ตัวกรองย่อยของแต่ละหน้า เช่น {room:'311', status:'all'}
+  busy: false
+};
+
+var PAGES = [
+  { id:'dashboard', ic:'📊', label:'ภาพรวม',              sub:'แดชบอร์ดรวมทุกส่วนของหอพัก',        sec:'ภาพรวม' },
+  { id:'debtMain',  ic:'💰', label:'รายการสรุปรวม',       sub:'บัญชีโอนใช้หนี้หลักของหอพัก',        sec:'การเงิน' },
+  { id:'debtSub',   ic:'🧾', label:'หนี้สิน',              sub:'บัญชีโอนใช้หนี้รองของหอพัก' },
+  { id:'purchases', ic:'🛒', label:'รายการซื้อของ',        sub:'ของเข้าหอพัก ราคา ประกัน และสลิป' },
+  { id:'ac',        ic:'❄️', label:'ล้างแอร์',            sub:'ตารางล้างแอร์รายห้อง 24 ห้อง',      sec:'ซ่อมบำรุง' },
+  { id:'repairs',   ic:'🔧', label:'ซ่อมแซมตามห้อง',      sub:'งานแจ้งซ่อมแยกตามห้อง' },
+  { id:'building',  ic:'🏢', label:'ซ่อมแซมตึกโดยรวม',    sub:'งานส่วนกลางของอาคาร' },
+  { id:'rooms',     ic:'🚪', label:'ห้องพัก',             sub:'ทะเบียนห้องและประวัติรายห้อง',       sec:'ข้อมูล' }
+];
+
+/* ---------------- API ---------------- */
+
+function callApi(action, payload){
+  return new Promise(function(resolve, reject){
+    google.script.run
+      .withSuccessHandler(function(res){
+        if (!res) return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์'));
+        if (res.ok) resolve(res.data); else reject(new Error(res.error));
+      })
+      .withFailureHandler(function(err){ reject(err); })
+      .api(action, payload || {});
+  });
+}
+
+/* ---------------- boot & routing ---------------- */
+
+function boot(){
+  callApi('app.bootstrap').then(function(b){
+    S.boot = b;
+    renderNav();
+    document.getElementById('navFoot').innerHTML =
+      esc(b.user.email || 'ไม่ทราบผู้ใช้') +
+      '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>';
+    var hash = (location.hash || '').replace('#','');
+    go(PAGES.some(function(p){return p.id===hash;}) ? hash : 'dashboard');
+  }).catch(function(e){
+    document.getElementById('view').innerHTML =
+      '<div class="card"><div class="card-b"><h3>เชื่อมต่อระบบไม่สำเร็จ</h3>' +
+      '<p class="muted">' + esc(e.message||e) + '</p>' +
+      '<p class="fs13">ตรวจสอบว่า: เปิดชีตแล้วรัน <b>เมนู 🏢 The M Corner AP → ติดตั้งระบบ</b> เรียบร้อยแล้ว ' +
+      'และอีเมลที่ใช้อยู่มีสิทธิ์เข้าใช้งาน</p></div></div>';
+  });
+}
+
+function renderNav(){
+  var html = '';
+  PAGES.forEach(function(p){
+    if (p.sec) html += '<div class="nav-sec">' + p.sec + '</div>';
+    html += '<button class="nav-item" id="nav-' + p.id + '" onclick="go(\'' + p.id + '\')">' +
+              '<span class="ic">' + p.ic + '</span><span>' + p.label + '</span>' +
+              '<span class="badge" id="badge-' + p.id + '" style="display:none"></span>' +
+            '</button>';
+  });
+  document.getElementById('navList').innerHTML = html;
+}
+
+function go(page){
+  S.page = page;
+  S.params = {};
+  location.hash = page;
+  var meta = PAGES.filter(function(p){return p.id===page;})[0] || PAGES[0];
+  document.getElementById('pageTitle').textContent = meta.label;
+  document.getElementById('pageSub').textContent = meta.sub;
+  PAGES.forEach(function(p){
+    var el = document.getElementById('nav-' + p.id);
+    if (el) el.classList.toggle('on', p.id === page);
+  });
+  document.getElementById('nav').classList.remove('open');
+  removeScrim();
+  load();
+}
+
+function refresh(){ load(true); }
+
+function setYear(y){
+  S.year = y;
+  load();
+}
+
+function load(force){
+  var view = document.getElementById('view');
+  view.innerHTML = '<div class="empty"><div class="big"><span class="spin"></span></div>กำลังโหลดข้อมูล…</div>';
+  var r = ROUTES[S.page];
+  if (!r) { view.innerHTML = '<div class="empty">ไม่พบหน้านี้</div>'; return; }
+  r.load().then(function(data){
+    S.cache[S.page] = data;
+    syncYearOptions(data.years || data.available || []);
+    view.innerHTML = r.render(data);
+    if (r.after) r.after(data);
+  }).catch(function(e){
+    view.innerHTML = '<div class="card"><div class="card-b"><h3>โหลดข้อมูลไม่สำเร็จ</h3>' +
+                     '<p class="muted">' + esc(e.message||e) + '</p>' +
+                     '<button class="btn" onclick="load()">ลองใหม่</button></div></div>';
+  });
+}
+
+/** เติมตัวเลือกปีในแถบบนให้ตรงกับข้อมูลจริงของหน้านั้น */
+function syncYearOptions(years){
+  var sel = document.getElementById('yearSel');
+  var list = (years || []).slice().sort(function(a,b){return b-a;});
+  var cur = new Date().getFullYear();
+  if (list.indexOf(cur) < 0) list.unshift(cur);
+  var html = '<option value="all">ทุกปี</option>';
+  list.forEach(function(y){
+    html += '<option value="' + y + '">ปี ' + y + ' (พ.ศ. ' + (Number(y)+543) + ')</option>';
+  });
+  sel.innerHTML = html;
+  if (list.indexOf(Number(S.year)) < 0 && S.year !== 'all') S.year = String(cur);
+  sel.value = S.year;
+}
+
+/* ---------------- format helpers ---------------- */
+
+function esc(s){
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function money(n, dec){
+  var v = Number(n||0);
+  return v.toLocaleString('th-TH',{minimumFractionDigits:dec||0, maximumFractionDigits:dec||0});
+}
+function baht(n){ return money(n) + ' ฿'; }
+function pct(n){ return (Number(n)||0).toFixed(1) + '%'; }
+function num(n){ return n==null||n==='' ? '–' : money(n); }
+
+/** 2026-04-26 -> 26 เม.ย. 2569 */
+var TH_MON = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+function thDate(iso){
+  if (!iso) return '–';
+  var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return esc(iso);
+  return Number(m[3]) + ' ' + TH_MON[Number(m[2])-1] + ' ' + (Number(m[1])+543);
+}
+function thDateShort(iso){
+  if (!iso) return '–';
+  var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return esc(iso);
+  return Number(m[3]) + '/' + Number(m[2]) + '/' + String(Number(m[1])+543).slice(2);
+}
+function daysAgo(iso){
+  if (!iso) return null;
+  return Math.round((Date.now() - new Date(iso).getTime())/86400000);
+}
+
+function statusBadge(st){
+  var map = {
+    'เสร็จสิ้น':'ok','ดำเนินการแล้ว':'ok','ใช้งานปกติ':'ok','ปิดหนี้แล้ว':'ok','อยู่ในประกัน':'ok','มีผู้เช่า':'ok','ปกติ':'ok',
+    'กำลังซ่อม':'info','กำลังดำเนินการ':'info','นัดหมายแล้ว':'info','กำลังผ่อน':'info','ว่าง':'info',
+    'รอดำเนินการ':'warn','เลื่อนนัด':'warn','ใกล้หมดประกัน':'warn','ต้องซ่อม':'warn','พักชำระ':'warn','ปิดปรับปรุง':'warn','เกินกำหนด':'warn','ยังไม่เคยล้าง':'warn',
+    'ยกเลิก':'mute','ปลดระวาง':'mute','ไม่ระบุ':'mute',
+    'หมดอายุแล้ว':'dgr','ด่วนมาก':'dgr','ด่วน':'warn'
+  };
+  if (!st) return '';
+  return '<span class="b ' + (map[st]||'mute') + '">' + esc(st) + '</span>';
+}
+
+function progress(percent, cls){
+  var p = Math.max(0, Math.min(100, Number(percent)||0));
+  return '<div class="pbar ' + (cls||'') + '"><i style="width:' + p + '%"></i></div>';
+}
+
+function thumbsHtml(refs, big){
+  if (!refs || !refs.length) return '<span class="faint fs12">–</span>';
+  return '<div class="thumbs">' + refs.map(function(r){
+    if (r.thumb) {
+      return '<img class="thumb' + (big?' big':'') + '" loading="lazy" src="' + esc(r.thumb) + '" ' +
+             'onclick="window.open(\'' + esc(r.url) + '\',\'_blank\')" ' +
+             'onerror="this.onerror=null;this.replaceWith(fileChip(' + JSON.stringify(JSON.stringify(r)).replace(/"/g,'&quot;') + '))">';
+    }
+    return '<a class="b info" href="' + esc(r.url) + '" target="_blank">ไฟล์</a>';
+  }).join('') + '</div>';
+}
+function fileChip(json){
+  var r = typeof json === 'string' ? JSON.parse(json) : json;
+  var a = document.createElement('a');
+  a.className = 'b info'; a.href = r.url; a.target = '_blank'; a.textContent = '📎 ไฟล์';
+  return a;
+}
+
+function emptyBox(text, action){
+  return '<div class="empty"><div class="big">🗂️</div>' + esc(text) +
+         (action ? '<div class="mt12">' + action + '</div>' : '') + '</div>';
+}
+
+function barChart(items, labelKey, valueKey, formatter){
+  if (!items || !items.length) return '<div class="empty">ยังไม่มีข้อมูล</div>';
+  var max = Math.max.apply(null, items.map(function(i){ return Number(i[valueKey])||0; })) || 1;
+  return '<div class="bars">' + items.map(function(i){
+    var v = Number(i[valueKey])||0;
+    return '<div class="bar-row">' +
+      '<div class="clip" title="' + esc(i[labelKey]) + '">' + esc(i[labelKey]) + '</div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:' + (v/max*100) + '%"></div></div>' +
+      '<div class="v">' + (formatter ? formatter(i) : money(v)) + '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+/* ---------------- modal ---------------- */
+
+function openModal(title, bodyHtml, footHtml, wide){
+  document.getElementById('modalRoot').innerHTML =
+    '<div class="ov" onclick="if(event.target===this)closeModal()">' +
+      '<div class="modal' + (wide?' wide':'') + '">' +
+        '<div class="modal-h"><h3>' + esc(title) + '</h3><button class="x" onclick="closeModal()">×</button></div>' +
+        '<div class="modal-b">' + bodyHtml + '</div>' +
+        (footHtml ? '<div class="modal-f">' + footHtml + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(){
+  document.getElementById('modalRoot').innerHTML = '';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeModal(); });
+
+function confirmAction(text, onYes){
+  openModal('ยืนยัน',
+    '<p>' + esc(text) + '</p>',
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn dgr" id="cfmBtn">ยืนยัน</button>');
+  document.getElementById('cfmBtn').onclick = function(){ closeModal(); onYes(); };
+}
+
+/* ---------------- toast ---------------- */
+
+function toast(msg, kind){
+  var el = document.createElement('div');
+  el.className = 'toast ' + (kind||'');
+  el.textContent = msg;
+  document.getElementById('toastRoot').appendChild(el);
+  setTimeout(function(){ el.remove(); }, kind==='err' ? 5200 : 2800);
+}
+
+/* ---------------- nav (mobile) ---------------- */
+
+function toggleNav(){
+  var nav = document.getElementById('nav');
+  nav.classList.toggle('open');
+  if (nav.classList.contains('open')) {
+    var s = document.createElement('div');
+    s.className = 'scrim'; s.id = 'scrim';
+    s.onclick = function(){ nav.classList.remove('open'); removeScrim(); };
+    document.body.appendChild(s);
+  } else removeScrim();
+}
+function removeScrim(){
+  var s = document.getElementById('scrim');
+  if (s) s.remove();
+}
+
+/* ---------------- search ---------------- */
+
+var searchTimer = null;
+function onSearch(q){
+  clearTimeout(searchTimer);
+  if (!q || q.trim().length < 2) return;
+  searchTimer = setTimeout(function(){
+    callApi('app.search', { q: q }).then(function(rows){
+      openModal('ผลการค้นหา "' + q + '" (' + rows.length + ')',
+        rows.length ? '<div class="alist">' + rows.map(function(r){
+          return '<div class="ali" onclick="closeModal();go(\'' + jumpPage(r.module) + '\')">' +
+            '<div class="ic">' + moduleIcon(r.module) + '</div><div>' +
+            '<div class="tt">' + esc(r.title) + '</div>' +
+            '<div class="dd">' + esc(r.label) + (r.detail ? ' · ' + esc(r.detail) : '') + '</div>' +
+            '</div></div>';
+        }).join('') + '</div>'
+        : '<div class="empty">ไม่พบรายการที่ตรงกับคำค้น</div>', '', true);
+    }).catch(function(e){ toast(e.message||e, 'err'); });
+  }, 420);
+}
+function jumpPage(module){
+  return ({purchases:'purchases', repairs:'repairs', building:'building', ac:'ac', debt:'debtMain', rooms:'rooms'})[module] || 'dashboard';
+}
+function moduleIcon(module){
+  return ({purchases:'🛒', repairs:'🔧', building:'🏢', ac:'❄️', debt:'💰', rooms:'🚪'})[module] || '📄';
+}
+
+/* ---------------- file upload ---------------- */
+
+/**
+ * อ่านไฟล์จาก <input type=file> เป็น dataURL แล้วส่งขึ้น Drive
+ * คืน array ของ {id,name,url,thumb}
+ */
+function uploadFiles(inputEl, bucket){
+  var files = Array.prototype.slice.call(inputEl.files || []);
+  if (!files.length) return Promise.resolve([]);
+  var MAX = 12 * 1024 * 1024;
+  var tooBig = files.filter(function(f){ return f.size > MAX; });
+  if (tooBig.length) {
+    return Promise.reject(new Error('ไฟล์ใหญ่เกิน 12 MB: ' + tooBig.map(function(f){return f.name;}).join(', ')));
+  }
+  return Promise.all(files.map(readAsDataUrl))
+    .then(function(payloads){ return callApi('file.upload', { bucket: bucket, files: payloads }); });
+}
+
+function readAsDataUrl(file){
+  return new Promise(function(resolve, reject){
+    var r = new FileReader();
+    r.onload = function(){ resolve({ name: file.name, mimeType: file.type, dataUrl: r.result }); };
+    r.onerror = function(){ reject(new Error('อ่านไฟล์ไม่สำเร็จ: ' + file.name)); };
+    r.readAsDataURL(file);
+  });
+}
+</script>

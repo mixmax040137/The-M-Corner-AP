@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title><?= appName ?></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <?!= include('ui/Style'); ?>
+</head>
+<body>
+
+<div class="app">
+  <!-- ================= sidebar ================= -->
+  <aside class="nav" id="nav">
+    <div class="brand">
+      <b>🏢 <?= appName ?></b>
+      <span><?= subtitle ?> · v<?= version ?></span>
+    </div>
+    <div class="nav-list" id="navList"></div>
+    <div class="nav-foot" id="navFoot">กำลังโหลด…</div>
+  </aside>
+
+  <!-- ================= main ================= -->
+  <div class="main">
+    <header class="top">
+      <button class="burger" onclick="toggleNav()">☰</button>
+      <div>
+        <h1 id="pageTitle">ภาพรวม</h1>
+        <div class="sub" id="pageSub">แดชบอร์ดรวมทุกส่วนของหอพัก</div>
+      </div>
+      <div class="top-right">
+        <input class="inp w-auto" id="searchBox" placeholder="🔎 ค้นหาทั้งระบบ…" style="width:180px"
+               oninput="onSearch(this.value)" autocomplete="off">
+        <select class="sel w-auto" id="yearSel" onchange="setYear(this.value)"></select>
+        <button class="btn icon" title="รีเฟรช" onclick="refresh()">↻</button>
+      </div>
+    </header>
+    <main class="content" id="view">
+      <div class="empty"><div class="big"><span class="spin"></span></div>กำลังเชื่อมต่อระบบ…</div>
+    </main>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<?!= include('ui/App'); ?>
+<?!= include('ui/Views'); ?>
+<?!= include('ui/Forms'); ?>
+<script>boot();</script>
+</body>
+</html>

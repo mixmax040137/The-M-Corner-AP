@@ -1,0 +1,421 @@
+<script>
+/* =========================================================
+   Forms.html — ฟอร์มเพิ่ม/แก้ไข และการลบ
+   ========================================================= */
+
+var FORM = { specs: [], keep: {}, bucket: 'misc' };
+
+/* ---------------- form engine ---------------- */
+
+function fieldsHtml(specs, rec){
+  rec = rec || {};
+  FORM.specs = specs;
+  FORM.keep = {};
+  return '<div class="fgrid">' + specs.map(function(f){
+    var v = rec[f.key];
+    var id = 'f_' + f.key;
+    var inner;
+
+    if (f.type === 'select') {
+      var opts = (f.options || []).map(function(o){
+        var val = typeof o === 'object' ? o.value : o;
+        var lab = typeof o === 'object' ? o.label : o;
+        return '<option value="' + esc(val) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + esc(lab) + '</option>';
+      }).join('');
+      inner = '<select class="sel" id="' + id + '">' + (f.blank !== false ? '<option value="">— เลือก —</option>' : '') + opts + '</select>';
+
+    } else if (f.type === 'textarea') {
+      inner = '<textarea class="ta" id="' + id + '" placeholder="' + esc(f.ph||'') + '">' + esc(v||'') + '</textarea>';
+
+    } else if (f.type === 'files') {
+      FORM.keep[f.key] = (rec[f.key] && rec[f.key].length) ? [].concat(rec[f.key]) : [];
+      inner =
+        '<div id="' + id + '_existing">' + existingFilesHtml(f.key) + '</div>' +
+        '<label class="file-drop" for="' + id + '">📎 แตะเพื่อเลือกไฟล์ (เลือกได้หลายไฟล์ · ไม่เกิน 12 MB ต่อไฟล์)' +
+        '<input type="file" id="' + id + '" multiple accept="image/*,application/pdf" style="display:none" ' +
+        'onchange="previewPicked(this,\'' + id + '\')"></label>' +
+        '<div id="' + id + '_preview" class="thumbs mt8"></div>';
+
+    } else if (f.type === 'date') {
+      inner = '<input type="date" class="inp" id="' + id + '" value="' + esc(v || '') + '">';
+
+    } else if (f.type === 'number' || f.type === 'money') {
+      inner = '<input type="number" step="' + (f.type === 'money' ? '0.01' : '1') + '" class="inp" id="' + id + '" ' +
+              'value="' + (v == null || v === '' ? '' : esc(v)) + '" placeholder="' + esc(f.ph||'') + '" inputmode="decimal">';
+
+    } else {
+      inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(v || '') + '" placeholder="' + esc(f.ph||'') + '">';
+    }
+
+    return '<div class="f' + (f.full ? ' full' : '') + '">' +
+      '<label for="' + id + '">' + esc(f.label) + (f.required ? ' <span style="color:var(--danger)">*</span>' : '') + '</label>' +
+      inner + (f.hint ? '<div class="hint">' + esc(f.hint) + '</div>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+
+function existingFilesHtml(key){
+  var list = FORM.keep[key] || [];
+  if (!list.length) return '';
+  return '<div class="thumbs mb8">' + list.map(function(url, i){
+    var id = String(url).match(/[-\w]{20,}/);
+    var thumb = id ? 'https://drive.google.com/thumbnail?id=' + id[0] + '&sz=w200' : '';
+    return '<span style="position:relative;display:inline-block">' +
+      (thumb ? '<img class="thumb" src="' + esc(thumb) + '" onclick="window.open(\'' + esc(url) + '\',\'_blank\')">'
+             : '<a class="b info" href="' + esc(url) + '" target="_blank">ไฟล์ ' + (i+1) + '</a>') +
+      '<button type="button" onclick="dropFile(\'' + key + '\',' + i + ')" title="เอาออก" ' +
+      'style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:0;border-radius:99px;width:18px;height:18px;line-height:1;cursor:pointer;font-size:12px">×</button>' +
+      '</span>';
+  }).join('') + '</div>';
+}
+
+function dropFile(key, idx){
+  FORM.keep[key].splice(idx, 1);
+  document.getElementById('f_' + key + '_existing').innerHTML = existingFilesHtml(key);
+}
+
+function previewPicked(input, id){
+  var box = document.getElementById(id + '_preview');
+  var files = Array.prototype.slice.call(input.files || []);
+  box.innerHTML = files.map(function(f){
+    return '<span class="b info">' + esc(f.name.slice(0,26)) + ' · ' + Math.round(f.size/1024) + ' KB</span>';
+  }).join(' ');
+}
+
+/** อ่านค่าจากฟอร์ม + อัปโหลดไฟล์ใหม่ แล้วคืน object พร้อมบันทึก */
+function readForm(specs, bucket){
+  var out = {};
+  var uploads = [];
+
+  specs.forEach(function(f){
+    var el = document.getElementById('f_' + f.key);
+    if (!el) return;
+    if (f.type === 'files') {
+      uploads.push(
+        uploadFiles(el, bucket).then(function(refs){
+          out[f.key] = (FORM.keep[f.key] || []).concat(refs.map(function(r){ return r.url; }));
+        })
+      );
+    } else if (f.type === 'number' || f.type === 'money') {
+      out[f.key] = el.value === '' ? null : Number(el.value);
+    } else {
+      out[f.key] = el.value;
+    }
+  });
+
+  return Promise.all(uploads).then(function(){ return out; });
+}
+
+/** โครงฟอร์มมาตรฐาน: เปิด modal, จัดการปุ่มบันทึก, รีโหลดหน้า */
+function openForm(opts){
+  var rec = opts.record || {};
+  openModal(opts.title,
+    fieldsHtml(opts.fields, rec),
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    (rec.id && opts.onDelete ? '<button class="btn dgr" id="fDel">ลบรายการนี้</button>' : '') +
+    '<button class="btn pri" id="fSave">' + (rec.id ? 'บันทึกการแก้ไข' : 'บันทึก') + '</button>',
+    opts.wide);
+
+  if (rec.id && opts.onDelete) {
+    document.getElementById('fDel').onclick = function(){ closeModal(); opts.onDelete(rec.id); };
+  }
+
+  document.getElementById('fSave').onclick = function(){
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
+
+    readForm(opts.fields, opts.bucket || 'misc').then(function(data){
+      var missing = opts.fields.filter(function(f){
+        return f.required && (data[f.key] == null || data[f.key] === '');
+      });
+      if (missing.length) throw new Error('กรุณากรอก: ' + missing.map(function(f){ return f.label; }).join(', '));
+
+      var record = Object.assign({}, opts.base || {}, data);
+      if (rec.id) record.id = rec.id;
+      return callApi(opts.action, Object.assign({ record: record }, opts.extra || {}));
+    }).then(function(){
+      closeModal();
+      toast('บันทึกเรียบร้อย', 'ok');
+      load();
+    }).catch(function(e){
+      btn.disabled = false;
+      btn.textContent = rec.id ? 'บันทึกการแก้ไข' : 'บันทึก';
+      toast(e.message || e, 'err');
+    });
+  };
+}
+
+function roomOptions(){ return S.boot ? S.boot.rooms : []; }
+function opt(name){ return (S.boot && S.boot.schema[name]) || []; }
+function today(){ return new Date().toISOString().slice(0,10); }
+
+/* ============================================================
+   ฟอร์ม: ก้อนหนี้
+   ============================================================ */
+function formDebt(rec, ledger){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขก้อนหนี้' : 'เพิ่มก้อนหนี้',
+    record: rec, action: 'debt.save', base: { ledger: ledger },
+    onDelete: delDebt,
+    fields: [
+      { key:'title',    label:'รายการหนี้', required:true, full:true, ph:'เช่น ค่าก่อสร้าง The M Corner AP' },
+      { key:'ledger',   label:'ประเภทบัญชี', type:'select', options:['หนี้หลัก','หนี้รอง'], blank:false },
+      { key:'creditor', label:'เจ้าหนี้', ph:'เช่น ครอบครัว / ธนาคาร / ป้าตา' },
+      { key:'startDate', label:'วันที่ก่อหนี้', type:'date' },
+      { key:'principal', label:'ยอดหนี้ตั้งต้น (บาท)', type:'money', required:true },
+      { key:'interestPerMonth', label:'ดอกเบี้ยต่อเดือน (บาท)', type:'money' },
+      { key:'planPerMonth', label:'ยอดผ่อนต่อเดือน (บาท)', type:'money' },
+      { key:'dueDay',   label:'กำหนดชำระ (วันที่ของเดือน)', type:'number', ph:'20' },
+      { key:'status',   label:'สถานะ', type:'select', options:opt('debtStatuses'), blank:false },
+      { key:'note',     label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+  if (!rec) { var e = document.getElementById('f_ledger'); if (e) e.value = ledger; }
+}
+
+function delDebt(id){
+  confirmAction('ลบก้อนหนี้นี้? รายการชำระที่ผูกไว้จะยังอยู่', function(){
+    callApi('debt.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: รายการโอนใช้หนี้
+   ============================================================ */
+function formDebtPayment(rec, ledger){
+  var debts = (S.cache[S.page] && S.cache[S.page].debts) || [];
+  openForm({
+    title: rec && rec.id ? 'แก้ไขรายการชำระ' : 'บันทึกการโอนใช้หนี้',
+    record: rec || { payDate: today(), kind: 'เงินต้น', channel: 'โอน QR' },
+    action: 'debt.savePayment', base: { ledger: ledger }, bucket: 'debt',
+    onDelete: delDebtPayment,
+    fields: [
+      { key:'payDate', label:'วันที่ชำระ', type:'date', required:true },
+      { key:'amount',  label:'จำนวนเงิน (บาท)', type:'money', required:true },
+      { key:'kind',    label:'ประเภทการชำระ', type:'select', options:opt('payKinds'), blank:false,
+        hint:'"ดอกเบี้ย" จะไม่ถูกนำไปลดยอดเงินต้น' },
+      { key:'channel', label:'ช่องทาง', type:'select', options:opt('payChannels') },
+      { key:'installment', label:'งวดที่', ph:'เช่น 9/2569' },
+      { key:'debtId',  label:'ผูกกับก้อนหนี้', type:'select',
+        options: debts.map(function(d){ return { value:d.id, label:d.title }; }),
+        hint:'เว้นว่างได้ — ระบบจะนับรวมทั้งบัญชี' },
+      { key:'payer',   label:'ผู้ชำระ' },
+      { key:'slips',   label:'สลิปการโอน', type:'files', full:true },
+      { key:'note',    label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delDebtPayment(id){
+  confirmAction('ลบรายการชำระนี้?', function(){
+    callApi('debt.deletePayment', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: รายการซื้อของ
+   ============================================================ */
+function formPurchase(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขรายการซื้อ' : 'เพิ่มรายการซื้อของ',
+    record: rec || { buyDate: today() },
+    action: 'purchase.save', bucket: 'purchases', wide: true,
+    onDelete: delPurchase,
+    fields: [
+      { key:'item',    label:'รายการสินค้า', type:'textarea', required:true, full:true, ph:'ชื่อสินค้า / รุ่น / รายละเอียด' },
+      { key:'buyDate', label:'วันที่ซื้อ', type:'date', required:true },
+      { key:'category', label:'หมวดหมู่', type:'select', options:opt('purchaseCategories') },
+      { key:'qty',     label:'จำนวน', type:'number' },
+      { key:'unit',    label:'หน่วย', ph:'ชิ้น / ชุด / เครื่อง' },
+      { key:'price',   label:'ราคารวม (บาท)', type:'money', required:true },
+      { key:'vendor',  label:'แหล่งที่ซื้อ', ph:'Shopee / ไทวัสดุ / ร้าน…' },
+      { key:'payer',   label:'ผู้ชำระ' },
+      { key:'warrantyMonths', label:'ระยะเวลารับประกัน (เดือน)', type:'number',
+        hint:'ระบบจะคำนวณวันหมดประกันให้อัตโนมัติ' },
+      { key:'room',    label:'ห้อง/พื้นที่ที่ใช้', type:'select', options:['ส่วนกลาง'].concat(roomOptions()) },
+      { key:'photos',  label:'ภาพประกอบสินค้า', type:'files', full:true },
+      { key:'slips',   label:'สลิปการโอนชำระ', type:'files', full:true },
+      { key:'note',    label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delPurchase(id){
+  confirmAction('ลบรายการซื้อนี้?', function(){
+    callApi('purchase.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: ล้างแอร์
+   ============================================================ */
+function formAc(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขรายการล้างแอร์' : 'บันทึกการล้างแอร์',
+    record: rec || { bookDate: today() },
+    action: 'ac.save', bucket: 'ac',
+    onDelete: delAc,
+    fields: [
+      { key:'room',        label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
+      { key:'round',       label:'รอบที่', type:'number', hint:'เว้นว่างให้ระบบนับต่อจากรอบล่าสุดของปีนั้น' },
+      { key:'bookDate',    label:'วันที่นัดล้างแอร์', type:'date' },
+      { key:'serviceDate', label:'วันที่ดำเนินการจริง', type:'date', hint:'กรอกเมื่อล้างเสร็จแล้ว' },
+      { key:'status',      label:'สถานะ', type:'select', options:opt('acStatuses') },
+      { key:'technician',  label:'ช่าง / ผู้ให้บริการ' },
+      { key:'cost',        label:'ค่าใช้จ่าย (บาท)', type:'money' },
+      { key:'photos',      label:'ภาพประกอบ', type:'files', full:true },
+      { key:'note',        label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delAc(id){
+  confirmAction('ลบรายการล้างแอร์นี้?', function(){
+    callApi('ac.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/** นัดล้างแอร์หลายห้องพร้อมกัน */
+function formBulkAc(){
+  var rooms = roomOptions();
+  var body =
+    '<div class="fgrid">' +
+      '<div class="f"><label>วันที่นัด <span style="color:var(--danger)">*</span></label>' +
+        '<input type="date" class="inp" id="bk_date" value="' + today() + '"></div>' +
+      '<div class="f"><label>ช่าง / ผู้ให้บริการ</label><input class="inp" id="bk_tech"></div>' +
+      '<div class="f"><label>ค่าใช้จ่ายต่อห้อง (บาท)</label><input type="number" class="inp" id="bk_cost"></div>' +
+      '<div class="f"><label>หมายเหตุ</label><input class="inp" id="bk_note"></div>' +
+    '</div>' +
+    '<div class="hr"></div>' +
+    '<div class="row mb8"><b class="fs13">เลือกห้อง</b><span class="sp"></span>' +
+      '<button class="btn sm" onclick="bulkPick(\'all\')">ทั้งหมด</button>' +
+      '<button class="btn sm" onclick="bulkPick(\'none\')">ล้าง</button>' +
+      [1,2,3,4,5].map(function(f){ return '<button class="btn sm" onclick="bulkPick(' + f + ')">ชั้น ' + f + '</button>'; }).join('') +
+    '</div>' +
+    '<div class="rooms" id="bkRooms">' + rooms.map(function(r){
+      return '<label class="room" style="cursor:pointer"><input type="checkbox" class="bk" value="' + r + '"> <b>' + r + '</b></label>';
+    }).join('') + '</div>';
+
+  openModal('📅 นัดล้างแอร์หลายห้องพร้อมกัน', body,
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn pri" id="bkSave">สร้างนัดหมาย</button>', true);
+
+  document.getElementById('bkSave').onclick = function(){
+    var picked = Array.prototype.slice.call(document.querySelectorAll('.bk:checked')).map(function(c){ return c.value; });
+    var date = document.getElementById('bk_date').value;
+    if (!picked.length) return toast('เลือกอย่างน้อย 1 ห้อง', 'err');
+    if (!date) return toast('กรุณาระบุวันที่นัด', 'err');
+    var btn = this; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
+    callApi('ac.bulkBook', {
+      rooms: picked, bookDate: date,
+      technician: document.getElementById('bk_tech').value,
+      cost: document.getElementById('bk_cost').value,
+      note: document.getElementById('bk_note').value
+    }).then(function(n){
+      closeModal(); toast('สร้างนัดหมาย ' + n + ' ห้องแล้ว', 'ok'); load();
+    }).catch(function(e){
+      btn.disabled = false; btn.textContent = 'สร้างนัดหมาย'; toast(e.message||e, 'err');
+    });
+  };
+}
+
+function bulkPick(what){
+  document.querySelectorAll('.bk').forEach(function(c){
+    if (what === 'all') c.checked = true;
+    else if (what === 'none') c.checked = false;
+    else c.checked = String(c.value).charAt(0) === String(what);
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: ซ่อมแซมตามห้อง
+   ============================================================ */
+function formRepair(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขงานซ่อม' : 'แจ้งซ่อม / บันทึกงานซ่อม',
+    record: rec || { reportDate: today(), priority: 'ปกติ' },
+    action: 'repair.save', bucket: 'roomRepair', wide: true,
+    onDelete: delRepair,
+    fields: [
+      { key:'room',       label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
+      { key:'category',   label:'ประเภทงาน', type:'select', options:opt('repairCategories') },
+      { key:'items',      label:'รายการที่ต้องซ่อมแซม', type:'textarea', required:true, full:true,
+        ph:'เช่น 1.ยาแนว 2.เก็บสีห้อง 3.เปลี่ยนก๊อกน้ำล้างจาน' },
+      { key:'reportDate', label:'วันที่แจ้ง', type:'date' },
+      { key:'bookDate',   label:'วันนัดซ่อมแซม', type:'date' },
+      { key:'repairDate', label:'วันเข้าซ่อมแซม', type:'date', hint:'กรอกเมื่อซ่อมเสร็จแล้ว' },
+      { key:'status',     label:'สถานะ', type:'select', options:opt('repairStatuses') },
+      { key:'priority',   label:'ความเร่งด่วน', type:'select', options:opt('priorities'), blank:false },
+      { key:'technician', label:'ช่างผู้ซ่อม' },
+      { key:'cost',       label:'ค่าใช้จ่าย (บาท)', type:'money' },
+      { key:'photosBefore', label:'ภาพก่อนซ่อม', type:'files', full:true },
+      { key:'photosAfter',  label:'ภาพหลังซ่อม', type:'files', full:true },
+      { key:'note',       label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delRepair(id){
+  confirmAction('ลบงานซ่อมนี้?', function(){
+    callApi('repair.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: ซ่อมแซมตึกโดยรวม
+   ============================================================ */
+function formBuilding(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขงานซ่อมตึก' : 'เพิ่มงานซ่อมแซมตึกโดยรวม',
+    record: rec || { bookDate: today() },
+    action: 'building.save', bucket: 'building', wide: true,
+    onDelete: delBuilding,
+    fields: [
+      { key:'zone',      label:'ส่วนของอาคาร', type:'select', options:opt('buildingZones'), required:true },
+      { key:'title',     label:'รายการซ่อมแซม', type:'textarea', required:true, full:true },
+      { key:'bookDate',  label:'วันที่นัด', type:'date' },
+      { key:'startDate', label:'วันที่เริ่มดำเนินการ', type:'date' },
+      { key:'endDate',   label:'วันที่แล้วเสร็จ', type:'date' },
+      { key:'status',    label:'สถานะ', type:'select', options:opt('buildingStatuses') },
+      { key:'contractor', label:'ผู้รับเหมา / ร้าน' },
+      { key:'cost',      label:'ค่าใช้จ่าย (บาท)', type:'money' },
+      { key:'nextDue',   label:'ครบกำหนดรอบถัดไป', type:'date', hint:'เช่น กันซึมดาดฟ้าทุก 3 ปี — ใส่วันที่ครั้งถัดไป' },
+      { key:'photos',    label:'ภาพประกอบ', type:'files', full:true },
+      { key:'slips',     label:'ใบเสร็จ / สลิป', type:'files', full:true },
+      { key:'note',      label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delBuilding(id){
+  confirmAction('ลบงานซ่อมตึกนี้?', function(){
+    callApi('building.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: ข้อมูลห้อง
+   ============================================================ */
+function formRoom(rec){
+  openForm({
+    title: 'ข้อมูลห้อง ' + (rec ? rec.room : ''),
+    record: rec, action: 'room.save',
+    fields: [
+      { key:'room',   label:'ห้อง', required:true },
+      { key:'floor',  label:'ชั้น', type:'number' },
+      { key:'status', label:'สถานะ', type:'select', options:opt('roomStatuses'), blank:false },
+      { key:'tenant', label:'ชื่อผู้เช่า' },
+      { key:'phone',  label:'เบอร์ติดต่อ' },
+      { key:'rent',   label:'ค่าเช่า/เดือน (บาท)', type:'money' },
+      { key:'moveIn', label:'วันที่เข้าอยู่', type:'date' },
+      { key:'note',   label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+</script>

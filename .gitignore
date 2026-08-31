@@ -1,0 +1,15 @@
+# clasp
+.clasp.json
+.clasprc.json
+
+# node
+node_modules/
+package-lock.json
+
+# os
+.DS_Store
+Thumbs.db
+
+# local scratch
+*.local
+/tmp/

@@ -5,6 +5,9 @@
    ========================================================= */
 
 /* ---------- ฐานข้อมูลในหน่วยความจำ ---------- */
+var ACCESS_KEY = '';
+var USER_ROLE = 'admin';
+var CAN_EDIT = true;
 var DB = window.__SEED__ || {};
 Object.keys(SHEETS).forEach(function (k) {
   var n = SHEETS[k];
@@ -36,11 +39,23 @@ function props_() {
 function getSpreadsheet_() { return { getUrl: function () { return ''; }, getId: function () { return ''; } }; }
 function currentUserEmail_() { return 'เจ้าของหอพัก'; }
 function ownerEmail_() { return 'เจ้าของหอพัก'; }
-function isAllowed_() { return true; }
-function requireAccess_() { return true; }
-function whoAmI() { return { email: 'เจ้าของหอพัก', allowed: true, owner: 'เจ้าของหอพัก' }; }
+function resolveRole_() { return ROLE.ADMIN; }
+function requireRole_() { return ROLE.ADMIN; }
+function whoAmI() { return { role: ROLE.ADMIN, canEdit: true, email: 'เจ้าของหอพัก', label: 'ผู้ดูแล' }; }
+function ensureTokens_() { return []; }
+function setSetting_(k, v) {
+  var rows = rowsOf_(SHEETS.SETTINGS);
+  for (var i = 0; i < rows.length; i++) if (String(rows[i].key) === String(k)) { rows[i].value = String(v); return v; }
+  rows.push(coerce_(SHEETS.SETTINGS, { key: k, label: k, value: String(v), note: '' }));
+  return v;
+}
+function dataVersion_() { return LOCAL_VERSION; }
+function backupToDrive_() { throw new Error('การสำรองลง Google Drive ใช้ได้เมื่อติดตั้งบน Google Apps Script'); }
+function listBackups_() { return []; }
+var LOCAL_VERSION = Date.now();
 function ensureDriveFolders_() { return null; }
 function trashFile_() { return true; }
+function subFolder_() { return null; }
 function sendDigestNow() { return 'การส่งอีเมลอัตโนมัติใช้ได้เมื่อติดตั้งบน Google Apps Script'; }
 
 /* ---------- ชั้นอ่าน/เขียนข้อมูล ---------- */
@@ -277,6 +292,12 @@ window.saveViaHost = function(filename, content, mime){
       toast('ดาวน์โหลดไม่สำเร็จ: ' + (e && e.message ? e.message : e), 'err');
     });
 };
+
+/* ---------- ไม่ต้อง poll เพราะข้อมูลอยู่ในหน้าเดียวกัน ---------- */
+function startPolling(){
+  var dot = document.getElementById('liveDot');
+  if (dot) dot.innerHTML = '';
+}
 
 /* ---------- ข้อความมุมล่างซ้าย ---------- */
 function navFootHtml(){

@@ -32,6 +32,7 @@
         <div class="sub" id="pageSub">แดชบอร์ดรวมทุกส่วนของหอพัก</div>
       </div>
       <div class="top-right">
+        <span id="liveDot"></span>
         <input class="inp w-auto" id="searchBox" placeholder="🔎 ค้นหาทั้งระบบ…" style="width:180px"
                oninput="onSearch(this.value)" autocomplete="off">
         <select class="sel w-auto" id="yearSel" onchange="setYear(this.value)"></select>
@@ -47,6 +48,11 @@
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
+<script>
+  var ACCESS_KEY = <?= JSON.stringify(accessKey) ?>;
+  var USER_ROLE  = <?= JSON.stringify(role) ?>;
+  var CAN_EDIT   = USER_ROLE === 'admin';
+</script>
 <?!= include('ui/App'); ?>
 <?!= include('ui/Views'); ?>
 <?!= include('ui/Forms'); ?>

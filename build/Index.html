@@ -1,0 +1,2130 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title><?= appName ?></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+/* ============ tokens ============ ---------------------------------
+   ธีมสว่าง/มืด ครอบคลุม 3 สถานะ:
+   :root                              = ธีมสว่าง (ค่าตั้งต้น)
+   prefers-color-scheme + :not(light) = ผู้ใช้ตั้ง OS เป็นมืด และไม่ได้เลือกสว่างไว้
+   [data-theme="dark"]                = ผู้ใช้เลือกมืดเอง
+   สีทุกสีนิยามเป็นตัวแปรที่นี่ที่เดียว — ห้ามใส่สีตรง ๆ ในคอมโพเนนต์
+   โทนกลางเอียงไปทางน้ำเงินโคบอลต์ให้เข้ากับสีหลัก แทนที่จะใช้เทากลาง ๆ
+------------------------------------------------------------------- */
+:root{
+  --bg:#f2f5fa; --surface:#fff; --surface-2:#f7f9fc;
+  --ink:#0f1729; --ink-2:#33405a; --muted:#5f6d87; --faint:#8d9ab2;
+  --line:#e0e6f0; --line-2:#eef1f7;
+  --nav:#101a30; --nav-2:#1b2846; --nav-ink:#b8c4dc; --nav-sec:#61708f;
+  --brand:#2c5cc5; --brand-ink:#fff; --brand-soft:#e8eeff; --brand-2:#5b87e8;
+  --ok:#0e8a5f; --ok-soft:#e3f5ed; --ok-2:#3fb383;
+  --warn:#b26a00; --warn-soft:#fdf1df; --warn-2:#d9963a;
+  --danger:#c62828; --danger-soft:#fdeaea;
+  --info:#0b6fa4; --info-soft:#e5f1f9;
+  --r:12px; --r-sm:8px;
+  --sh:0 1px 2px rgba(15,23,41,.05), 0 1px 3px rgba(15,23,41,.06);
+  --sh-lg:0 12px 32px rgba(15,23,41,.16);
+  --nav-w:236px;
+  --font-ui:'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-display:'Bai Jamjuree','IBM Plex Sans Thai','Noto Sans Thai',var(--font-ui);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c111b; --surface:#141b28; --surface-2:#1a2231;
+    --ink:#e6ecf7; --ink-2:#bfc9db; --muted:#8794ab; --faint:#67738c;
+    --line:#232d3f; --line-2:#1c2534;
+    --nav:#080c14; --nav-2:#141c2b; --nav-ink:#94a2bd; --nav-sec:#59657e;
+    --brand:#6f9bff; --brand-ink:#0b1020; --brand-soft:#17244a; --brand-2:#9dbaff; --brand-2:#9dbaff;
+    --ok:#35c98a; --ok-soft:#0f2a20; --ok-2:#6fdcac; --ok-2:#6fdcac;
+    --warn:#e0a340; --warn-soft:#2c2113; --warn-2:#f0c477; --warn-2:#f0c477;
+    --danger:#f0716b; --danger-soft:#2e1818;
+    --info:#4cb6ea; --info-soft:#10242f;
+    --sh:0 1px 2px rgba(0,0,0,.45);
+    --sh-lg:0 16px 40px rgba(0,0,0,.62);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c111b; --surface:#141b28; --surface-2:#1a2231;
+  --ink:#e6ecf7; --ink-2:#bfc9db; --muted:#8794ab; --faint:#67738c;
+  --line:#232d3f; --line-2:#1c2534;
+  --nav:#080c14; --nav-2:#141c2b; --nav-ink:#94a2bd; --nav-sec:#59657e;
+  --brand:#6f9bff; --brand-ink:#0b1020; --brand-soft:#17244a; --brand-2:#9dbaff;
+  --ok:#35c98a; --ok-soft:#0f2a20; --ok-2:#6fdcac;
+  --warn:#e0a340; --warn-soft:#2c2113; --warn-2:#f0c477;
+  --danger:#f0716b; --danger-soft:#2e1818;
+  --info:#4cb6ea; --info-soft:#10242f;
+  --sh:0 1px 2px rgba(0,0,0,.45);
+  --sh-lg:0 16px 40px rgba(0,0,0,.62);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--font-ui);
+  background:var(--bg); color:var(--ink); font-size:14px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+img{max-width:100%}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:5px}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+a{color:var(--brand);text-decoration:none}
+button,input,select,textarea{font:inherit;color:inherit}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;border:3px solid var(--bg)}
+
+/* ============ layout ============ */
+.app{display:flex;min-height:100vh}
+.nav{
+  width:var(--nav-w);flex:0 0 var(--nav-w);background:var(--nav);color:var(--nav-ink);
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.brand{padding:20px 18px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+.brand b{display:block;color:#fff;font-size:15.5px;letter-spacing:.1px;font-family:var(--font-display);font-weight:600}
+.brand span{font-size:11.5px;color:var(--nav-sec)}
+.nav-list{padding:10px 10px 20px;display:flex;flex-direction:column;gap:2px;flex:1}
+.nav-sec{font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--nav-sec);padding:14px 10px 6px;font-weight:600}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:var(--r-sm);
+  cursor:pointer;color:var(--nav-ink);font-size:13.5px;border:0;background:0;width:100%;text-align:left;
+}
+.nav-item:hover{background:var(--nav-2);color:#fff}
+.nav-item.on{background:var(--brand);color:var(--brand-ink);font-weight:600}
+.nav-item .ic{width:18px;text-align:center;font-size:15px}
+.nav-item .badge{margin-left:auto;background:rgba(255,255,255,.14);border-radius:20px;padding:1px 7px;font-size:11px}
+.nav-item.on .badge{background:rgba(255,255,255,.25)}
+.nav-foot{padding:12px 16px;border-top:1px solid rgba(255,255,255,.07);font-size:11.5px;color:var(--nav-sec)}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{
+  position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:11px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+}
+.top h1{font-size:17.5px;margin:0;font-weight:600;letter-spacing:-.1px;font-family:var(--font-display);text-wrap:balance}
+.top .sub{font-size:12px;color:var(--muted);margin-top:1px}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.content{padding:20px 22px 64px;max-width:1320px;width:100%}
+
+.burger{display:none;background:0;border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer}
+
+/* ============ controls ============ */
+.sel,.inp,.ta{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:7px 11px;font-size:13.5px;width:100%;outline:0;transition:border-color .15s,box-shadow .15s;
+}
+.sel:focus,.inp:focus,.ta:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.ta{min-height:74px;resize:vertical}
+.sel{cursor:pointer;padding-right:26px}
+.w-auto{width:auto}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);
+  border-radius:var(--r-sm);padding:7px 13px;font-size:13.5px;cursor:pointer;font-weight:500;
+  transition:background .15s,border-color .15s,transform .05s;white-space:nowrap;
+}
+.btn:hover{background:var(--surface-2);border-color:var(--faint)}
+.btn:active{transform:translateY(1px)}
+.btn.pri{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.btn.pri:hover{filter:brightness(1.07)}
+.btn.dgr{color:var(--danger);border-color:var(--danger)}
+.btn.dgr:hover{background:var(--danger-soft)}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.btn.icon{padding:5px 8px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:4px 12px;
+  font-size:12.5px;cursor:pointer;color:var(--ink-2);
+}
+.chip:hover{border-color:var(--brand);color:var(--brand)}
+.chip.on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+
+/* ============ cards ============ */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+.card-h{padding:14px 16px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.card-h h3{margin:0;font-size:14.5px;font-weight:600;font-family:var(--font-display);text-wrap:balance}
+.card-h .sp{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.card-b{padding:16px}
+.card-b.flush{padding:0}
+
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g-auto{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+
+/* KPI */
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--sh)}
+.kpi .lbl{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.kpi .val{font-size:23px;font-weight:600;letter-spacing:-.4px;margin-top:5px;font-family:var(--font-display);font-variant-numeric:tabular-nums}
+.kpi .cap{font-size:11.5px;color:var(--faint);margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi.accent{background:var(--brand-soft);border-color:transparent}
+.kpi.accent .lbl{color:var(--brand)}
+.kpi.good .val{color:var(--ok)} .kpi.bad .val{color:var(--danger)} .kpi.warn .val{color:var(--warn)}
+
+/* progress */
+.pbar{height:10px;border-radius:99px;background:var(--line-2);overflow:hidden;position:relative}
+.pbar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--brand),var(--brand-2));transition:width .6s cubic-bezier(.4,0,.2,1)}
+.pbar.lg{height:16px}
+.pbar.ok>i{background:linear-gradient(90deg,var(--ok),var(--ok-2))}
+.pbar.warn>i{background:linear-gradient(90deg,var(--warn),var(--warn-2))}
+.pmeta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:7px}
+.pmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* ============ table ============ */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.t{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+table.t th{
+  text-align:left;padding:9px 12px;background:var(--surface-2);border-bottom:1px solid var(--line);
+  font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap;
+}
+table.t td{padding:10px 12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+table.t tr:last-child td{border-bottom:0}
+table.t tbody tr:hover{background:var(--surface-2)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.nowrap{white-space:nowrap}
+.t-actions{display:flex;gap:4px;justify-content:flex-end}
+
+/* ============ badges ============ */
+.b{display:inline-flex;align-items:center;gap:4px;border-radius:99px;padding:2px 9px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.b.ok{background:var(--ok-soft);color:var(--ok)}
+.b.warn{background:var(--warn-soft);color:var(--warn)}
+.b.dgr{background:var(--danger-soft);color:var(--danger)}
+.b.info{background:var(--info-soft);color:var(--info)}
+.b.mute{background:var(--line-2);color:var(--muted)}
+
+/* ============ room grid ============ */
+.floors{display:flex;flex-direction:column;gap:12px}
+.floor{display:flex;gap:12px;align-items:flex-start}
+.floor-tag{
+  flex:0 0 62px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:8px;text-align:center;font-size:11.5px;color:var(--muted);
+}
+.floor-tag b{display:block;font-size:17px;color:var(--ink)}
+.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));gap:8px;flex:1}
+.room{
+  border:1px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:9px 10px;
+  cursor:pointer;transition:transform .1s,box-shadow .15s,border-color .15s;position:relative;overflow:hidden;
+}
+.room:hover{transform:translateY(-1px);box-shadow:var(--sh-lg);border-color:var(--brand)}
+.room .no{font-weight:600;font-size:15.5px;letter-spacing:0;font-family:var(--font-display);font-variant-numeric:tabular-nums}
+.room .st{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.3}
+.room .dot{position:absolute;top:9px;right:9px;width:8px;height:8px;border-radius:99px;background:var(--line)}
+.room.s-ok .dot{background:var(--ok)} .room.s-warn .dot{background:var(--warn)}
+.room.s-dgr .dot{background:var(--danger)} .room.s-info .dot{background:var(--info)}
+.room.s-ok{border-left:3px solid var(--ok)} .room.s-warn{border-left:3px solid var(--warn)}
+.room.s-dgr{border-left:3px solid var(--danger)} .room.s-info{border-left:3px solid var(--info)}
+
+/* ============ alerts / list ============ */
+.alist{display:flex;flex-direction:column}
+.ali{display:flex;gap:11px;padding:11px 16px;border-bottom:1px solid var(--line-2);cursor:pointer}
+.ali:last-child{border-bottom:0}
+.ali:hover{background:var(--surface-2)}
+.ali .ic{font-size:16px;line-height:1.3}
+.ali .tt{font-weight:600;font-size:13px}
+.ali .dd{font-size:12px;color:var(--muted);margin-top:1px}
+.ali.l-danger .tt{color:var(--danger)} .ali.l-warn .tt{color:var(--warn)}
+
+/* ============ media / thumbs ============ */
+.thumbs{display:flex;gap:5px;flex-wrap:wrap}
+.thumb{
+  width:44px;height:44px;border-radius:6px;border:1px solid var(--line);object-fit:cover;
+  background:var(--surface-2);cursor:pointer;display:block;
+}
+.thumb.big{width:92px;height:92px}
+.file-drop{
+  border:1.5px dashed var(--line);border-radius:var(--r-sm);padding:14px;text-align:center;
+  color:var(--muted);font-size:12.5px;cursor:pointer;background:var(--surface-2);
+}
+.file-drop:hover{border-color:var(--brand);color:var(--brand)}
+
+/* ============ modal ============ */
+.ov{position:fixed;inset:0;background:rgba(16,24,40,.55);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto}
+.modal{background:var(--surface);border-radius:14px;box-shadow:var(--sh-lg);width:100%;max-width:660px;margin:auto 0;animation:pop .16s ease-out}
+.modal.wide{max-width:960px}
+@keyframes pop{from{opacity:0;transform:translateY(-8px) scale(.985)}to{opacity:1;transform:none}}
+.modal-h{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.modal-h h3{margin:0;font-size:15.5px;font-weight:600;font-family:var(--font-display)}
+.modal-b{padding:18px;max-height:min(70vh,700px);overflow-y:auto}
+.modal-f{padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.x{margin-left:auto;background:0;border:0;font-size:20px;color:var(--muted);cursor:pointer;line-height:1;padding:2px 6px;border-radius:6px}
+.x:hover{background:var(--line-2);color:var(--ink)}
+
+.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.f{display:flex;flex-direction:column;gap:5px}
+.f.full{grid-column:1/-1}
+.f label{font-size:12px;color:var(--ink-2);font-weight:600}
+.f .hint{font-size:11.5px;color:var(--faint)}
+
+/* ============ misc ============ */
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.empty .big{font-size:34px;margin-bottom:8px;opacity:.6}
+.spin{display:inline-block;width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:99px;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:200;
+  background:var(--nav);color:#fff;padding:10px 18px;border-radius:99px;font-size:13px;
+  box-shadow:var(--sh-lg);animation:up .2s ease-out;max-width:90vw;
+}
+.toast.err{background:var(--danger)}
+.toast.ok{background:var(--ok)}
+@keyframes up{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+.muted{color:var(--muted)} .faint{color:var(--faint)}
+.fs12{font-size:12px} .fs13{font-size:13px}
+.mono{font-variant-numeric:tabular-nums}
+.mt8{margin-top:8px} .mt12{margin-top:12px} .mt16{margin-top:16px} .mb8{margin-bottom:8px} .mb12{margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sp{margin-left:auto}
+.hr{height:1px;background:var(--line-2);margin:14px 0}
+.clip{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+/* bar chart */
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar-row{display:grid;grid-template-columns:minmax(90px,150px) 1fr auto;gap:10px;align-items:center;font-size:12.5px}
+.bar-track{height:8px;background:var(--line-2);border-radius:99px;overflow:hidden}
+.bar-fill{height:100%;background:var(--brand);border-radius:99px;transition:width .5s}
+.bar-row .v{font-variant-numeric:tabular-nums;color:var(--ink-2);font-weight:600;white-space:nowrap}
+
+/* timeline */
+.tl{position:relative;padding-left:22px}
+.tl:before{content:'';position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.tl-i{position:relative;padding:0 0 16px}
+.tl-i:before{content:'';position:absolute;left:-20px;top:5px;width:10px;height:10px;border-radius:99px;background:var(--brand);border:2px solid var(--surface)}
+.tl-i .d{font-size:11.5px;color:var(--muted)}
+.tl-i .t{font-weight:600;font-size:13px}
+
+/* ============ responsive ============ */
+@media (max-width:900px){
+  .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g3{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:760px){
+  .nav{
+    position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);
+    transition:transform .22s ease;box-shadow:var(--sh-lg);
+  }
+  .nav.open{transform:none}
+  .burger{display:inline-flex}
+  .content{padding:14px 14px 80px}
+  .top{padding:10px 14px}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .fgrid{grid-template-columns:1fr}
+  .floor{flex-direction:column}
+  .floor-tag{flex:none;width:100%;display:flex;gap:8px;align-items:center;justify-content:flex-start;text-align:left}
+  .floor-tag b{font-size:14px}
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}
+  .modal-b{max-height:none}
+  .ov{padding:0}
+  .modal{border-radius:0;min-height:100vh;max-width:none}
+}
+@media print{
+  .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
+  .app{display:block} body{background:#fff}
+  .card{break-inside:avoid;box-shadow:none}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ================= sidebar ================= -->
+  <aside class="nav" id="nav">
+    <div class="brand">
+      <b>🏢 <?= appName ?></b>
+      <span><?= subtitle ?> · v<?= version ?></span>
+    </div>
+    <div class="nav-list" id="navList"></div>
+    <div class="nav-foot" id="navFoot">กำลังโหลด…</div>
+  </aside>
+
+  <!-- ================= main ================= -->
+  <div class="main">
+    <header class="top">
+      <button class="burger" onclick="toggleNav()">☰</button>
+      <div>
+        <h1 id="pageTitle">ภาพรวม</h1>
+        <div class="sub" id="pageSub">แดชบอร์ดรวมทุกส่วนของหอพัก</div>
+      </div>
+      <div class="top-right">
+        <span id="liveDot"></span>
+        <input class="inp w-auto" id="searchBox" placeholder="🔎 ค้นหาทั้งระบบ…" style="width:180px"
+               oninput="onSearch(this.value)" autocomplete="off">
+        <select class="sel w-auto" id="yearSel" onchange="setYear(this.value)"></select>
+        <button class="btn icon" title="รีเฟรช" onclick="refresh()">↻</button>
+      </div>
+    </header>
+    <main class="content" id="view">
+      <div class="empty"><div class="big"><span class="spin"></span></div>กำลังเชื่อมต่อระบบ…</div>
+    </main>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+  var ACCESS_KEY = <?= JSON.stringify(accessKey) ?>;
+  var USER_ROLE  = <?= JSON.stringify(role) ?>;
+  var CAN_EDIT   = USER_ROLE === 'admin';
+</script>
+<script>
+/* =========================================================
+   App.html — core: state, api, router, format, modal, upload
+   ========================================================= */
+
+var S = {
+  boot: null,          // ข้อมูลตั้งต้นจาก app.bootstrap
+  page: 'dashboard',
+  year: String(new Date().getFullYear()),
+  cache: {},           // เก็บผลลัพธ์ล่าสุดของแต่ละหน้า
+  params: {},          // ตัวกรองย่อยของแต่ละหน้า เช่น {room:'311', status:'all'}
+  busy: false
+};
+
+var PAGES = [
+  { id:'dashboard', ic:'📊', label:'ภาพรวม',              sub:'แดชบอร์ดรวมทุกส่วนของหอพัก',        sec:'ภาพรวม' },
+  { id:'debtMain',  ic:'💰', label:'รายการสรุปรวม',       sub:'บัญชีโอนใช้หนี้หลักของหอพัก',        sec:'การเงิน' },
+  { id:'debtSub',   ic:'🧾', label:'หนี้สิน',              sub:'บัญชีโอนใช้หนี้รองของหอพัก' },
+  { id:'purchases', ic:'🛒', label:'รายการซื้อของ',        sub:'ของเข้าหอพัก ราคา ประกัน และสลิป' },
+  { id:'finance',   ic:'📒', label:'รายรับ-รายจ่ายหอ',      sub:'ค่าเช่าที่เก็บได้ · ค่าไฟ · ค่าน้ำ · ค่าเน็ต · ภาษี' },
+  { id:'ac',        ic:'❄️', label:'ล้างแอร์',            sub:'ตารางล้างแอร์รายห้อง 24 ห้อง',      sec:'ซ่อมบำรุง' },
+  { id:'repairs',   ic:'🔧', label:'ซ่อมแซมตามห้อง',      sub:'งานแจ้งซ่อมแยกตามห้อง' },
+  { id:'building',  ic:'🏢', label:'ซ่อมแซมตึกโดยรวม',    sub:'งานส่วนกลางของอาคาร' },
+  { id:'rooms',     ic:'🚪', label:'ห้องพัก',             sub:'ทะเบียนห้องและประวัติรายห้อง',       sec:'ข้อมูล' },
+  { id:'reports',   ic:'📈', label:'รายงาน & สำรองข้อมูล', sub:'ค่าใช้จ่ายรายห้อง · ปฏิทินงาน · ส่งออกข้อมูล' }
+];
+
+/* ---------------- API ---------------- */
+
+function callApi(action, payload){
+  var body = {};
+  Object.keys(payload || {}).forEach(function(k){ body[k] = payload[k]; });
+  body._key = (typeof ACCESS_KEY === 'string') ? ACCESS_KEY : '';
+  payload = body;
+  return new Promise(function(resolve, reject){
+    google.script.run
+      .withSuccessHandler(function(res){
+        if (!res) return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์'));
+        if (res.ok) resolve(res.data); else reject(new Error(res.error));
+      })
+      .withFailureHandler(function(err){ reject(err); })
+      .api(action, payload || {});
+  });
+}
+
+/* ---------------- boot & routing ---------------- */
+
+function boot(){
+  callApi('app.bootstrap').then(function(b){
+    S.boot = b;
+    renderNav();
+    document.getElementById('navFoot').innerHTML = navFootHtml(b);
+    S.version = b.version || 0;
+    if (!b.canEdit) document.body.classList.add('readonly');
+    var hash = (location.hash || '').replace('#','');
+    go(PAGES.some(function(p){return p.id===hash;}) ? hash : 'dashboard');
+    startPolling(b.settings && b.settings.refreshSeconds);
+  }).catch(function(e){
+    document.getElementById('view').innerHTML =
+      '<div class="card"><div class="card-b"><h3>เชื่อมต่อระบบไม่สำเร็จ</h3>' +
+      '<p class="muted">' + esc(e.message||e) + '</p>' +
+      '<p class="fs13">ตรวจสอบว่า: เปิดชีตแล้วรัน <b>เมนู 🏢 The M Corner AP → ติดตั้งระบบ</b> เรียบร้อยแล้ว ' +
+      'และอีเมลที่ใช้อยู่มีสิทธิ์เข้าใช้งาน</p></div></div>';
+  });
+}
+
+/** ข้อความมุมล่างซ้าย — เวอร์ชันเว็บแอปจะเขียนทับฟังก์ชันนี้ */
+function navFootHtml(b){
+  var role = (b.user && b.user.label) ? b.user.label : '';
+  return '<b style="color:#c7d0e0">' + esc(role) + '</b>' +
+    (b.user && b.user.email && b.user.email !== 'ผู้ใช้ผ่านลิงก์' ? '<br>' + esc(b.user.email) : '') +
+    (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '');
+}
+
+function renderNav(){
+  var html = '';
+  PAGES.forEach(function(p){
+    if (p.sec) html += '<div class="nav-sec">' + p.sec + '</div>';
+    html += '<button class="nav-item" id="nav-' + p.id + '" onclick="go(\'' + p.id + '\')">' +
+              '<span class="ic">' + p.ic + '</span><span>' + p.label + '</span>' +
+              '<span class="badge" id="badge-' + p.id + '" style="display:none"></span>' +
+            '</button>';
+  });
+  document.getElementById('navList').innerHTML = html;
+}
+
+function go(page){
+  S.page = page;
+  S.params = {};
+  location.hash = page;
+  var meta = PAGES.filter(function(p){return p.id===page;})[0] || PAGES[0];
+  document.getElementById('pageTitle').textContent = meta.label;
+  document.getElementById('pageSub').textContent = meta.sub;
+  PAGES.forEach(function(p){
+    var el = document.getElementById('nav-' + p.id);
+    if (el) el.classList.toggle('on', p.id === page);
+  });
+  document.getElementById('nav').classList.remove('open');
+  removeScrim();
+  load();
+}
+
+function refresh(){ load(true); }
+
+function setYear(y){
+  S.year = y;
+  load();
+}
+
+function load(force){
+  var view = document.getElementById('view');
+  view.innerHTML = '<div class="empty"><div class="big"><span class="spin"></span></div>กำลังโหลดข้อมูล…</div>';
+  var r = ROUTES[S.page];
+  if (!r) { view.innerHTML = '<div class="empty">ไม่พบหน้านี้</div>'; return; }
+  r.load().then(function(data){
+    S.cache[S.page] = data;
+    syncYearOptions(data.years || data.available || []);
+    view.innerHTML = r.render(data);
+    applyReadOnly(view);
+    if (r.after) r.after(data);
+  }).catch(function(e){
+    view.innerHTML = '<div class="card"><div class="card-b"><h3>โหลดข้อมูลไม่สำเร็จ</h3>' +
+                     '<p class="muted">' + esc(e.message||e) + '</p>' +
+                     '<button class="btn" onclick="load()">ลองใหม่</button></div></div>';
+  });
+}
+
+/** เติมตัวเลือกปีในแถบบนให้ตรงกับข้อมูลจริงของหน้านั้น */
+function syncYearOptions(years){
+  var sel = document.getElementById('yearSel');
+  var list = (years || []).slice().sort(function(a,b){return b-a;});
+  var cur = new Date().getFullYear();
+  if (list.indexOf(cur) < 0) list.unshift(cur);
+  var html = '<option value="all">ทุกปี</option>';
+  list.forEach(function(y){
+    html += '<option value="' + y + '">ปี ' + y + ' (พ.ศ. ' + (Number(y)+543) + ')</option>';
+  });
+  sel.innerHTML = html;
+  if (list.indexOf(Number(S.year)) < 0 && S.year !== 'all') S.year = String(cur);
+  sel.value = S.year;
+}
+
+/* ---------------- โหมดดูอย่างเดียว ----------------
+   ฝั่งเซิร์ฟเวอร์กันไว้แล้วในฟังก์ชัน api() ตรงนี้แค่ซ่อนปุ่มที่กดไปก็ทำไม่ได้
+   เพื่อไม่ให้ผู้ที่เปิดด้วยลิงก์แชร์สับสน */
+var EDIT_ENTRYPOINTS = /\b(formDebt|formDebtPayment|formPurchase|formAc|formBulkAc|formRepair|formBuilding|formRoom|formFinance|delDebt|delDebtPayment|delPurchase|delAc|delRepair|delBuilding|delFinance|doImportJson|doRotateShare|doBackupNow)\s*\(/;
+
+function applyReadOnly(root){
+  if (typeof CAN_EDIT === 'undefined' || CAN_EDIT) return;
+  var nodes = root.querySelectorAll('[onclick]');
+  for (var i = 0; i < nodes.length; i++) {
+    if (EDIT_ENTRYPOINTS.test(nodes[i].getAttribute('onclick') || '')) nodes[i].remove();
+  }
+}
+
+/* ---------------- รีเฟรชอัตโนมัติเมื่อข้อมูลในชีตเปลี่ยน ---------------- */
+
+function startPolling(seconds){
+  var sec = Number(seconds || 0);
+  var dot = document.getElementById('liveDot');
+  if (!sec) { if (dot) dot.innerHTML = ''; return; }
+  if (dot) dot.innerHTML = '<span class="b ok" title="ข้อมูลอัปเดตอัตโนมัติทุก ' + sec + ' วินาที">● สด</span>';
+
+  setInterval(function(){
+    if (document.hidden) return;
+    if (document.getElementById('modalRoot').innerHTML) return;  // กำลังกรอกฟอร์มอยู่ อย่าเพิ่งรีเฟรช
+    callApi('app.version').then(function(v){
+      if (v && v.version && v.version !== S.version) {
+        S.version = v.version;
+        load();
+        toast('ข้อมูลมีการเปลี่ยนแปลง — โหลดใหม่ให้แล้ว');
+      }
+    }).catch(function(){ /* เน็ตสะดุด ไว้รอบหน้า */ });
+  }, sec * 1000);
+}
+
+/* ---------------- format helpers ---------------- */
+
+function esc(s){
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function money(n, dec){
+  var v = Number(n||0);
+  return v.toLocaleString('th-TH',{minimumFractionDigits:dec||0, maximumFractionDigits:dec||0});
+}
+function baht(n){ return money(n) + ' ฿'; }
+function pct(n){ return (Number(n)||0).toFixed(1) + '%'; }
+function num(n){ return n==null||n==='' ? '–' : money(n); }
+
+/** 2026-04-26 -> 26 เม.ย. 2569 */
+var TH_MON = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+function thDate(iso){
+  if (!iso) return '–';
+  var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return esc(iso);
+  return Number(m[3]) + ' ' + TH_MON[Number(m[2])-1] + ' ' + (Number(m[1])+543);
+}
+function thDateShort(iso){
+  if (!iso) return '–';
+  var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return esc(iso);
+  return Number(m[3]) + '/' + Number(m[2]) + '/' + String(Number(m[1])+543).slice(2);
+}
+function daysAgo(iso){
+  if (!iso) return null;
+  return Math.round((Date.now() - new Date(iso).getTime())/86400000);
+}
+
+function statusBadge(st){
+  var map = {
+    'เสร็จสิ้น':'ok','ดำเนินการแล้ว':'ok','ใช้งานปกติ':'ok','ปิดหนี้แล้ว':'ok','อยู่ในประกัน':'ok','มีผู้เช่า':'ok','ปกติ':'ok',
+    'กำลังซ่อม':'info','กำลังดำเนินการ':'info','นัดหมายแล้ว':'info','กำลังผ่อน':'info','ว่าง':'info',
+    'รอดำเนินการ':'warn','เลื่อนนัด':'warn','ใกล้หมดประกัน':'warn','ต้องซ่อม':'warn','พักชำระ':'warn','ปิดปรับปรุง':'warn','เกินกำหนด':'warn','ยังไม่เคยล้าง':'warn',
+    'ยกเลิก':'mute','ปลดระวาง':'mute','ไม่ระบุ':'mute',
+    'หมดอายุแล้ว':'dgr','ด่วนมาก':'dgr','ด่วน':'warn'
+  };
+  if (!st) return '';
+  return '<span class="b ' + (map[st]||'mute') + '">' + esc(st) + '</span>';
+}
+
+function progress(percent, cls){
+  var p = Math.max(0, Math.min(100, Number(percent)||0));
+  return '<div class="pbar ' + (cls||'') + '"><i style="width:' + p + '%"></i></div>';
+}
+
+function thumbsHtml(refs, big){
+  if (!refs || !refs.length) return '<span class="faint fs12">–</span>';
+  return '<div class="thumbs">' + refs.map(function(r){
+    if (r.thumb) {
+      return '<img class="thumb' + (big?' big':'') + '" loading="lazy" src="' + esc(r.thumb) + '" ' +
+             'onclick="window.open(\'' + esc(r.url) + '\',\'_blank\')" ' +
+             'onerror="this.onerror=null;this.replaceWith(fileChip(' + JSON.stringify(JSON.stringify(r)).replace(/"/g,'&quot;') + '))">';
+    }
+    return '<a class="b info" href="' + esc(r.url) + '" target="_blank">ไฟล์</a>';
+  }).join('') + '</div>';
+}
+function fileChip(json){
+  var r = typeof json === 'string' ? JSON.parse(json) : json;
+  var a = document.createElement('a');
+  a.className = 'b info'; a.href = r.url; a.target = '_blank'; a.textContent = '📎 ไฟล์';
+  return a;
+}
+
+function emptyBox(text, action){
+  return '<div class="empty"><div class="big">🗂️</div>' + esc(text) +
+         (action ? '<div class="mt12">' + action + '</div>' : '') + '</div>';
+}
+
+function barChart(items, labelKey, valueKey, formatter){
+  if (!items || !items.length) return '<div class="empty">ยังไม่มีข้อมูล</div>';
+  var max = Math.max.apply(null, items.map(function(i){ return Number(i[valueKey])||0; })) || 1;
+  return '<div class="bars">' + items.map(function(i){
+    var v = Number(i[valueKey])||0;
+    return '<div class="bar-row">' +
+      '<div class="clip" title="' + esc(i[labelKey]) + '">' + esc(i[labelKey]) + '</div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:' + (v/max*100) + '%"></div></div>' +
+      '<div class="v">' + (formatter ? formatter(i) : money(v)) + '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+/* ---------------- modal ---------------- */
+
+function openModal(title, bodyHtml, footHtml, wide){
+  var root = document.getElementById('modalRoot');
+  root.innerHTML =
+    '<div class="ov" onclick="if(event.target===this)closeModal()">' +
+      '<div class="modal' + (wide?' wide':'') + '">' +
+        '<div class="modal-h"><h3>' + esc(title) + '</h3><button class="x" onclick="closeModal()">×</button></div>' +
+        '<div class="modal-b">' + bodyHtml + '</div>' +
+        (footHtml ? '<div class="modal-f">' + footHtml + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  applyReadOnly(root);
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(){
+  document.getElementById('modalRoot').innerHTML = '';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeModal(); });
+
+function confirmAction(text, onYes){
+  openModal('ยืนยัน',
+    '<p>' + esc(text) + '</p>',
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn dgr" id="cfmBtn">ยืนยัน</button>');
+  document.getElementById('cfmBtn').onclick = function(){ closeModal(); onYes(); };
+}
+
+/* ---------------- toast ---------------- */
+
+function toast(msg, kind){
+  var el = document.createElement('div');
+  el.className = 'toast ' + (kind||'');
+  el.textContent = msg;
+  document.getElementById('toastRoot').appendChild(el);
+  setTimeout(function(){ el.remove(); }, kind==='err' ? 5200 : 2800);
+}
+
+/* ---------------- nav (mobile) ---------------- */
+
+function toggleNav(){
+  var nav = document.getElementById('nav');
+  nav.classList.toggle('open');
+  if (nav.classList.contains('open')) {
+    var s = document.createElement('div');
+    s.className = 'scrim'; s.id = 'scrim';
+    s.onclick = function(){ nav.classList.remove('open'); removeScrim(); };
+    document.body.appendChild(s);
+  } else removeScrim();
+}
+function removeScrim(){
+  var s = document.getElementById('scrim');
+  if (s) s.remove();
+}
+
+/* ---------------- search ---------------- */
+
+var searchTimer = null;
+function onSearch(q){
+  clearTimeout(searchTimer);
+  if (!q || q.trim().length < 2) return;
+  searchTimer = setTimeout(function(){
+    callApi('app.search', { q: q }).then(function(rows){
+      openModal('ผลการค้นหา "' + q + '" (' + rows.length + ')',
+        rows.length ? '<div class="alist">' + rows.map(function(r){
+          return '<div class="ali" onclick="closeModal();go(\'' + jumpPage(r.module) + '\')">' +
+            '<div class="ic">' + moduleIcon(r.module) + '</div><div>' +
+            '<div class="tt">' + esc(r.title) + '</div>' +
+            '<div class="dd">' + esc(r.label) + (r.detail ? ' · ' + esc(r.detail) : '') + '</div>' +
+            '</div></div>';
+        }).join('') + '</div>'
+        : '<div class="empty">ไม่พบรายการที่ตรงกับคำค้น</div>', '', true);
+    }).catch(function(e){ toast(e.message||e, 'err'); });
+  }, 420);
+}
+function jumpPage(module){
+  return ({purchases:'purchases', repairs:'repairs', building:'building', ac:'ac', debt:'debtMain', rooms:'rooms'})[module] || 'dashboard';
+}
+function moduleIcon(module){
+  return ({purchases:'🛒', repairs:'🔧', building:'🏢', ac:'❄️', debt:'💰', rooms:'🚪'})[module] || '📄';
+}
+
+/* ---------------- file upload ---------------- */
+
+/**
+ * อ่านไฟล์จาก <input type=file> เป็น dataURL แล้วส่งขึ้น Drive
+ * คืน array ของ {id,name,url,thumb}
+ */
+function uploadFiles(inputEl, bucket){
+  var files = Array.prototype.slice.call(inputEl.files || []);
+  if (!files.length) return Promise.resolve([]);
+  var MAX = 12 * 1024 * 1024;
+  var tooBig = files.filter(function(f){ return f.size > MAX; });
+  if (tooBig.length) {
+    return Promise.reject(new Error('ไฟล์ใหญ่เกิน 12 MB: ' + tooBig.map(function(f){return f.name;}).join(', ')));
+  }
+  return Promise.all(files.map(readAsDataUrl))
+    .then(function(payloads){ return callApi('file.upload', { bucket: bucket, files: payloads }); });
+}
+
+function readAsDataUrl(file){
+  return new Promise(function(resolve, reject){
+    var r = new FileReader();
+    r.onload = function(){ resolve({ name: file.name, mimeType: file.type, dataUrl: r.result }); };
+    r.onerror = function(){ reject(new Error('อ่านไฟล์ไม่สำเร็จ: ' + file.name)); };
+    r.readAsDataURL(file);
+  });
+}
+</script>
+<script>
+/* =========================================================
+   Views.html — ตัวโหลด + ตัววาดของแต่ละหน้า
+   ========================================================= */
+
+var ROUTES = {};
+
+/* ============================================================
+   1) ภาพรวม
+   ============================================================ */
+ROUTES.dashboard = {
+  load: function(){ return callApi('app.dashboard', { year: S.year }); },
+  render: function(d){
+    var b = d.building;
+    var kpis =
+      kpi('ยอดหนี้คงเหลือทั้งหมด', baht(d.debtMain.remaining + d.debtSub.remaining), 'หนี้หลัก + หนี้รอง', 'accent') +
+      kpi('ชำระแล้ว (หนี้หลัก)', pct(d.debtMain.percent), baht(d.debtMain.paid) + ' จาก ' + baht(d.debtMain.total), 'good') +
+      kpi('ค่าใช้จ่ายปี ' + d.year, baht(d.spendThisYear), 'ซื้อของ + ซ่อมแซม + ล้างแอร์') +
+      kpi('งานซ่อมค้าง', d.repairs.openJobs + ' งาน', d.repairs.overdue + ' งานเกินกำหนด', d.repairs.overdue ? 'bad' : '');
+
+    var alerts = d.alerts.length
+      ? '<div class="alist">' + d.alerts.slice(0,12).map(function(a){
+          return '<div class="ali l-' + a.level + '" onclick="go(\'' + jumpPage(a.module) + '\')">' +
+                 '<div class="ic">' + a.icon + '</div><div><div class="tt">' + esc(a.title) + '</div>' +
+                 '<div class="dd">' + esc(a.detail) + '</div></div></div>';
+        }).join('') + '</div>'
+      : '<div class="empty"><div class="big">✅</div>ไม่มีงานค้าง — ทุกอย่างเรียบร้อย</div>';
+
+    return '' +
+      '<div class="grid g4 mb12">' + kpis + '</div>' +
+
+      '<div class="grid g2 mb12">' +
+        card('💰 รายการสรุปรวม (หนี้หลัก)',
+          debtMini(d.debtMain, 'debtMain'),
+          '<button class="btn sm" onclick="go(\'debtMain\')">ดูทั้งหมด →</button>') +
+        card('🧾 หนี้สิน (หนี้รอง)',
+          debtMini(d.debtSub, 'debtSub') +
+          (d.debtSub.interestThisYear ? '<div class="fs12 muted mt8">ดอกเบี้ยที่ชำระปี ' + d.year + ': <b>' + baht(d.debtSub.interestThisYear) + '</b></div>' : ''),
+          '<button class="btn sm" onclick="go(\'debtSub\')">ดูทั้งหมด →</button>') +
+      '</div>' +
+
+      '<div class="grid g4 mb12">' +
+        kpi('ห้องทั้งหมด', b.totalRooms + ' ห้อง', 'มีผู้เช่า ' + b.occupied + ' · ว่าง ' + b.vacant) +
+        kpi('ล้างแอร์ปี ' + d.year, d.ac.roomsDone + '/' + b.totalRooms + ' ห้อง', d.ac.doneInYear + ' รอบ · ค้าง ' + d.ac.roomsPending + ' ห้อง', d.ac.roomsPending ? 'warn' : 'good') +
+        kpi('ซื้อของปี ' + d.year, baht(d.purchases.yearTotal), d.purchases.yearCount + ' รายการ') +
+        kpi('ประกันใกล้หมด', d.purchases.warranty.expiring + ' รายการ', 'หมดอายุแล้ว ' + d.purchases.warranty.expired, d.purchases.warranty.expiring ? 'warn' : '') +
+      '</div>' +
+
+      '<div class="grid g2 mb12">' +
+        card('📒 รายรับ-รายจ่ายหอ ปี ' + d.year,
+          '<div class="grid g3 mb12">' +
+            kpi('รายรับ', baht(d.finance.income), 'เฉลี่ย ' + baht(d.finance.avgIncome) + '/เดือน', 'good') +
+            kpi('รายจ่าย', baht(d.finance.expense), 'เฉลี่ย ' + baht(d.finance.avgExpense) + '/เดือน', 'bad') +
+            kpi('คงเหลือสุทธิ', baht(d.finance.net), 'อัตรากำไร ' + pct(d.finance.margin)) +
+          '</div>' + miniMonthChart(d.finance.byMonth),
+          '<button class="btn sm" onclick="go(\'finance\')">ดูทั้งหมด →</button>') +
+        card('🗓️ งานที่กำลังจะถึง (' + d.upcoming.length + ')',
+          d.upcoming.length ? '<div class="alist">' + d.upcoming.slice(0,7).map(function(u){
+            var lvl = u.daysLeft < 0 ? 'danger' : (u.daysLeft <= 7 ? 'warn' : 'info');
+            return '<div class="ali l-' + lvl + '" onclick="go(\'' + jumpPage(u.module) + '\')">' +
+              '<div class="ic">' + u.icon + '</div><div><div class="tt">' + esc(u.title) + '</div>' +
+              '<div class="dd">' + thDate(u.date) + ' · ' +
+                (u.daysLeft < 0 ? 'เลยกำหนด ' + (-u.daysLeft) + ' วัน' : (u.daysLeft === 0 ? 'วันนี้' : 'อีก ' + u.daysLeft + ' วัน')) +
+              '</div></div></div>';
+          }).join('') + '</div>' : '<div class="empty"><div class="big">🌤️</div>ไม่มีงานนัดหมายเร็ว ๆ นี้</div>',
+          '<button class="btn sm" onclick="go(\'reports\')">ปฏิทินเต็ม →</button>', true) +
+      '</div>' +
+
+      '<div class="grid g2">' +
+        card('🔔 สิ่งที่ต้องทำ (' + d.alerts.length + ')', alerts, '', true) +
+        card('🏢 งานซ่อมแซมตึกโดยรวม',
+          '<div class="grid g2">' +
+            kpi('งานปี ' + d.year, d.buildingRepairs.yearCount + ' งาน', 'ค้าง ' + d.buildingRepairs.openCount) +
+            kpi('ค่าใช้จ่าย', baht(d.buildingRepairs.yearCost), 'ครบกำหนดเร็ว ๆ นี้ ' + d.buildingRepairs.upcoming) +
+          '</div>' +
+          (d.debtMain.forecast && d.debtMain.forecast.monthsLeft
+            ? '<div class="hr"></div><div class="fs13"><b>ประมาณการปิดหนี้หลัก</b><div class="muted mt8">' +
+              'จากอัตราชำระเฉลี่ย ' + baht(d.debtMain.forecast.avgPerMonth) + '/เดือน (12 เดือนล่าสุด) ' +
+              'คาดว่าอีก <b>' + d.debtMain.forecast.monthsLeft + ' เดือน</b> ' +
+              '(ราว ' + thDate(d.debtMain.forecast.payoffDate) + ')</div></div>'
+            : ''),
+          '<button class="btn sm" onclick="go(\'building\')">ดูทั้งหมด →</button>') +
+      '</div>';
+  },
+  after: function(d){
+    setBadge('repairs', d.repairs.openJobs);
+    setBadge('ac', d.ac.roomsPending);
+  }
+};
+
+function miniMonthChart(byMonth){
+  var max = Math.max.apply(null, byMonth.map(function(m){ return Math.max(m.income, m.expense); })) || 1;
+  return '<div style="display:flex;gap:3px;align-items:flex-end;height:74px">' + byMonth.map(function(m){
+    var hi = Math.round(m.income / max * 66), he = Math.round(m.expense / max * 66);
+    return '<div style="flex:1;text-align:center" title="' + m.label + ' · รับ ' + money(m.income) + ' · จ่าย ' + money(m.expense) + '">' +
+      '<div style="display:flex;gap:1px;align-items:flex-end;justify-content:center;height:66px">' +
+        '<div style="width:6px;height:' + hi + 'px;background:var(--ok);border-radius:2px 2px 0 0"></div>' +
+        '<div style="width:6px;height:' + he + 'px;background:var(--danger);border-radius:2px 2px 0 0"></div>' +
+      '</div><div class="faint" style="font-size:9.5px">' + m.label.replace('.','') + '</div></div>';
+  }).join('') + '</div>' +
+  '<div class="row fs12 muted mt8"><span class="b ok">รายรับ</span><span class="b dgr">รายจ่าย</span></div>';
+}
+
+function debtMini(x, page){
+  return '<div class="pmeta" style="margin:0 0 6px"><span>ชำระแล้ว <b>' + baht(x.paid) + '</b></span>' +
+         '<span><b>' + pct(x.percent) + '</b></span></div>' +
+         progress(x.percent, 'lg') +
+         '<div class="pmeta"><span>คงเหลือ <b>' + baht(x.remaining) + '</b></span>' +
+         '<span>ยอดหนี้ทั้งหมด <b>' + baht(x.total) + '</b></span></div>' +
+         '<div class="fs12 muted mt8">ชำระในปีที่เลือก: <b>' + baht(x.thisYear) + '</b></div>';
+}
+
+function setBadge(page, n){
+  var el = document.getElementById('badge-' + page);
+  if (!el) return;
+  if (n > 0) { el.textContent = n; el.style.display = ''; }
+  else el.style.display = 'none';
+}
+
+/* ============================================================
+   2) หนี้หลัก / หนี้รอง (ใช้ตัววาดร่วมกัน)
+   ============================================================ */
+function debtRoute(ledger, title){
+  return {
+    load: function(){
+      return Promise.all([
+        callApi('debt.summary', { ledger: ledger, year: S.year }),
+        callApi('debt.payments', { ledger: ledger, year: S.year })
+      ]).then(function(r){
+        var d = r[0]; d.payments = r[1]; d.ledger = ledger; d.pageTitle = title;
+        return d;
+      });
+    },
+    render: renderDebt
+  };
+}
+ROUTES.debtMain = debtRoute('หนี้หลัก', 'รายการสรุปรวม The M Corner AP');
+ROUTES.debtSub  = debtRoute('หนี้รอง', 'หนี้สิน');
+
+function renderDebt(d){
+  var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+
+  var head = '<div class="card mb12"><div class="card-b">' +
+    '<div class="row mb12"><h3 style="margin:0;font-size:15px">' + esc(d.pageTitle) + '</h3>' +
+    '<span class="sp"></span>' +
+    '<button class="btn pri sm" onclick="formDebtPayment(null,\'' + d.ledger + '\')">+ บันทึกการชำระ</button>' +
+    '<button class="btn sm" onclick="formDebt(null,\'' + d.ledger + '\')">+ เพิ่มก้อนหนี้</button></div>' +
+    '<div class="pmeta" style="margin:0 0 7px"><span>ความคืบหน้าการชำระ</span><span><b>' + pct(d.percent) + '</b></span></div>' +
+    progress(d.percent, 'lg ' + (d.percent >= 100 ? 'ok' : '')) +
+    '<div class="grid g4 mt16">' +
+      kpi('ยอดหนี้ทั้งหมด', baht(d.totalDebt), d.debts.length + ' ก้อนหนี้') +
+      kpi('ชำระแล้ว', baht(d.paid), d.paymentCount + ' รายการโอน', 'good') +
+      kpi('คงเหลือ', baht(d.remaining), 'อีก ' + pct(100 - d.percent) + ' จะปิดหนี้', 'bad') +
+      kpi('ชำระใน' + yearLabel, baht(d.selectedYearPaid), d.selectedYearCount + ' รายการ' +
+          (d.selectedYearInterest ? ' · ดอกเบี้ย ' + baht(d.selectedYearInterest) : '')) +
+    '</div></div></div>';
+
+  var perDebt = d.debts.length ? '<div class="grid g-auto mb12">' + d.debts.map(function(x){
+    return '<div class="card"><div class="card-b">' +
+      '<div class="clip" style="font-weight:650;font-size:13.5px;min-height:38px">' + esc(x.title) + '</div>' +
+      '<div class="row fs12 muted mb8">' + statusBadge(x.status) +
+        '<span>' + esc(x.creditor || '–') + (x.startDate ? ' · ' + thDate(x.startDate) : '') + '</span></div>' +
+      progress(x.percent) +
+      '<div class="pmeta"><span>ชำระ <b>' + baht(x.paid) + '</b></span><span>คงเหลือ <b>' + baht(x.remaining) + '</b></span></div>' +
+      (x.interestPerMonth ? '<div class="fs12 muted mt8">ดอกเบี้ย ' + baht(x.interestPerMonth) + '/เดือน</div>' : '') +
+      (x.planPerMonth ? '<div class="fs12 muted">แผนผ่อน ' + baht(x.planPerMonth) + '/เดือน</div>' : '') +
+      '<div class="row mt12"><button class="btn sm" onclick=\'formDebt(' + attr(x) + ',"' + d.ledger + '")\'>แก้ไข</button>' +
+      '<button class="btn sm dgr" onclick="delDebt(\'' + x.id + '\')">ลบ</button></div>' +
+    '</div></div>';
+  }).join('') + '</div>' : '';
+
+  var byYear = d.byYear.length ? card('📅 ยอดชำระแยกตามปี',
+    '<div class="tw"><table class="t"><thead><tr>' +
+    '<th>ปี</th><th class="num">เงินต้น</th><th class="num">ดอกเบี้ย</th><th class="num">รวม</th>' +
+    '<th class="num">จำนวนครั้ง</th><th class="num">สะสม</th><th style="width:26%">ความคืบหน้าสะสม</th>' +
+    '</tr></thead><tbody>' +
+    d.byYear.map(function(y){
+      var cum = y.cumulative != null ? y.cumulative : 0;
+      var p = d.totalDebt ? (cum / d.totalDebt * 100) : 0;
+      return '<tr onclick="setYearFromTable(' + y.year + ')" style="cursor:pointer">' +
+        '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
+        '<td class="num">' + money(y.principal) + '</td>' +
+        '<td class="num">' + (y.interest ? money(y.interest) : '–') + '</td>' +
+        '<td class="num"><b>' + money(y.principal + y.interest + y.fee) + '</b></td>' +
+        '<td class="num">' + y.count + '</td>' +
+        '<td class="num">' + money(cum) + '</td>' +
+        '<td>' + progress(p) + '</td></tr>';
+    }).join('') + '</tbody></table></div>', '', true) : '';
+
+  var rows = d.payments;
+  var list = card('🧾 รายการโอนใช้หนี้ · ' + yearLabel + ' (' + rows.length + ')',
+    rows.length ? '<div class="tw"><table class="t"><thead><tr>' +
+      '<th>วันที่</th><th>งวด</th><th class="num">จำนวนเงิน</th><th>ประเภท</th><th>ช่องทาง</th>' +
+      '<th>สลิป</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>' +
+      rows.map(function(p){
+        return '<tr>' +
+          '<td class="nowrap">' + thDate(p.payDate) + '</td>' +
+          '<td class="nowrap">' + esc(p.installment || '–') + '</td>' +
+          '<td class="num"><b>' + money(p.amount) + '</b></td>' +
+          '<td>' + (p.kind === 'ดอกเบี้ย' ? '<span class="b warn">ดอกเบี้ย</span>' : (p.kind === 'ค่าธรรมเนียม' ? '<span class="b mute">ค่าธรรมเนียม</span>' : '<span class="b ok">เงินต้น</span>')) + '</td>' +
+          '<td class="fs12">' + esc(p.channel || '–') + '</td>' +
+          '<td>' + thumbsHtml(p.slipRefs) + '</td>' +
+          '<td class="fs12 muted clip">' + esc(p.note || '') + '</td>' +
+          '<td><div class="t-actions">' +
+            '<button class="btn sm icon" onclick=\'formDebtPayment(' + attr(p) + ',"' + d.ledger + '")\'>✏️</button>' +
+            '<button class="btn sm icon dgr" onclick="delDebtPayment(\'' + p.id + '\')">🗑</button>' +
+          '</div></td></tr>';
+      }).join('') + '</tbody></table></div>'
+    : emptyBox('ยังไม่มีรายการชำระใน' + yearLabel,
+        '<button class="btn pri" onclick="formDebtPayment(null,\'' + d.ledger + '\')">+ บันทึกการชำระ</button>'),
+    '', true);
+
+  return head + perDebt + byYear + '<div class="mt12">' + list + '</div>';
+}
+
+function setYearFromTable(y){
+  S.year = String(y);
+  document.getElementById('yearSel').value = S.year;
+  load();
+}
+
+/* ============================================================
+   3) รายการซื้อของ
+   ============================================================ */
+ROUTES.purchases = {
+  load: function(){
+    return Promise.all([
+      callApi('purchase.summary', { year: S.year }),
+      callApi('purchase.list', { year: S.year, category: S.params.category || '', q: S.params.q || '' })
+    ]).then(function(r){ var d = r[0]; d.items = r[1]; return d; });
+  },
+  render: function(d){
+    var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+    var head = '<div class="grid g4 mb12">' +
+      kpi('ยอดซื้อ ' + yearLabel, baht(d.yearTotal), d.yearCount + ' รายการ', 'accent') +
+      kpi('ยอดสะสมทั้งหมด', baht(d.grandTotal), d.grandCount + ' รายการ') +
+      kpi('อยู่ในประกัน', d.warranty.active + ' รายการ', 'ใกล้หมด ' + d.warranty.expiring, d.warranty.expiring ? 'warn' : 'good') +
+      kpi('หมวดที่ใช้จ่ายสูงสุด', d.byCategory[0] ? d.byCategory[0].category : '–',
+          d.byCategory[0] ? baht(d.byCategory[0].total) : '') +
+    '</div>';
+
+    var charts = '<div class="grid g2 mb12">' +
+      card('📊 ค่าใช้จ่ายแยกตามหมวดหมู่ · ' + yearLabel,
+        barChart(d.byCategory, 'category', 'total', function(i){ return money(i.total) + ' ฿'; })) +
+      card('📅 ยอดซื้อแยกตามปี',
+        barChart(d.byYear.map(function(y){ return { label: 'ปี ' + y.year + ' (' + y.count + ')', total: y.total, year: y.year }; }),
+                 'label', 'total', function(i){ return money(i.total) + ' ฿'; })) +
+    '</div>';
+
+    var cats = '<div class="chips mb12">' +
+      '<button class="chip ' + (!S.params.category?'on':'') + '" onclick="setParam(\'category\',\'\')">ทุกหมวด</button>' +
+      d.byCategory.map(function(c){
+        return '<button class="chip ' + (S.params.category===c.category?'on':'') + '" ' +
+               'onclick="setParam(\'category\',\'' + esc(c.category) + '\')">' + esc(c.category) + ' (' + c.count + ')</button>';
+      }).join('') + '</div>';
+
+    var rows = d.items;
+    var table = card('🛒 รายการซื้อของ · ' + yearLabel + ' (' + rows.length + ')',
+      rows.length ? '<div class="tw"><table class="t" style="min-width:980px"><thead><tr>' +
+        '<th style="width:96px">วันที่ซื้อ</th><th>รายการสินค้า</th><th class="num">จำนวน</th>' +
+        '<th class="num">ราคา</th><th>แหล่งที่ซื้อ</th><th>ประกัน</th><th>ภาพ</th><th>สลิป</th><th></th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function(p){
+          var w = p.warranty || {};
+          return '<tr>' +
+            '<td class="nowrap fs12">' + thDate(p.buyDate) + '</td>' +
+            '<td><div class="clip" title="' + esc(p.item) + '"><b>' + esc(p.item) + '</b></div>' +
+              '<div class="fs12 faint">' + esc(p.category || '') + (p.room ? ' · ห้อง ' + esc(p.room) : '') + '</div></td>' +
+            '<td class="num">' + num(p.qty) + '</td>' +
+            '<td class="num"><b>' + money(p.price) + '</b></td>' +
+            '<td class="fs12">' + esc(p.vendor || '–') + '</td>' +
+            '<td class="fs12">' + (w.has
+                ? statusBadge(w.state) + '<div class="faint" style="font-size:11px">' + thDateShort(w.end) + '</div>'
+                : '<span class="faint">–</span>') + '</td>' +
+            '<td>' + thumbsHtml(p.photoRefs) + '</td>' +
+            '<td>' + thumbsHtml(p.slipRefs) + '</td>' +
+            '<td><div class="t-actions">' +
+              '<button class="btn sm icon" onclick=\'formPurchase(' + attr(p) + ')\'>✏️</button>' +
+              '<button class="btn sm icon dgr" onclick="delPurchase(\'' + p.id + '\')">🗑</button>' +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyBox('ยังไม่มีรายการซื้อใน' + yearLabel, '<button class="btn pri" onclick="formPurchase(null)">+ เพิ่มรายการซื้อ</button>'),
+      '<button class="btn pri sm" onclick="formPurchase(null)">+ เพิ่มรายการซื้อ</button>', true);
+
+    return head + charts + cats + table;
+  }
+};
+
+function setParam(key, val){
+  S.params[key] = val;
+  load();
+}
+
+/* ============================================================
+   4) ล้างแอร์
+   ============================================================ */
+ROUTES.ac = {
+  load: function(){ return callApi('ac.matrix', { year: S.year }); },
+  render: function(d){
+    var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+    var head = '<div class="grid g4 mb12">' +
+      kpi('ล้างแล้ว ' + yearLabel, d.roomsDoneInYear + '/' + d.rooms.length + ' ห้อง', d.doneInYear + ' รอบทั้งหมด', 'accent') +
+      kpi('ยังไม่ได้ล้าง', d.roomsPending.length + ' ห้อง', d.roomsPending.slice(0,8).join(', ') + (d.roomsPending.length>8?'…':''), d.roomsPending.length ? 'warn':'good') +
+      kpi('ถึงกำหนดล้าง', d.overdue.length + ' ห้อง', 'รอบล้างทุก ' + d.cycleMonths + ' เดือน', d.overdue.length ? 'bad':'good') +
+      kpi('ความคืบหน้า', pct(d.rooms.length ? d.roomsDoneInYear/d.rooms.length*100 : 0), 'ของทั้งหมด ' + d.rooms.length + ' ห้อง') +
+    '</div>';
+
+    var actions = '<div class="row mb12">' +
+      '<button class="btn pri" onclick="formAc(null)">+ บันทึกการล้างแอร์</button>' +
+      '<button class="btn" onclick="formBulkAc()">📅 นัดล้างหลายห้องพร้อมกัน</button>' +
+      '<span class="sp"></span>' +
+      '<span class="fs12 muted">คลิกที่ห้องเพื่อดู/เพิ่มรอบการล้าง</span>' +
+    '</div>';
+
+    var grid = card('❄️ ตารางล้างแอร์รายห้อง · ' + yearLabel, roomFloors(d.rooms, function(r){
+      var cls = r.roundsInYear > 0 ? 's-ok' : (r.state === 'เกินกำหนด' ? 's-dgr' : (r.state === 'ยังไม่เคยล้าง' ? 's-warn' : 's-info'));
+      var sub = r.roundsInYear > 0
+        ? '<b>' + r.roundsInYear + ' รอบ</b><br>' + thDateShort(r.records.filter(function(x){return x.serviceDate;}).map(function(x){return x.serviceDate;}).sort().pop())
+        : (r.bookedInYear ? 'นัดแล้ว ' + r.bookedInYear : (r.lastService ? 'ล่าสุด ' + thDateShort(r.lastService) : 'ไม่มีประวัติ'));
+      return { cls: cls, sub: sub, onclick: 'openAcRoom(\'' + r.room + '\')' };
+    }), '', false);
+
+    var listRows = [];
+    d.rooms.forEach(function(r){ r.records.forEach(function(x){ x._room = r.room; listRows.push(x); }); });
+    listRows.sort(function(a,b){ return String(b.serviceDate||b.bookDate||'').localeCompare(String(a.serviceDate||a.bookDate||'')); });
+
+    var list = card('📋 ประวัติการล้างแอร์ · ' + yearLabel + ' (' + listRows.length + ')',
+      listRows.length ? '<div class="tw"><table class="t"><thead><tr>' +
+        '<th>ห้อง</th><th>รอบที่</th><th>วันที่นัด</th><th>วันที่ดำเนินการ</th><th>สถานะ</th>' +
+        '<th>ช่าง</th><th class="num">ค่าใช้จ่าย</th><th>ภาพ</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>' +
+        listRows.map(function(x){
+          return '<tr>' +
+            '<td><b>' + esc(x.room) + '</b></td>' +
+            '<td class="num">' + (x.round || 1) + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.serviceDate) + '</td>' +
+            '<td>' + statusBadge(x.status) + '</td>' +
+            '<td class="fs12">' + esc(x.technician || '–') + '</td>' +
+            '<td class="num">' + num(x.cost) + '</td>' +
+            '<td>' + thumbsHtml(x.photoRefs) + '</td>' +
+            '<td class="fs12 muted clip">' + esc(x.note || '') + '</td>' +
+            '<td><div class="t-actions">' +
+              '<button class="btn sm icon" onclick=\'formAc(' + attr(x) + ')\'>✏️</button>' +
+              '<button class="btn sm icon dgr" onclick="delAc(\'' + x.id + '\')">🗑</button>' +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyBox('ยังไม่มีบันทึกการล้างแอร์ใน' + yearLabel), '', true);
+
+    return head + actions + grid + '<div class="mt12">' + list + '</div>';
+  }
+};
+
+function openAcRoom(room){
+  var d = S.cache.ac;
+  var r = d.rooms.filter(function(x){ return x.room === room; })[0];
+  var body =
+    '<div class="grid g3 mb12">' +
+      kpi('รอบที่ล้างในปีนี้', (r.roundsInYear||0) + ' รอบ', '') +
+      kpi('ล้างล่าสุด', r.lastService ? thDate(r.lastService) : '–', r.lastService ? (daysAgo(r.lastService) + ' วันที่แล้ว') : '') +
+      kpi('ครบกำหนดรอบถัดไป', r.nextDue ? thDate(r.nextDue) : '–', r.state, r.state === 'เกินกำหนด' ? 'bad' : '') +
+    '</div>' +
+    (r.records.length
+      ? '<div class="tw"><table class="t" style="min-width:auto"><thead><tr><th>รอบ</th><th>นัด</th><th>ดำเนินการ</th><th>สถานะ</th><th>ภาพ</th><th></th></tr></thead><tbody>' +
+        r.records.map(function(x){
+          return '<tr><td>' + (x.round||1) + '</td><td class="fs12">' + thDate(x.bookDate) + '</td>' +
+            '<td class="fs12">' + thDate(x.serviceDate) + '</td><td>' + statusBadge(x.status) + '</td>' +
+            '<td>' + thumbsHtml(x.photoRefs) + '</td>' +
+            '<td><button class="btn sm" onclick=\'closeModal();formAc(' + attr(x) + ')\'>แก้ไข</button></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="empty">ยังไม่มีบันทึกในปีที่เลือก</div>');
+
+  openModal('❄️ ล้างแอร์ · ห้อง ' + room, body,
+    '<button class="btn" onclick="closeModal()">ปิด</button>' +
+    '<button class="btn pri" onclick="closeModal();formAc({room:\'' + room + '\'})">+ เพิ่มรอบการล้าง</button>');
+}
+
+/* ============================================================
+   5) ซ่อมแซมตามห้อง
+   ============================================================ */
+ROUTES.repairs = {
+  load: function(){ return callApi('repair.matrix', { year: S.year }); },
+  render: function(d){
+    var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+    var head = '<div class="grid g4 mb12">' +
+      kpi('งานซ่อม ' + yearLabel, d.totalJobs + ' งาน', 'จาก ' + d.rooms.filter(function(r){return r.count>0;}).length + ' ห้อง', 'accent') +
+      kpi('งานที่ยังไม่เสร็จ', d.openJobs + ' งาน', '', d.openJobs ? 'warn' : 'good') +
+      kpi('ค่าใช้จ่ายรวม', baht(d.totalCost), yearLabel) +
+      kpi('ห้องที่ยังไม่เคยซ่อม', d.rooms.filter(function(r){return r.count===0;}).length + ' ห้อง', 'ใน' + yearLabel) +
+    '</div>';
+
+    var actions = '<div class="row mb12">' +
+      '<button class="btn pri" onclick="formRepair(null)">+ แจ้งซ่อม / บันทึกงานซ่อม</button>' +
+      '<span class="sp"></span><span class="fs12 muted">คลิกที่ห้องเพื่อดูประวัติงานซ่อมของห้องนั้น</span></div>';
+
+    var grid = card('🔧 ภาพรวมงานซ่อมรายห้อง · ' + yearLabel, roomFloors(d.rooms, function(r){
+      var cls = r.openCount > 0 ? 's-dgr' : (r.count > 0 ? 's-ok' : 's-info');
+      var sub = r.count > 0
+        ? '<b>' + r.count + ' งาน</b>' + (r.openCount ? ' · ค้าง ' + r.openCount : '') + '<br>' + (r.last ? thDateShort(r.last) : '')
+        : 'ไม่มีงานซ่อม';
+      return { cls: cls, sub: sub, onclick: 'openRepairRoom(\'' + r.room + '\')' };
+    }));
+
+    var rows = [];
+    d.rooms.forEach(function(r){ r.records.forEach(function(x){ rows.push(x); }); });
+    rows.sort(function(a,b){ return String(b.repairDate||b.bookDate||'').localeCompare(String(a.repairDate||a.bookDate||'')); });
+
+    var list = card('📋 รายการงานซ่อม · ' + yearLabel + ' (' + rows.length + ')',
+      rows.length ? '<div class="tw"><table class="t" style="min-width:1020px"><thead><tr>' +
+        '<th>ห้อง</th><th>วันนัดซ่อม</th><th>วันเข้าซ่อม</th><th>ประเภท</th><th>รายการที่ซ่อมแซม</th>' +
+        '<th>สถานะ</th><th class="num">ค่าใช้จ่าย</th><th>ก่อน</th><th>หลัง</th><th></th></tr></thead><tbody>' +
+        rows.map(function(x){
+          return '<tr>' +
+            '<td><b>' + esc(x.room) + '</b></td>' +
+            '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.repairDate) + '</td>' +
+            '<td class="fs12">' + esc(x.category || '–') + '</td>' +
+            '<td class="fs13"><div class="clip">' + esc(x.items || '') + '</div></td>' +
+            '<td>' + statusBadge(x.status) + (x.priority && x.priority !== 'ปกติ' ? ' ' + statusBadge(x.priority) : '') + '</td>' +
+            '<td class="num">' + num(x.cost) + '</td>' +
+            '<td>' + thumbsHtml(x.beforeRefs) + '</td>' +
+            '<td>' + thumbsHtml(x.afterRefs) + '</td>' +
+            '<td><div class="t-actions">' +
+              '<button class="btn sm icon" onclick=\'formRepair(' + attr(x) + ')\'>✏️</button>' +
+              '<button class="btn sm icon dgr" onclick="delRepair(\'' + x.id + '\')">🗑</button>' +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyBox('ยังไม่มีงานซ่อมใน' + yearLabel, '<button class="btn pri" onclick="formRepair(null)">+ แจ้งซ่อม</button>'), '', true);
+
+    return head + actions + grid + '<div class="mt12">' + list + '</div>';
+  }
+};
+
+function openRepairRoom(room){
+  var d = S.cache.repairs;
+  var r = d.rooms.filter(function(x){ return x.room === room; })[0];
+  var body = '<div class="grid g3 mb12">' +
+      kpi('งานทั้งหมด', r.count + ' งาน', '') +
+      kpi('ยังไม่เสร็จ', r.openCount + ' งาน', '', r.openCount ? 'warn':'good') +
+      kpi('ค่าใช้จ่าย', baht(r.cost), '') +
+    '</div>' +
+    (r.records.length ? '<div class="tl">' + r.records.map(function(x){
+      return '<div class="tl-i"><div class="d">' + thDate(x.repairDate || x.bookDate) + ' · ' + esc(x.category||'') + ' ' + statusBadge(x.status) + '</div>' +
+        '<div class="t">' + esc(x.items || '') + '</div>' +
+        (x.technician ? '<div class="fs12 muted">ช่าง: ' + esc(x.technician) + '</div>' : '') +
+        (x.cost ? '<div class="fs12 muted">ค่าใช้จ่าย ' + baht(x.cost) + '</div>' : '') +
+        '<div class="mt8">' + thumbsHtml((x.beforeRefs||[]).concat(x.afterRefs||[])) + '</div>' +
+        '<div class="mt8"><button class="btn sm" onclick=\'closeModal();formRepair(' + attr(x) + ')\'>แก้ไข</button></div>' +
+      '</div>';
+    }).join('') + '</div>' : '<div class="empty">ยังไม่มีงานซ่อมในปีที่เลือก</div>');
+
+  openModal('🔧 งานซ่อม · ห้อง ' + room, body,
+    '<button class="btn" onclick="closeModal()">ปิด</button>' +
+    '<button class="btn pri" onclick="closeModal();formRepair({room:\'' + room + '\'})">+ เพิ่มงานซ่อม</button>', true);
+}
+
+/* ============================================================
+   6) ซ่อมแซมตึกโดยรวม
+   ============================================================ */
+ROUTES.building = {
+  load: function(){
+    return Promise.all([
+      callApi('building.summary', { year: S.year }),
+      callApi('building.list', { year: S.year, zone: S.params.zone || '', status: '' })
+    ]).then(function(r){ var d = r[0]; d.items = r[1]; return d; });
+  },
+  render: function(d){
+    var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+    var head = '<div class="grid g4 mb12">' +
+      kpi('งานปี ' + (S.year==='all'?'ทั้งหมด':S.year), d.yearCount + ' งาน', 'สะสม ' + d.total + ' งาน', 'accent') +
+      kpi('ค่าใช้จ่าย ' + yearLabel, baht(d.yearCost), 'สะสม ' + baht(d.grandCost)) +
+      kpi('งานที่ยังไม่เสร็จ', d.openCount + ' งาน', '', d.openCount ? 'warn' : 'good') +
+      kpi('ครบกำหนดใน 90 วัน', d.upcoming.length + ' งาน', d.upcoming.length ? d.upcoming[0].title : '', d.upcoming.length ? 'warn' : '') +
+    '</div>';
+
+    var zones = '<div class="chips mb12">' +
+      '<button class="chip ' + (!S.params.zone?'on':'') + '" onclick="setParam(\'zone\',\'\')">ทุกส่วน</button>' +
+      d.byZone.map(function(z){
+        return '<button class="chip ' + (S.params.zone===z.zone?'on':'') + '" onclick="setParam(\'zone\',\'' + esc(z.zone) + '\')">' +
+               esc(z.zone) + ' (' + z.count + ')</button>';
+      }).join('') + '</div>';
+
+    var charts = '<div class="grid g2 mb12">' +
+      card('🏗️ ค่าใช้จ่ายแยกตามส่วนของอาคาร', barChart(d.byZone, 'zone', 'cost', function(i){ return money(i.cost) + ' ฿'; })) +
+      card('📅 ค่าใช้จ่ายแยกตามปี', barChart(
+        d.byYear.map(function(y){ return { label:'ปี ' + y.year + ' (' + y.count + ' งาน)', cost:y.cost }; }),
+        'label', 'cost', function(i){ return money(i.cost) + ' ฿'; })) +
+    '</div>';
+
+    var rows = d.items;
+    var list = card('🏢 รายการซ่อมแซมตึกโดยรวม · ' + yearLabel + ' (' + rows.length + ')',
+      rows.length ? '<div class="tw"><table class="t" style="min-width:1020px"><thead><tr>' +
+        '<th>ส่วนของอาคาร</th><th>รายการ</th><th>นัด</th><th>เริ่ม</th><th>เสร็จ</th><th>สถานะ</th>' +
+        '<th>ผู้รับเหมา</th><th class="num">ค่าใช้จ่าย</th><th>รอบถัดไป</th><th>ภาพ</th><th></th></tr></thead><tbody>' +
+        rows.map(function(x){
+          return '<tr>' +
+            '<td class="fs12"><b>' + esc(x.zone || '–') + '</b></td>' +
+            '<td class="fs13"><div class="clip">' + esc(x.title) + '</div>' +
+              (x.note ? '<div class="fs12 faint clip">' + esc(x.note) + '</div>' : '') + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.startDate) + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.endDate) + '</td>' +
+            '<td>' + statusBadge(x.status) + '</td>' +
+            '<td class="fs12">' + esc(x.contractor || '–') + '</td>' +
+            '<td class="num">' + num(x.cost) + '</td>' +
+            '<td class="nowrap fs12">' + (x.nextDue ? thDateShort(x.nextDue) +
+                (x.dueInDays != null ? '<div class="faint" style="font-size:11px">' + (x.dueInDays<0 ? 'เลย ' + (-x.dueInDays) + ' วัน' : 'อีก ' + x.dueInDays + ' วัน') + '</div>' : '')
+              : '–') + '</td>' +
+            '<td>' + thumbsHtml((x.photoRefs||[]).concat(x.slipRefs||[])) + '</td>' +
+            '<td><div class="t-actions">' +
+              '<button class="btn sm icon" onclick=\'formBuilding(' + attr(x) + ')\'>✏️</button>' +
+              '<button class="btn sm icon dgr" onclick="delBuilding(\'' + x.id + '\')">🗑</button>' +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyBox('ยังไม่มีงานซ่อมแซมตึกใน' + yearLabel, '<button class="btn pri" onclick="formBuilding(null)">+ เพิ่มงานซ่อมตึก</button>'),
+      '<button class="btn pri sm" onclick="formBuilding(null)">+ เพิ่มงานซ่อมตึก</button>', true);
+
+    return head + zones + charts + list;
+  }
+};
+
+/* ============================================================
+   7) ห้องพัก
+   ============================================================ */
+ROUTES.rooms = {
+  load: function(){ return callApi('room.list').then(function(floors){ return { floors: floors, years: [] }; }); },
+  render: function(d){
+    var flat = [];
+    d.floors.forEach(function(f){ f.rooms.forEach(function(r){ flat.push(r); }); });
+    var occ = flat.filter(function(r){ return r.status === 'มีผู้เช่า'; }).length;
+
+    var head = '<div class="grid g4 mb12">' +
+      kpi('ห้องทั้งหมด', flat.length + ' ห้อง', '5 ชั้น', 'accent') +
+      kpi('มีผู้เช่า', occ + ' ห้อง', pct(flat.length ? occ/flat.length*100 : 0) + ' อัตราเข้าพัก', 'good') +
+      kpi('ห้องว่าง', flat.filter(function(r){ return r.status === 'ว่าง'; }).length + ' ห้อง', '', 'warn') +
+      kpi('ค่าเช่ารวม/เดือน', baht(flat.reduce(function(a,r){ return a + (Number(r.rent)||0); }, 0)), 'จากห้องที่กรอกค่าเช่าไว้') +
+    '</div>';
+
+    var grid = card('🚪 ผังห้องพัก', roomFloors(flat, function(r){
+      var cls = r.status === 'มีผู้เช่า' ? 's-ok' : (r.status === 'ว่าง' ? 's-info' : 's-warn');
+      return { cls: cls, sub: esc(r.tenant || r.status || '') + (r.rent ? '<br>' + money(r.rent) + ' ฿' : ''),
+               onclick: 'openRoom(\'' + r.room + '\')' };
+    }), '<span class="fs12 muted">คลิกที่ห้องเพื่อดูประวัติทั้งหมดของห้องนั้น</span>');
+
+    return head + grid;
+  }
+};
+
+function openRoom(room){
+  openModal('🚪 ห้อง ' + room, '<div class="empty"><span class="spin"></span> กำลังโหลด…</div>');
+  callApi('room.profile', { room: room }).then(function(p){
+    var i = p.info;
+    var body =
+      '<div class="grid g4 mb12">' +
+        kpi('สถานะ', i.status || '–', esc(i.tenant || '')) +
+        kpi('ล้างแอร์', p.acCount + ' ครั้ง', p.lastAc ? 'ล่าสุด ' + thDate(p.lastAc) : 'ไม่มีประวัติ') +
+        kpi('งานซ่อม', p.repairCount + ' งาน', 'ค้าง ' + p.openRepairs, p.openRepairs ? 'warn' : '') +
+        kpi('ค่าใช้จ่ายสะสม', baht(p.totalCost), 'ซ่อม + ล้างแอร์') +
+      '</div>' +
+      '<div class="row mb12">' +
+        '<button class="btn sm" onclick=\'closeModal();formRoom(' + attr(i) + ')\'>✏️ แก้ไขข้อมูลห้อง</button>' +
+        '<button class="btn sm" onclick="closeModal();formRepair({room:\'' + room + '\'})">+ แจ้งซ่อม</button>' +
+        '<button class="btn sm" onclick="closeModal();formAc({room:\'' + room + '\'})">+ ล้างแอร์</button>' +
+      '</div>' +
+      (p.assets.length ? '<div class="card mb12"><div class="card-h"><h3>ทรัพย์สินในห้อง</h3></div><div class="card-b">' +
+        '<div class="tw"><table class="t" style="min-width:auto"><thead><tr><th>ทรัพย์สิน</th><th>ยี่ห้อ/รุ่น</th><th>ติดตั้ง</th><th>สถานะ</th></tr></thead><tbody>' +
+        p.assets.map(function(a){
+          return '<tr><td>' + esc(a.name) + '</td><td class="fs12">' + esc(a.brand||'–') + '</td>' +
+                 '<td class="fs12">' + thDate(a.installDate) + '</td><td>' + statusBadge(a.status) + '</td></tr>';
+        }).join('') + '</tbody></table></div></div></div>' : '') +
+      '<h3 class="fs13 mb8">ประวัติทั้งหมด (' + p.timeline.length + ')</h3>' +
+      (p.timeline.length ? '<div class="tl">' + p.timeline.map(function(e){
+        return '<div class="tl-i"><div class="d">' + thDate(e.date) + ' · ' + esc(e.type) + ' ' + statusBadge(e.status) + '</div>' +
+          '<div class="t">' + esc(e.title) + '</div>' +
+          (e.detail ? '<div class="fs12 muted">' + esc(e.detail) + '</div>' : '') +
+          (e.cost ? '<div class="fs12 muted">' + baht(e.cost) + '</div>' : '') +
+          (e.photos && e.photos.length ? '<div class="mt8">' + thumbsHtml(e.photos) + '</div>' : '') +
+        '</div>';
+      }).join('') + '</div>' : '<div class="empty">ยังไม่มีประวัติ</div>');
+
+    openModal('🚪 ห้อง ' + room + ' · ชั้น ' + (i.floor||''), body,
+      '<button class="btn" onclick="closeModal()">ปิด</button>', true);
+  }).catch(function(e){ toast(e.message||e, 'err'); closeModal(); });
+}
+
+
+/* ============================================================
+   8) รายรับ-รายจ่ายหอ (รายเดือน)
+   ============================================================ */
+ROUTES.finance = {
+  load: function(){
+    return Promise.all([
+      callApi('finance.summary', { year: S.year }),
+      callApi('finance.list', { year: S.year, kind: S.params.kind || '' })
+    ]).then(function(r){ var d = r[0]; d.items = r[1]; return d; });
+  },
+  render: function(d){
+    var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+    var head = '<div class="grid g4 mb12">' +
+      kpi('รายรับ ' + yearLabel, baht(d.income), 'เฉลี่ย ' + baht(d.avgIncome) + '/เดือน', 'good') +
+      kpi('รายจ่าย ' + yearLabel, baht(d.expense), 'เฉลี่ย ' + baht(d.avgExpense) + '/เดือน', 'bad') +
+      kpi('คงเหลือสุทธิ', baht(d.net), 'อัตรากำไร ' + pct(d.margin), 'accent ' + (d.net >= 0 ? 'good' : 'bad')) +
+      kpi('บันทึกแล้ว', d.monthsWithData + ' เดือน', d.count + ' รายการ') +
+    '</div>';
+
+    var maxBar = Math.max.apply(null, d.byMonth.map(function(m){ return Math.max(m.income, m.expense); })) || 1;
+    var monthly = card('📅 รายเดือน · ' + yearLabel,
+      '<div class="tw"><table class="t"><thead><tr>' +
+      '<th>เดือน</th><th class="num">รายรับ</th><th class="num">รายจ่าย</th><th class="num">คงเหลือ</th>' +
+      '<th style="width:38%">เทียบรายรับ / รายจ่าย</th></tr></thead><tbody>' +
+      d.byMonth.map(function(m){
+        var blank = !m.income && !m.expense;
+        return '<tr' + (blank ? ' style="opacity:.45"' : '') + '>' +
+          '<td><b>' + m.label + '</b></td>' +
+          '<td class="num">' + (m.income ? money(m.income) : '–') + '</td>' +
+          '<td class="num">' + (m.expense ? money(m.expense) : '–') + '</td>' +
+          '<td class="num"><b style="color:' + (m.net >= 0 ? 'var(--ok)' : 'var(--danger)') + '">' +
+            (blank ? '–' : money(m.net)) + '</b></td>' +
+          '<td>' +
+            '<div class="bar-track mb8"><div class="bar-fill" style="width:' + (m.income/maxBar*100) + '%;background:var(--ok)"></div></div>' +
+            '<div class="bar-track"><div class="bar-fill" style="width:' + (m.expense/maxBar*100) + '%;background:var(--danger)"></div></div>' +
+          '</td></tr>';
+      }).join('') + '</tbody></table></div>', '', true);
+
+    var byKind = card('🧾 แยกตามรายการ · ' + yearLabel,
+      barChart(d.byKind.map(function(k){ return { label: k.kind + ' (' + k.count + ')', total: k.total }; }),
+               'label', 'total', function(i){ return money(i.total) + ' ฿'; }));
+
+    var byYear = card('📊 เทียบรายปี',
+      d.byYear.length ? '<div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
+        '<th>ปี</th><th class="num">รายรับ</th><th class="num">รายจ่าย</th><th class="num">คงเหลือ</th></tr></thead><tbody>' +
+        d.byYear.map(function(y){
+          return '<tr onclick="setYearFromTable(' + y.year + ')" style="cursor:pointer">' +
+            '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
+            '<td class="num">' + money(y.income) + '</td><td class="num">' + money(y.expense) + '</td>' +
+            '<td class="num"><b style="color:' + (y.net>=0?'var(--ok)':'var(--danger)') + '">' + money(y.net) + '</b></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="empty">ยังไม่มีข้อมูล</div>', '', true);
+
+    var kinds = '<div class="chips mb12">' +
+      '<button class="chip ' + (!S.params.kind?'on':'') + '" onclick="setParam(\'kind\',\'\')">ทุกรายการ</button>' +
+      d.byKind.map(function(k){
+        return '<button class="chip ' + (S.params.kind===k.kind?'on':'') + '" onclick="setParam(\'kind\',\'' + esc(k.kind) + '\')">' +
+               esc(k.kind) + ' (' + k.count + ')</button>';
+      }).join('') + '</div>';
+
+    var rows = d.items;
+    var list = card('📒 รายการทั้งหมด · ' + yearLabel + ' (' + rows.length + ')',
+      rows.length ? '<div class="tw"><table class="t"><thead><tr>' +
+        '<th>วันที่</th><th>รายการ</th><th class="num">จำนวนเงิน</th><th>รอบบิล</th><th>ช่องทาง</th>' +
+        '<th>สลิป</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>' +
+        rows.map(function(x){
+          var inc = x.flow === 'รายรับ';
+          return '<tr>' +
+            '<td class="nowrap fs12">' + thDate(x.date) + '</td>' +
+            '<td><b>' + esc(x.kind) + '</b> ' + (inc ? '<span class="b ok">รายรับ</span>' : '<span class="b mute">รายจ่าย</span>') + '</td>' +
+            '<td class="num"><b style="color:' + (inc?'var(--ok)':'var(--ink)') + '">' + (inc?'+':'−') + money(x.amount, 2) + '</b></td>' +
+            '<td class="fs12">' + esc(x.billMonth || '–') + '</td>' +
+            '<td class="fs12">' + esc(x.channel || '–') + '</td>' +
+            '<td>' + thumbsHtml(x.slipRefs) + '</td>' +
+            '<td class="fs12 muted clip">' + esc(x.note || '') + '</td>' +
+            '<td><div class="t-actions">' +
+              '<button class="btn sm icon" onclick=\'formFinance(' + attr(x) + ')\'>✏️</button>' +
+              '<button class="btn sm icon dgr" onclick="delFinance(\'' + x.id + '\')">🗑</button>' +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyBox('ยังไม่มีรายการใน' + yearLabel, '<button class="btn pri" onclick="formFinance(null)">+ บันทึกรายการ</button>'),
+      '<button class="btn pri sm" onclick="formFinance(null)">+ บันทึกรายรับ-รายจ่าย</button>', true);
+
+    return head + monthly + '<div class="grid g2 mt12 mb12">' + byKind + byYear + '</div>' + kinds + list;
+  }
+};
+
+/* ============================================================
+   9) รายงาน & สำรองข้อมูล
+   ============================================================ */
+ROUTES.reports = {
+  load: function(){
+    return Promise.all([
+      callApi('report.costPerRoom', { year: S.year }),
+      callApi('report.upcoming', { days: 90 }),
+      callApi('backup.sheets', {}),
+      callApi('share.links', {}).catch(function(){ return {}; }),
+      callApi('backup.history', {}).catch(function(){ return []; })
+    ]).then(function(r){
+      return { cost: r[0], upcoming: r[1], sheets: r[2], links: r[3] || {}, backups: r[4] || [], years: [] };
+    });
+  },
+  render: function(d){
+    var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+    var c = d.cost;
+    var top = c.rooms.filter(function(r){ return r.total > 0; });
+    var maxCost = top.length ? top[0].total : 1;
+
+    var upcoming = card('🗓️ ปฏิทินงานที่กำลังจะถึง (90 วัน) · ' + d.upcoming.length + ' งาน',
+      d.upcoming.length ? '<div class="alist">' + d.upcoming.map(function(u){
+        var lvl = u.daysLeft < 0 ? 'danger' : (u.daysLeft <= 7 ? 'warn' : 'info');
+        return '<div class="ali l-' + lvl + '" onclick="go(\'' + jumpPage(u.module) + '\')">' +
+          '<div class="ic">' + u.icon + '</div><div>' +
+          '<div class="tt">' + esc(u.title) + '</div>' +
+          '<div class="dd">' + thDate(u.date) + ' · ' +
+            (u.daysLeft < 0 ? 'เลยกำหนด ' + (-u.daysLeft) + ' วัน' : (u.daysLeft === 0 ? 'วันนี้' : 'อีก ' + u.daysLeft + ' วัน')) +
+            (u.detail ? ' · ' + esc(u.detail) : '') + '</div></div></div>';
+      }).join('') + '</div>' : '<div class="empty"><div class="big">🌤️</div>ไม่มีงานนัดหมายใน 90 วันข้างหน้า</div>', '', true);
+
+    var costCard = card('🏷️ ค่าใช้จ่ายสะสมรายห้อง · ' + yearLabel,
+      '<div class="grid g3 mb12">' +
+        kpi('รวมทุกห้อง', baht(c.total), '') +
+        kpi('เฉลี่ยต่อห้อง', baht(c.average), '') +
+        kpi('ห้องที่ใช้จ่ายสูงสุด', top.length ? ('ห้อง ' + top[0].room) : '–', top.length ? baht(top[0].total) : '') +
+      '</div>' +
+      (top.length ? '<div class="tw"><table class="t"><thead><tr>' +
+        '<th>ห้อง</th><th class="num">งานซ่อม</th><th class="num">ค่าซ่อม</th><th class="num">ล้างแอร์</th>' +
+        '<th class="num">ของเข้าห้อง</th><th class="num">รวม</th><th style="width:26%"></th></tr></thead><tbody>' +
+        top.map(function(r){
+          return '<tr onclick="openRoom(\'' + r.room + '\')" style="cursor:pointer">' +
+            '<td><b>' + r.room + '</b> <span class="faint fs12">ชั้น ' + r.floor + '</span></td>' +
+            '<td class="num">' + r.jobs + '</td>' +
+            '<td class="num">' + (r.repair ? money(r.repair) : '–') + '</td>' +
+            '<td class="num">' + (r.ac ? money(r.ac) : '–') + '</td>' +
+            '<td class="num">' + (r.purchase ? money(r.purchase) : '–') + '</td>' +
+            '<td class="num"><b>' + money(r.total) + '</b></td>' +
+            '<td><div class="bar-track"><div class="bar-fill" style="width:' + (r.total/maxCost*100) + '%"></div></div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="empty">ยังไม่มีค่าใช้จ่ายที่บันทึกไว้รายห้อง<div class="fs12 mt8">ใส่ "ค่าใช้จ่าย" ในงานซ่อม/ล้างแอร์ หรือระบุห้องในรายการซื้อของ แล้วตัวเลขจะขึ้นที่นี่</div></div>'));
+
+    var backup = card('💾 สำรองและกู้คืนข้อมูล',
+      '<p class="fs13 muted">ข้อมูลทั้งหมดอยู่ในระบบนี้ — ควรดาวน์โหลดสำรองไว้เดือนละครั้ง ' +
+      'ไฟล์ JSON นำกลับเข้าระบบได้ ส่วน CSV เปิดใน Excel หรือ Google Sheets ได้เลย</p>' +
+      '<div class="row mt12">' +
+        '<button class="btn pri" onclick="doExportJson()">⬇️ ดาวน์โหลดสำรองทั้งหมด (JSON)</button>' +
+        '<button class="btn" onclick="doImportJson()">⬆️ กู้คืนจากไฟล์สำรอง</button>' +
+      '</div>' +
+      '<div class="hr"></div>' +
+      '<div class="fs12 muted mb8">ส่งออกเป็น CSV แยกตาราง</div>' +
+      '<div class="chips">' + d.sheets.map(function(n){
+        return '<button class="chip" onclick="doExportCsv(\'' + esc(n) + '\')">' + esc(sheetLabel(n)) + '</button>';
+      }).join('') + '</div>');
+
+    var share = (CAN_EDIT && d.links && d.links.viewUrl) ? card('🔗 ลิงก์เข้าใช้งาน',
+      '<div class="f mb12"><label>🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — อย่าส่งต่อ)</label>' +
+        '<input class="inp" readonly value="' + esc(d.links.adminUrl) + '" onclick="this.select()"></div>' +
+      '<div class="f"><label>👀 ลิงก์แชร์ (เปิดดูได้อย่างเดียว — ส่งให้ใครก็ได้)</label>' +
+        '<input class="inp" id="shareUrl" readonly value="' + esc(d.links.viewUrl) + '" onclick="this.select()"></div>' +
+      '<div class="row mt12">' +
+        '<button class="btn pri" onclick="copyShare()">📋 คัดลอกลิงก์แชร์</button>' +
+        '<button class="btn dgr" onclick="doRotateShare()">🔁 ออกลิงก์แชร์ใหม่</button>' +
+      '</div>' +
+      '<p class="fs12 muted mt12">คนที่เปิดลิงก์แชร์จะเห็นข้อมูลทั้งหมดแบบอ่านอย่างเดียว ' +
+      'ไม่ต้องมีบัญชี Google และไม่เห็น Google Sheet ของคุณ · ' +
+      'ถ้าลิงก์หลุดให้กด "ออกลิงก์แชร์ใหม่" ลิงก์เดิมจะใช้ไม่ได้ทันที</p>') : '';
+
+    var drive = CAN_EDIT ? card('☁️ สำรองอัตโนมัติใน Google Drive (' + d.backups.length + ' ชุด)',
+      '<p class="fs13 muted">ระบบเก็บไฟล์สำรองไว้ในโฟลเดอร์ "สำรองข้อมูล" บนไดรฟ์ของคุณ ' +
+      'ตั้งให้ทำอัตโนมัติทุกวันได้จากเมนูในชีต</p>' +
+      '<div class="row mt12"><button class="btn" onclick="doBackupNow()">💾 สำรองเดี๋ยวนี้</button></div>' +
+      (d.backups.length ? '<div class="hr"></div><div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
+        '<th>ไฟล์</th><th>เวลา</th><th class="num">ขนาด</th></tr></thead><tbody>' +
+        d.backups.slice(0,10).map(function(b){
+          return '<tr><td class="fs12"><a href="' + esc(b.url) + '" target="_blank">' + esc(b.name) + '</a></td>' +
+            '<td class="fs12">' + esc(b.at) + '</td>' +
+            '<td class="num fs12">' + Math.round(b.size/1024) + ' KB</td></tr>';
+        }).join('') + '</tbody></table></div>' : '')) : '';
+
+    return upcoming + '<div class="mt12">' + costCard + '</div>' +
+           (share ? '<div class="mt12">' + share + '</div>' : '') +
+           '<div class="mt12">' + backup + '</div>' +
+           (drive ? '<div class="mt12">' + drive + '</div>' : '');
+  }
+};
+
+function sheetLabel(n){
+  return ({
+    Debts:'ก้อนหนี้', DebtPayments:'รายการชำระหนี้', Purchases:'รายการซื้อของ', Rooms:'ทะเบียนห้อง',
+    AcService:'ล้างแอร์', RoomRepairs:'ซ่อมแซมห้อง', BuildingRepairs:'ซ่อมแซมตึก',
+    RoomAssets:'ทรัพย์สินห้อง', Finance:'รายรับ-รายจ่าย', Settings:'ตั้งค่า', ActivityLog:'ประวัติการแก้ไข'
+  })[n] || n;
+}
+
+/* ============================================================
+   ตัวช่วยวาดซ้ำ ๆ
+   ============================================================ */
+
+function kpi(label, value, cap, cls){
+  return '<div class="kpi ' + (cls||'') + '">' +
+    '<div class="lbl">' + esc(label) + '</div>' +
+    '<div class="val">' + value + '</div>' +
+    (cap ? '<div class="cap">' + cap + '</div>' : '') + '</div>';
+}
+
+function card(title, body, actions, flush){
+  return '<div class="card">' +
+    (title ? '<div class="card-h"><h3>' + title + '</h3>' + (actions ? '<div class="sp">' + actions + '</div>' : '') + '</div>' : '') +
+    '<div class="card-b' + (flush ? ' flush' : '') + '">' + body + '</div></div>';
+}
+
+/** วาดผังห้องแบ่งตามชั้น — decorate(room) -> {cls, sub, onclick} */
+function roomFloors(rooms, decorate){
+  var byFloor = {};
+  rooms.forEach(function(r){
+    var f = r.floor || Number(String(r.room).charAt(0));
+    (byFloor[f] = byFloor[f] || []).push(r);
+  });
+  var floors = Object.keys(byFloor).sort();
+  return '<div class="floors">' + floors.map(function(f){
+    return '<div class="floor"><div class="floor-tag"><b>' + f + '</b>ชั้น</div><div class="rooms">' +
+      byFloor[f].map(function(r){
+        var d = decorate(r);
+        return '<div class="room ' + d.cls + '" onclick="' + d.onclick + '">' +
+          '<span class="dot"></span><div class="no">' + esc(r.room) + '</div>' +
+          '<div class="st">' + d.sub + '</div></div>';
+      }).join('') + '</div></div>';
+  }).join('') + '</div>';
+}
+
+/** ใส่ object ลงใน onclick attribute ได้อย่างปลอดภัย */
+function attr(obj){
+  var clean = {};
+  Object.keys(obj).forEach(function(k){
+    if (k.indexOf('_') === 0 || /Refs$/.test(k) || k === 'records' || k === 'warranty') return;
+    clean[k] = obj[k];
+  });
+  return JSON.stringify(clean).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+}
+</script>
+<script>
+/* =========================================================
+   Forms.html — ฟอร์มเพิ่ม/แก้ไข และการลบ
+   ========================================================= */
+
+var FORM = { specs: [], keep: {}, bucket: 'misc' };
+
+/* ---------------- form engine ---------------- */
+
+function fieldsHtml(specs, rec){
+  rec = rec || {};
+  FORM.specs = specs;
+  FORM.keep = {};
+  return '<div class="fgrid">' + specs.map(function(f){
+    var v = rec[f.key];
+    var id = 'f_' + f.key;
+    var inner;
+
+    if (f.type === 'select') {
+      var opts = (f.options || []).map(function(o){
+        var val = typeof o === 'object' ? o.value : o;
+        var lab = typeof o === 'object' ? o.label : o;
+        return '<option value="' + esc(val) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + esc(lab) + '</option>';
+      }).join('');
+      inner = '<select class="sel" id="' + id + '">' + (f.blank !== false ? '<option value="">— เลือก —</option>' : '') + opts + '</select>';
+
+    } else if (f.type === 'textarea') {
+      inner = '<textarea class="ta" id="' + id + '" placeholder="' + esc(f.ph||'') + '">' + esc(v||'') + '</textarea>';
+
+    } else if (f.type === 'files') {
+      FORM.keep[f.key] = (rec[f.key] && rec[f.key].length) ? [].concat(rec[f.key]) : [];
+      inner =
+        '<div id="' + id + '_existing">' + existingFilesHtml(f.key) + '</div>' +
+        '<label class="file-drop" for="' + id + '">📎 แตะเพื่อเลือกไฟล์ (เลือกได้หลายไฟล์ · ไม่เกิน 12 MB ต่อไฟล์)' +
+        '<input type="file" id="' + id + '" multiple accept="image/*,application/pdf" style="display:none" ' +
+        'onchange="previewPicked(this,\'' + id + '\')"></label>' +
+        '<div id="' + id + '_preview" class="thumbs mt8"></div>';
+
+    } else if (f.type === 'date') {
+      inner = '<input type="date" class="inp" id="' + id + '" value="' + esc(v || '') + '">';
+
+    } else if (f.type === 'number' || f.type === 'money') {
+      inner = '<input type="number" step="' + (f.type === 'money' ? '0.01' : '1') + '" class="inp" id="' + id + '" ' +
+              'value="' + (v == null || v === '' ? '' : esc(v)) + '" placeholder="' + esc(f.ph||'') + '" inputmode="decimal">';
+
+    } else {
+      inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(v || '') + '" placeholder="' + esc(f.ph||'') + '">';
+    }
+
+    return '<div class="f' + (f.full ? ' full' : '') + '">' +
+      '<label for="' + id + '">' + esc(f.label) + (f.required ? ' <span style="color:var(--danger)">*</span>' : '') + '</label>' +
+      inner + (f.hint ? '<div class="hint">' + esc(f.hint) + '</div>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+
+function existingFilesHtml(key){
+  var list = FORM.keep[key] || [];
+  if (!list.length) return '';
+  return '<div class="thumbs mb8">' + list.map(function(url, i){
+    var id = String(url).match(/[-\w]{20,}/);
+    var thumb = id ? 'https://drive.google.com/thumbnail?id=' + id[0] + '&sz=w200' : '';
+    return '<span style="position:relative;display:inline-block">' +
+      (thumb ? '<img class="thumb" src="' + esc(thumb) + '" onclick="window.open(\'' + esc(url) + '\',\'_blank\')">'
+             : '<a class="b info" href="' + esc(url) + '" target="_blank">ไฟล์ ' + (i+1) + '</a>') +
+      '<button type="button" onclick="dropFile(\'' + key + '\',' + i + ')" title="เอาออก" ' +
+      'style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:0;border-radius:99px;width:18px;height:18px;line-height:1;cursor:pointer;font-size:12px">×</button>' +
+      '</span>';
+  }).join('') + '</div>';
+}
+
+function dropFile(key, idx){
+  FORM.keep[key].splice(idx, 1);
+  document.getElementById('f_' + key + '_existing').innerHTML = existingFilesHtml(key);
+}
+
+function previewPicked(input, id){
+  var box = document.getElementById(id + '_preview');
+  var files = Array.prototype.slice.call(input.files || []);
+  box.innerHTML = files.map(function(f){
+    return '<span class="b info">' + esc(f.name.slice(0,26)) + ' · ' + Math.round(f.size/1024) + ' KB</span>';
+  }).join(' ');
+}
+
+/** อ่านค่าจากฟอร์ม + อัปโหลดไฟล์ใหม่ แล้วคืน object พร้อมบันทึก */
+function readForm(specs, bucket){
+  var out = {};
+  var uploads = [];
+
+  specs.forEach(function(f){
+    var el = document.getElementById('f_' + f.key);
+    if (!el) return;
+    if (f.type === 'files') {
+      uploads.push(
+        uploadFiles(el, bucket).then(function(refs){
+          out[f.key] = (FORM.keep[f.key] || []).concat(refs.map(function(r){ return r.url; }));
+        })
+      );
+    } else if (f.type === 'number' || f.type === 'money') {
+      out[f.key] = el.value === '' ? null : Number(el.value);
+    } else {
+      out[f.key] = el.value;
+    }
+  });
+
+  return Promise.all(uploads).then(function(){ return out; });
+}
+
+/** โครงฟอร์มมาตรฐาน: เปิด modal, จัดการปุ่มบันทึก, รีโหลดหน้า */
+function openForm(opts){
+  var rec = opts.record || {};
+  openModal(opts.title,
+    fieldsHtml(opts.fields, rec),
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    (rec.id && opts.onDelete ? '<button class="btn dgr" id="fDel">ลบรายการนี้</button>' : '') +
+    '<button class="btn pri" id="fSave">' + (rec.id ? 'บันทึกการแก้ไข' : 'บันทึก') + '</button>',
+    opts.wide);
+
+  if (rec.id && opts.onDelete) {
+    document.getElementById('fDel').onclick = function(){ closeModal(); opts.onDelete(rec.id); };
+  }
+
+  document.getElementById('fSave').onclick = function(){
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
+
+    readForm(opts.fields, opts.bucket || 'misc').then(function(data){
+      var missing = opts.fields.filter(function(f){
+        return f.required && (data[f.key] == null || data[f.key] === '');
+      });
+      if (missing.length) throw new Error('กรุณากรอก: ' + missing.map(function(f){ return f.label; }).join(', '));
+
+      var record = Object.assign({}, opts.base || {}, data);
+      if (rec.id) record.id = rec.id;
+      return callApi(opts.action, Object.assign({ record: record }, opts.extra || {}));
+    }).then(function(){
+      closeModal();
+      toast('บันทึกเรียบร้อย', 'ok');
+      load();
+    }).catch(function(e){
+      btn.disabled = false;
+      btn.textContent = rec.id ? 'บันทึกการแก้ไข' : 'บันทึก';
+      toast(e.message || e, 'err');
+    });
+  };
+}
+
+function roomOptions(){ return S.boot ? S.boot.rooms : []; }
+function opt(name){ return (S.boot && S.boot.schema[name]) || []; }
+function today(){ return new Date().toISOString().slice(0,10); }
+
+/* ============================================================
+   ฟอร์ม: ก้อนหนี้
+   ============================================================ */
+function formDebt(rec, ledger){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขก้อนหนี้' : 'เพิ่มก้อนหนี้',
+    record: rec, action: 'debt.save', base: { ledger: ledger },
+    onDelete: delDebt,
+    fields: [
+      { key:'title',    label:'รายการหนี้', required:true, full:true, ph:'เช่น ค่าก่อสร้าง The M Corner AP' },
+      { key:'ledger',   label:'ประเภทบัญชี', type:'select', options:['หนี้หลัก','หนี้รอง'], blank:false },
+      { key:'creditor', label:'เจ้าหนี้', ph:'เช่น ครอบครัว / ธนาคาร / ป้าตา' },
+      { key:'startDate', label:'วันที่ก่อหนี้', type:'date' },
+      { key:'principal', label:'ยอดหนี้ตั้งต้น (บาท)', type:'money', required:true },
+      { key:'interestPerMonth', label:'ดอกเบี้ยต่อเดือน (บาท)', type:'money' },
+      { key:'planPerMonth', label:'ยอดผ่อนต่อเดือน (บาท)', type:'money' },
+      { key:'dueDay',   label:'กำหนดชำระ (วันที่ของเดือน)', type:'number', ph:'20' },
+      { key:'status',   label:'สถานะ', type:'select', options:opt('debtStatuses'), blank:false },
+      { key:'note',     label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+  if (!rec) { var e = document.getElementById('f_ledger'); if (e) e.value = ledger; }
+}
+
+function delDebt(id){
+  confirmAction('ลบก้อนหนี้นี้? รายการชำระที่ผูกไว้จะยังอยู่', function(){
+    callApi('debt.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: รายการโอนใช้หนี้
+   ============================================================ */
+function formDebtPayment(rec, ledger){
+  var debts = (S.cache[S.page] && S.cache[S.page].debts) || [];
+  openForm({
+    title: rec && rec.id ? 'แก้ไขรายการชำระ' : 'บันทึกการโอนใช้หนี้',
+    record: rec || { payDate: today(), kind: 'เงินต้น', channel: 'โอน QR' },
+    action: 'debt.savePayment', base: { ledger: ledger }, bucket: 'debt',
+    onDelete: delDebtPayment,
+    fields: [
+      { key:'payDate', label:'วันที่ชำระ', type:'date', required:true },
+      { key:'amount',  label:'จำนวนเงิน (บาท)', type:'money', required:true },
+      { key:'kind',    label:'ประเภทการชำระ', type:'select', options:opt('payKinds'), blank:false,
+        hint:'"ดอกเบี้ย" จะไม่ถูกนำไปลดยอดเงินต้น' },
+      { key:'channel', label:'ช่องทาง', type:'select', options:opt('payChannels') },
+      { key:'installment', label:'งวดที่', ph:'เช่น 9/2569' },
+      { key:'debtId',  label:'ผูกกับก้อนหนี้', type:'select',
+        options: debts.map(function(d){ return { value:d.id, label:d.title }; }),
+        hint:'เว้นว่างได้ — ระบบจะนับรวมทั้งบัญชี' },
+      { key:'payer',   label:'ผู้ชำระ' },
+      { key:'slips',   label:'สลิปการโอน', type:'files', full:true },
+      { key:'note',    label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delDebtPayment(id){
+  confirmAction('ลบรายการชำระนี้?', function(){
+    callApi('debt.deletePayment', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: รายการซื้อของ
+   ============================================================ */
+function formPurchase(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขรายการซื้อ' : 'เพิ่มรายการซื้อของ',
+    record: rec || { buyDate: today() },
+    action: 'purchase.save', bucket: 'purchases', wide: true,
+    onDelete: delPurchase,
+    fields: [
+      { key:'item',    label:'รายการสินค้า', type:'textarea', required:true, full:true, ph:'ชื่อสินค้า / รุ่น / รายละเอียด' },
+      { key:'buyDate', label:'วันที่ซื้อ', type:'date', required:true },
+      { key:'category', label:'หมวดหมู่', type:'select', options:opt('purchaseCategories') },
+      { key:'qty',     label:'จำนวน', type:'number' },
+      { key:'unit',    label:'หน่วย', ph:'ชิ้น / ชุด / เครื่อง' },
+      { key:'price',   label:'ราคารวม (บาท)', type:'money', required:true },
+      { key:'vendor',  label:'แหล่งที่ซื้อ', ph:'Shopee / ไทวัสดุ / ร้าน…' },
+      { key:'payer',   label:'ผู้ชำระ' },
+      { key:'warrantyMonths', label:'ระยะเวลารับประกัน (เดือน)', type:'number',
+        hint:'ระบบจะคำนวณวันหมดประกันให้อัตโนมัติ' },
+      { key:'room',    label:'ห้อง/พื้นที่ที่ใช้', type:'select', options:['ส่วนกลาง'].concat(roomOptions()) },
+      { key:'photos',  label:'ภาพประกอบสินค้า', type:'files', full:true },
+      { key:'slips',   label:'สลิปการโอนชำระ', type:'files', full:true },
+      { key:'note',    label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delPurchase(id){
+  confirmAction('ลบรายการซื้อนี้?', function(){
+    callApi('purchase.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: ล้างแอร์
+   ============================================================ */
+function formAc(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขรายการล้างแอร์' : 'บันทึกการล้างแอร์',
+    record: rec || { bookDate: today() },
+    action: 'ac.save', bucket: 'ac',
+    onDelete: delAc,
+    fields: [
+      { key:'room',        label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
+      { key:'round',       label:'รอบที่', type:'number', hint:'เว้นว่างให้ระบบนับต่อจากรอบล่าสุดของปีนั้น' },
+      { key:'bookDate',    label:'วันที่นัดล้างแอร์', type:'date' },
+      { key:'serviceDate', label:'วันที่ดำเนินการจริง', type:'date', hint:'กรอกเมื่อล้างเสร็จแล้ว' },
+      { key:'status',      label:'สถานะ', type:'select', options:opt('acStatuses') },
+      { key:'technician',  label:'ช่าง / ผู้ให้บริการ' },
+      { key:'cost',        label:'ค่าใช้จ่าย (บาท)', type:'money' },
+      { key:'photos',      label:'ภาพประกอบ', type:'files', full:true },
+      { key:'note',        label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delAc(id){
+  confirmAction('ลบรายการล้างแอร์นี้?', function(){
+    callApi('ac.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/** นัดล้างแอร์หลายห้องพร้อมกัน */
+function formBulkAc(){
+  var rooms = roomOptions();
+  var body =
+    '<div class="fgrid">' +
+      '<div class="f"><label>วันที่นัด <span style="color:var(--danger)">*</span></label>' +
+        '<input type="date" class="inp" id="bk_date" value="' + today() + '"></div>' +
+      '<div class="f"><label>ช่าง / ผู้ให้บริการ</label><input class="inp" id="bk_tech"></div>' +
+      '<div class="f"><label>ค่าใช้จ่ายต่อห้อง (บาท)</label><input type="number" class="inp" id="bk_cost"></div>' +
+      '<div class="f"><label>หมายเหตุ</label><input class="inp" id="bk_note"></div>' +
+    '</div>' +
+    '<div class="hr"></div>' +
+    '<div class="row mb8"><b class="fs13">เลือกห้อง</b><span class="sp"></span>' +
+      '<button class="btn sm" onclick="bulkPick(\'all\')">ทั้งหมด</button>' +
+      '<button class="btn sm" onclick="bulkPick(\'none\')">ล้าง</button>' +
+      [1,2,3,4,5].map(function(f){ return '<button class="btn sm" onclick="bulkPick(' + f + ')">ชั้น ' + f + '</button>'; }).join('') +
+    '</div>' +
+    '<div class="rooms" id="bkRooms">' + rooms.map(function(r){
+      return '<label class="room" style="cursor:pointer"><input type="checkbox" class="bk" value="' + r + '"> <b>' + r + '</b></label>';
+    }).join('') + '</div>';
+
+  openModal('📅 นัดล้างแอร์หลายห้องพร้อมกัน', body,
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn pri" id="bkSave">สร้างนัดหมาย</button>', true);
+
+  document.getElementById('bkSave').onclick = function(){
+    var picked = Array.prototype.slice.call(document.querySelectorAll('.bk:checked')).map(function(c){ return c.value; });
+    var date = document.getElementById('bk_date').value;
+    if (!picked.length) return toast('เลือกอย่างน้อย 1 ห้อง', 'err');
+    if (!date) return toast('กรุณาระบุวันที่นัด', 'err');
+    var btn = this; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
+    callApi('ac.bulkBook', {
+      rooms: picked, bookDate: date,
+      technician: document.getElementById('bk_tech').value,
+      cost: document.getElementById('bk_cost').value,
+      note: document.getElementById('bk_note').value
+    }).then(function(n){
+      closeModal(); toast('สร้างนัดหมาย ' + n + ' ห้องแล้ว', 'ok'); load();
+    }).catch(function(e){
+      btn.disabled = false; btn.textContent = 'สร้างนัดหมาย'; toast(e.message||e, 'err');
+    });
+  };
+}
+
+function bulkPick(what){
+  document.querySelectorAll('.bk').forEach(function(c){
+    if (what === 'all') c.checked = true;
+    else if (what === 'none') c.checked = false;
+    else c.checked = String(c.value).charAt(0) === String(what);
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: ซ่อมแซมตามห้อง
+   ============================================================ */
+function formRepair(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขงานซ่อม' : 'แจ้งซ่อม / บันทึกงานซ่อม',
+    record: rec || { reportDate: today(), priority: 'ปกติ' },
+    action: 'repair.save', bucket: 'roomRepair', wide: true,
+    onDelete: delRepair,
+    fields: [
+      { key:'room',       label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
+      { key:'category',   label:'ประเภทงาน', type:'select', options:opt('repairCategories') },
+      { key:'items',      label:'รายการที่ต้องซ่อมแซม', type:'textarea', required:true, full:true,
+        ph:'เช่น 1.ยาแนว 2.เก็บสีห้อง 3.เปลี่ยนก๊อกน้ำล้างจาน' },
+      { key:'reportDate', label:'วันที่แจ้ง', type:'date' },
+      { key:'bookDate',   label:'วันนัดซ่อมแซม', type:'date' },
+      { key:'repairDate', label:'วันเข้าซ่อมแซม', type:'date', hint:'กรอกเมื่อซ่อมเสร็จแล้ว' },
+      { key:'status',     label:'สถานะ', type:'select', options:opt('repairStatuses') },
+      { key:'priority',   label:'ความเร่งด่วน', type:'select', options:opt('priorities'), blank:false },
+      { key:'technician', label:'ช่างผู้ซ่อม' },
+      { key:'cost',       label:'ค่าใช้จ่าย (บาท)', type:'money' },
+      { key:'photosBefore', label:'ภาพก่อนซ่อม', type:'files', full:true },
+      { key:'photosAfter',  label:'ภาพหลังซ่อม', type:'files', full:true },
+      { key:'note',       label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delRepair(id){
+  confirmAction('ลบงานซ่อมนี้?', function(){
+    callApi('repair.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: ซ่อมแซมตึกโดยรวม
+   ============================================================ */
+function formBuilding(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขงานซ่อมตึก' : 'เพิ่มงานซ่อมแซมตึกโดยรวม',
+    record: rec || { bookDate: today() },
+    action: 'building.save', bucket: 'building', wide: true,
+    onDelete: delBuilding,
+    fields: [
+      { key:'zone',      label:'ส่วนของอาคาร', type:'select', options:opt('buildingZones'), required:true },
+      { key:'title',     label:'รายการซ่อมแซม', type:'textarea', required:true, full:true },
+      { key:'bookDate',  label:'วันที่นัด', type:'date' },
+      { key:'startDate', label:'วันที่เริ่มดำเนินการ', type:'date' },
+      { key:'endDate',   label:'วันที่แล้วเสร็จ', type:'date' },
+      { key:'status',    label:'สถานะ', type:'select', options:opt('buildingStatuses') },
+      { key:'contractor', label:'ผู้รับเหมา / ร้าน' },
+      { key:'cost',      label:'ค่าใช้จ่าย (บาท)', type:'money' },
+      { key:'nextDue',   label:'ครบกำหนดรอบถัดไป', type:'date', hint:'เช่น กันซึมดาดฟ้าทุก 3 ปี — ใส่วันที่ครั้งถัดไป' },
+      { key:'photos',    label:'ภาพประกอบ', type:'files', full:true },
+      { key:'slips',     label:'ใบเสร็จ / สลิป', type:'files', full:true },
+      { key:'note',      label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delBuilding(id){
+  confirmAction('ลบงานซ่อมตึกนี้?', function(){
+    callApi('building.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: ข้อมูลห้อง
+   ============================================================ */
+function formRoom(rec){
+  openForm({
+    title: 'ข้อมูลห้อง ' + (rec ? rec.room : ''),
+    record: rec, action: 'room.save',
+    fields: [
+      { key:'room',   label:'ห้อง', required:true },
+      { key:'floor',  label:'ชั้น', type:'number' },
+      { key:'status', label:'สถานะ', type:'select', options:opt('roomStatuses'), blank:false },
+      { key:'tenant', label:'ชื่อผู้เช่า' },
+      { key:'phone',  label:'เบอร์ติดต่อ' },
+      { key:'rent',   label:'ค่าเช่า/เดือน (บาท)', type:'money' },
+      { key:'moveIn', label:'วันที่เข้าอยู่', type:'date' },
+      { key:'note',   label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+/* ============================================================
+   ฟอร์ม: รายรับ-รายจ่ายหอ
+   ============================================================ */
+function formFinance(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขรายการ' : 'บันทึกรายรับ-รายจ่าย',
+    record: rec || { date: today(), channel: 'โอน QR' },
+    action: 'finance.save', bucket: 'misc',
+    onDelete: delFinance,
+    fields: [
+      { key:'kind',   label:'รายการ', type:'select', options:opt('financeKinds'), required:true, blank:false,
+        hint:'เลือก "รายรับค่าเช่า" หรือ "รายรับอื่น ๆ" ระบบจะนับเป็นฝั่งรายรับให้อัตโนมัติ' },
+      { key:'date',   label:'วันที่', type:'date', required:true },
+      { key:'amount', label:'จำนวนเงิน (บาท)', type:'money', required:true },
+      { key:'billMonth', label:'รอบบิลของเดือน', ph:'เช่น ก.ค. 2569' },
+      { key:'channel', label:'ช่องทาง', type:'select', options:opt('financeChannels') },
+      { key:'slips',  label:'สลิป / ใบเสร็จ', type:'files', full:true },
+      { key:'note',   label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delFinance(id){
+  confirmAction('ลบรายการนี้?', function(){
+    callApi('finance.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   สำรอง / กู้คืนข้อมูล
+   ============================================================ */
+function doExportJson(){
+  toast('กำลังเตรียมไฟล์สำรอง…');
+  callApi('backup.export', {}).then(function(dump){
+    saveTextFile('the-m-corner-ap-backup-' + today() + '.json',
+                 JSON.stringify(dump, null, 1), 'application/json');
+  }).catch(function(e){ toast(e.message||e, 'err'); });
+}
+
+function doExportCsv(sheet){
+  callApi('backup.csv', { sheet: sheet }).then(function(r){
+    saveTextFile(r.filename, r.content, 'text/csv');
+  }).catch(function(e){ toast(e.message||e, 'err'); });
+}
+
+/** ดาวน์โหลดไฟล์ — ใช้ downloads capability ถ้ามี ไม่งั้นใช้ลิงก์ปกติ */
+function saveTextFile(filename, content, mime){
+  if (typeof window.saveViaHost === 'function') return window.saveViaHost(filename, content, mime);
+  var blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('ดาวน์โหลด ' + filename + ' แล้ว', 'ok');
+}
+
+function doImportJson(){
+  openModal('⬆️ กู้คืนจากไฟล์สำรอง',
+    '<p class="fs13">เลือกไฟล์ <b>.json</b> ที่เคยดาวน์โหลดไว้</p>' +
+    '<label class="file-drop" for="impFile">📄 เลือกไฟล์สำรอง' +
+      '<input type="file" id="impFile" accept="application/json,.json" style="display:none" ' +
+      'onchange="document.getElementById(\'impName\').textContent=this.files[0]?this.files[0].name:\'\'"></label>' +
+    '<div class="fs12 muted mt8" id="impName"></div>' +
+    '<div class="hr"></div>' +
+    '<div class="f"><label>วิธีกู้คืน</label>' +
+    '<select class="sel" id="impMode">' +
+      '<option value="merge">เพิ่มเฉพาะรายการที่ยังไม่มี (แนะนำ)</option>' +
+      '<option value="replace">ล้างข้อมูลเดิมแล้วแทนที่ทั้งหมด</option>' +
+    '</select></div>',
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn pri" id="impGo">กู้คืนข้อมูล</button>');
+
+  document.getElementById('impGo').onclick = function(){
+    var f = document.getElementById('impFile').files[0];
+    if (!f) return toast('กรุณาเลือกไฟล์ก่อน', 'err');
+    var mode = document.getElementById('impMode').value;
+    var btn = this; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> กำลังกู้คืน…';
+    var r = new FileReader();
+    r.onload = function(){
+      var parsed;
+      try { parsed = JSON.parse(r.result); }
+      catch (e) { btn.disabled = false; btn.textContent = 'กู้คืนข้อมูล'; return toast('ไฟล์ไม่ใช่ JSON ที่ถูกต้อง', 'err'); }
+      callApi('backup.import', { data: parsed, mode: mode }).then(function(stat){
+        closeModal();
+        var n = Object.keys(stat).reduce(function(a,k){ return a + (stat[k]||0); }, 0);
+        toast('กู้คืนสำเร็จ ' + n + ' รายการ', 'ok');
+        load();
+      }).catch(function(e){
+        btn.disabled = false; btn.textContent = 'กู้คืนข้อมูล'; toast(e.message||e, 'err');
+      });
+    };
+    r.readAsText(f);
+  };
+}
+
+/* ============================================================
+   ลิงก์แชร์ และการสำรองลง Google Drive
+   ============================================================ */
+
+function copyShare(){
+  var el = document.getElementById('shareUrl');
+  if (!el) return;
+  el.select();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(el.value)
+      .then(function(){ toast('คัดลอกลิงก์แชร์แล้ว','ok'); })
+      .catch(function(){ toast('คัดลอกไม่สำเร็จ — กดค้างที่ช่องแล้วเลือกคัดลอก','err'); });
+  } else {
+    try { document.execCommand('copy'); toast('คัดลอกลิงก์แชร์แล้ว','ok'); }
+    catch (e) { toast('คัดลอกไม่สำเร็จ — กดค้างที่ช่องแล้วเลือกคัดลอก','err'); }
+  }
+}
+
+function doRotateShare(){
+  confirmAction('ออกลิงก์แชร์ชุดใหม่? คนที่ถือลิงก์เดิมจะเปิดไม่ได้อีก', function(){
+    callApi('share.rotateToken', {}).then(function(){
+      toast('ออกลิงก์แชร์ชุดใหม่แล้ว','ok'); load();
+    }).catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+function doBackupNow(){
+  toast('กำลังสำรองข้อมูลลง Drive…');
+  callApi('backup.backupNow', {}).then(function(r){
+    toast('สำรองแล้ว: ' + r.name, 'ok'); load();
+  }).catch(function(e){ toast(e.message||e,'err'); });
+}
+</script>
+<script>boot();</script>
+</body>
+</html>

@@ -515,4 +515,37 @@ function doImportJson(){
     r.readAsText(f);
   };
 }
+
+/* ============================================================
+   ลิงก์แชร์ และการสำรองลง Google Drive
+   ============================================================ */
+
+function copyShare(){
+  var el = document.getElementById('shareUrl');
+  if (!el) return;
+  el.select();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(el.value)
+      .then(function(){ toast('คัดลอกลิงก์แชร์แล้ว','ok'); })
+      .catch(function(){ toast('คัดลอกไม่สำเร็จ — กดค้างที่ช่องแล้วเลือกคัดลอก','err'); });
+  } else {
+    try { document.execCommand('copy'); toast('คัดลอกลิงก์แชร์แล้ว','ok'); }
+    catch (e) { toast('คัดลอกไม่สำเร็จ — กดค้างที่ช่องแล้วเลือกคัดลอก','err'); }
+  }
+}
+
+function doRotateShare(){
+  confirmAction('ออกลิงก์แชร์ชุดใหม่? คนที่ถือลิงก์เดิมจะเปิดไม่ได้อีก', function(){
+    callApi('share.rotateToken', {}).then(function(){
+      toast('ออกลิงก์แชร์ชุดใหม่แล้ว','ok'); load();
+    }).catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+function doBackupNow(){
+  toast('กำลังสำรองข้อมูลลง Drive…');
+  callApi('backup.backupNow', {}).then(function(r){
+    toast('สำรองแล้ว: ' + r.name, 'ok'); load();
+  }).catch(function(e){ toast(e.message||e,'err'); });
+}
 </script>

@@ -16,3 +16,8 @@ Thumbs.db
 
 # ผลลัพธ์จากการ build (สร้างใหม่ได้ด้วย node artifact/build.js)
 dist/
+
+# ไฟล์ระหว่างทางของ build/ — build/Code.gs กับ build/Index.html ต้องเข้า git
+build/seed.json
+build/db.b64
+build/*.xlsx

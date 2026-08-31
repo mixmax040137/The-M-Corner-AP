@@ -11,7 +11,11 @@ function onOpen() {
     .addItem('🔔 ส่งสรุปแจ้งเตือนตอนนี้', 'sendDigestNow')
     .addItem('⏰ ตั้งแจ้งเตือนอัตโนมัติรายสัปดาห์', 'installWeeklyTrigger')
     .addSeparator()
-    .addItem('🔗 แสดงลิงก์ระบบ', 'showWebAppUrl')
+    .addItem('🔗 แสดงลิงก์เข้าใช้งาน', 'showWebAppUrl')
+    .addItem('🔁 ออกลิงก์แชร์ใหม่ (ยกเลิกลิงก์เดิม)', 'rotateShareLink')
+    .addSeparator()
+    .addItem('💾 สำรองข้อมูลลง Drive ตอนนี้', 'backupNow')
+    .addItem('🗓️ ตั้งสำรองข้อมูลอัตโนมัติทุกวัน', 'installBackupTrigger')
     .addToUi();
 }
 
@@ -34,6 +38,7 @@ function setupSystem() {
 
   seedRooms_();
   seedSettings_();
+  ensureTokens_();
   ensureDriveFolders_();
 
   var msg = 'ติดตั้งระบบเรียบร้อย\n\n' +
@@ -108,6 +113,20 @@ function seedSettings_() {
   return toAdd.length;
 }
 
+/** เขียนค่าลงชีต Settings (สร้างแถวใหม่ถ้ายังไม่มีคีย์นั้น) */
+function setSetting_(key, value) {
+  var sh = ensureSheet_(SHEETS.SETTINGS);
+  var rows = readRows_(SHEETS.SETTINGS);
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].key) === String(key)) {
+      sh.getRange(rows[i]._row, 3).setValue(String(value));
+      return value;
+    }
+  }
+  insertRow_(SHEETS.SETTINGS, { key: key, label: key, value: String(value), note: '' });
+  return value;
+}
+
 function getSetting_(key, fallback) {
   var rows = readRows_(SHEETS.SETTINGS);
   for (var i = 0; i < rows.length; i++) {
@@ -120,9 +139,24 @@ function getSetting_(key, fallback) {
 }
 
 function showWebAppUrl() {
-  var url = ScriptApp.getService().getUrl();
-  var msg = url
-    ? 'ลิงก์ระบบ:\n' + url + '\n\n(เปิดในมือถือแล้วกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป)'
-    : 'ยังไม่ได้ Deploy — ไปที่ Deploy > New deployment > Web app';
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { }
+  if (!url) {
+    SpreadsheetApp.getUi().alert('ยังไม่ได้ Deploy — ไปที่ Deploy > New deployment > Web app แล้วค่อยเปิดเมนูนี้อีกครั้ง');
+    return;
+  }
+  ensureTokens_();
+  var msg =
+    '🔑 ลิงก์ผู้ดูแล (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' +
+    url + '?key=' + getSetting_('admin_token', '') + '\n\n' +
+    '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้คนอื่นได้)\n' +
+    url + '?key=' + getSetting_('view_token', '') + '\n\n' +
+    'เปิดในมือถือแล้วกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป';
   SpreadsheetApp.getUi().alert(msg);
+}
+
+function rotateShareLink() {
+  var r = rotateViewToken_();
+  SpreadsheetApp.getUi().alert(
+    'ออกลิงก์แชร์ชุดใหม่แล้ว — ลิงก์เดิมใช้ไม่ได้อีกต่อไป\n\n' + r.url);
 }

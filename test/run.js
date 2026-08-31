@@ -122,7 +122,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 48);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 53);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
@@ -153,7 +153,65 @@ const before = readRows_(SHEETS.PURCHASES).length;
 importAll_({ data: dump, mode: 'merge' });
 check('นำเข้าแบบ merge ไม่ทำข้อมูลซ้ำ', readRows_(SHEETS.PURCHASES).length, before);
 
-console.log('\n── 12. ค้นหา & แจ้งเตือน ──');
+console.log('\n── 12. สิทธิ์เข้าใช้งานผ่านลิงก์ ──');
+// จำลองผู้เปิดลิงก์แบบไม่ล็อกอิน (deploy แบบ Anyone จะได้อีเมลว่าง)
+const realUser = global.Session.getActiveUser;
+global.Session.getActiveUser = () => ({ getEmail: () => '' });
+
+const adminKey = getSetting_('admin_token', '');
+const viewKey = getSetting_('view_token', '');
+check('สร้างกุญแจผู้ดูแลแล้ว', adminKey.length >= 20, true);
+check('สร้างกุญแจแชร์แล้ว', viewKey.length >= 20, true);
+check('กุญแจสองชุดไม่ซ้ำกัน', adminKey !== viewKey, true);
+
+check('ไม่มีกุญแจ → บทบาท none', resolveRole_(''), 'none');
+check('กุญแจผู้ดูแล → admin', resolveRole_(adminKey), 'admin');
+check('กุญแจแชร์ → viewer', resolveRole_(viewKey), 'viewer');
+check('กุญแจมั่ว → none', resolveRole_('xxxxxxxxxxxxxxxxxxxxxx'), 'none');
+
+check('ไม่มีกุญแจ อ่านข้อมูลไม่ได้', api('purchase.list', { year: 'all' }).ok, false);
+check('กุญแจแชร์ อ่านข้อมูลได้', api('purchase.list', { year: 'all', _key: viewKey }).ok, true);
+check('กุญแจแชร์ แก้ข้อมูลไม่ได้',
+  api('purchase.save', { _key: viewKey, record: { item: 'แอบเพิ่ม', price: 1, buyDate: '2026-01-01' } }).ok, false);
+check('จำนวนรายการไม่เปลี่ยนหลังถูกปฏิเสธ', readRows_(SHEETS.PURCHASES).length, 94);
+check('กุญแจแชร์ ลบไม่ได้', api('purchase.delete', { _key: viewKey, id: 'x' }).ok, false);
+check('กุญแจแชร์ กู้คืนข้อมูลไม่ได้', api('backup.import', { _key: viewKey, data: {} }).ok, false);
+check('กุญแจแชร์ ออกลิงก์ใหม่ไม่ได้', api('share.rotateToken', { _key: viewKey }).ok, false);
+check('กุญแจแชร์ ไม่เห็นลิงก์ผู้ดูแล', api('share.links', { _key: viewKey }).data.adminUrl, '');
+check('กุญแจแชร์ ไม่เห็นลิงก์ Google Sheet', api('app.bootstrap', { _key: viewKey }).data.sheetUrl, '');
+
+const added = api('purchase.save', { _key: adminKey, record: { item: 'ผู้ดูแลเพิ่มได้', price: 99, buyDate: '2026-01-01' } });
+check('กุญแจผู้ดูแล แก้ข้อมูลได้', added.ok, true);
+check('ผู้ดูแลเห็นลิงก์ Google Sheet', api('app.bootstrap', { _key: adminKey }).data.sheetUrl.length > 0, true);
+check('ผู้ดูแลแก้ไขได้ (canEdit)', api('app.bootstrap', { _key: adminKey }).data.canEdit, true);
+check('ผู้ดูลิงก์แชร์แก้ไม่ได้ (canEdit)', api('app.bootstrap', { _key: viewKey }).data.canEdit, false);
+api('purchase.delete', { _key: adminKey, id: added.data.id });
+
+const rotated = api('share.rotateToken', { _key: adminKey }).data;
+check('ออกลิงก์แชร์ใหม่แล้วกุญแจเปลี่ยน', rotated.token !== viewKey, true);
+check('กุญแจแชร์เดิมใช้ไม่ได้อีก', resolveRole_(viewKey), 'none');
+check('กุญแจแชร์ใหม่ใช้ได้', resolveRole_(rotated.token), 'viewer');
+check('ออกลิงก์ใหม่ไม่กระทบกุญแจผู้ดูแล', resolveRole_(adminKey), 'admin');
+global.Session.getActiveUser = realUser;
+check('เจ้าของชีตเข้าได้แม้ไม่มีกุญแจ', resolveRole_(''), 'admin');
+
+console.log('\n── 13. อัปเดตสด & สำรองลง Drive ──');
+const v1 = dataVersion_();
+check('รุ่นข้อมูลเป็นตัวเลขเวลา', typeof v1 === 'number' && v1 > 0, true);
+require('./mock-gas.js').store.lastUpdated = new Date(v1 + 60000);
+check('แก้ชีตแล้วรุ่นข้อมูลเปลี่ยน', dataVersion_() !== v1, true);
+check('app.version เรียกได้ด้วยกุญแจแชร์', api('app.version', { _key: rotated.token }).ok, true);
+
+const bk = backupToDrive_();
+check('สำรองลง Drive สำเร็จ', /^the-m-corner-ap-.*\.json$/.test(bk.name), true);
+check('ไฟล์สำรองมีข้อมูลครบ 11 ชีต', Object.keys(bk.counts).length, 11);
+check('ประวัติไฟล์สำรองขึ้น 1 ชุด', listBackups_().length, 1);
+setSetting_('backup_keep', '2');
+backupToDrive_(); backupToDrive_(); backupToDrive_();
+check('เก็บย้อนหลังตามที่ตั้งไว้ (2 ชุด)', listBackups_().length, 2);
+setSetting_('backup_keep', '30');
+
+console.log('\n── 14. ค้นหา & แจ้งเตือน ──');
 check('ค้นหา "ยาแนว" เจอ', globalSearch_('ยาแนว').length > 0, true);
 check('ค้นหาสั้นเกินไปคืนว่าง', globalSearch_('ก').length, 0);
 const digest = buildDigest_();

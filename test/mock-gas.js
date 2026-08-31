@@ -27,6 +27,13 @@ class Range {
     m.forEach((row, i) => row.forEach((v, j) => this.sheet.set(this.r + i, this.c + j, v)));
     return this;
   }
+  setValue(v) { this.sheet.set(this.r, this.c, v); return this; }
+  getValue() { return this.sheet.cell(this.r, this.c); }
+  clearContent() {
+    for (let i = 0; i < this.nr; i++)
+      for (let j = 0; j < this.nc; j++) this.sheet.set(this.r + i, this.c + j, '');
+    return this;
+  }
   setNumberFormat() { return this; } setDataValidation() { return this; }
   setWrap() { return this; } setFontWeight() { return this; }
   setBackground() { return this; } setFontColor() { return this; }
@@ -74,39 +81,78 @@ global.Utilities = {
   newBlob: (b, m, n) => ({ b, m, n })
 };
 let fileSeq = 0;
-const mkFile = name => {
+store.folders = new Map();          // ชื่อโฟลเดอร์ -> รายชื่อไฟล์ข้างใน
+const mkFile = (name, folderName) => {
   const id = 'FILE' + (++fileSeq).toString().padStart(20, '0');
-  const f = { getId: () => id, getName: () => name, getMimeType: () => 'image/jpeg', setSharing: () => f, setTrashed: () => f };
-  store.files.set(id, f); return f;
+  const created = new Date(Date.now() + fileSeq * 1000);
+  const f = {
+    getId: () => id, getName: () => name, getMimeType: () => 'application/json',
+    getUrl: () => 'https://drive.google.com/file/d/' + id + '/view',
+    getSize: () => 2048, getDateCreated: () => created,
+    getLastUpdated: () => store.lastUpdated || created,
+    setSharing: () => f,
+    setTrashed: () => {
+      const list = store.folders.get(folderName) || [];
+      store.folders.set(folderName, list.filter(x => x !== f));
+      return f;
+    }
+  };
+  store.files.set(id, f);
+  if (folderName) {
+    const list = store.folders.get(folderName) || [];
+    list.push(f); store.folders.set(folderName, list);
+  }
+  return f;
 };
 const mkFolder = name => ({
   getId: () => 'FOLDER_' + name, getName: () => name,
+  getUrl: () => 'https://drive.google.com/drive/folders/FOLDER_' + name,
   getFoldersByName: n => ({ hasNext: () => true, next: () => mkFolder(n) }),
   createFolder: n => mkFolder(n),
-  createFile: blob => mkFile(blob.n)
+  createFile: blob => mkFile(blob.n, name),
+  getFiles: () => {
+    const list = (store.folders.get(name) || []).slice();
+    let i = 0;
+    return { hasNext: () => i < list.length, next: () => list[i++] };
+  }
 });
 global.DriveApp = {
   Access: { ANYONE_WITH_LINK: 1 }, Permission: { VIEW: 1 },
   getFolderById: () => mkFolder('root'),
   getFoldersByName: () => ({ hasNext: () => true, next: () => mkFolder('root') }),
   createFolder: n => mkFolder(n),
-  getFileById: () => mkFile('x')
+  getFileById: () => ({
+    getLastUpdated: () => store.lastUpdated || new Date('2026-08-31T06:00:00Z'),
+    getId: () => 'MOCK_SS'
+  })
 };
 global.Session = {
   getActiveUser: () => ({ getEmail: () => 'owner@example.com' }),
   getEffectiveUser: () => ({ getEmail: () => 'owner@example.com' })
 };
 global.MailApp = { sendEmail: o => { store.lastMail = o; } };
+const chain = () => {
+  const o = {};
+  ['timeBased','onWeekDay','atHour','everyDays','inTimezone'].forEach(k => { o[k] = () => chain(); });
+  o.create = () => {};
+  return o;
+};
 global.ScriptApp = {
   getProjectTriggers: () => [], deleteTrigger: () => {},
-  newTrigger: () => ({ timeBased: () => ({ onWeekDay: () => ({ atHour: () => ({ inTimezone: () => ({ create: () => {} }) }) }) }) }),
+  newTrigger: () => chain(),
   WeekDay: { MONDAY: 1 },
   getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/MOCK/exec' })
 };
 global.UrlFetchApp = { fetch: () => ({ getResponseCode: () => 200 }) };
+const htmlOut = (content) => ({
+  getContent: () => content,
+  setTitle() { return this; }, setFaviconUrl() { return this; },
+  addMetaTag() { return this; }, setXFrameOptionsMode() { return this; }
+});
 global.HtmlService = {
-  createTemplateFromFile: () => ({ evaluate: () => ({ setTitle(){return this;}, setFaviconUrl(){return this;}, addMetaTag(){return this;}, setXFrameOptionsMode(){return this;} }) }),
-  createHtmlOutputFromFile: () => ({ getContent: () => '' }),
+  createTemplateFromFile: () => ({ evaluate: () => htmlOut('<template>') }),
+  createHtmlOutputFromFile: () => htmlOut(''),
+  createHtmlOutput: (c) => htmlOut(c),
   XFrameOptionsMode: { ALLOWALL: 1 }
 };
 

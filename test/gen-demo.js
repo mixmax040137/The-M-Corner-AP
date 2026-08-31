@@ -49,6 +49,8 @@ put('app.bootstrap', {});
 put('room.list', {});
 put('report.upcoming', { days: 90 });
 put('backup.sheets', {});
+put('share.links', {});
+put('backup.history', {});
 ROOMS.forEach(r => put('room.profile', { room: r }));
 
 const read = f => fs.readFileSync(path.join(SRC, 'ui', f), 'utf8');
@@ -71,6 +73,7 @@ ${read('Style.html')}
       <div><h1 id="pageTitle">ภาพรวม</h1><div class="sub" id="pageSub"></div></div>
       <div class="top-right">
         <span class="b warn">โหมดตัวอย่าง · อ่านอย่างเดียว</span>
+        <span id="liveDot"></span>
         <select class="sel w-auto" id="yearSel" onchange="setYear(this.value)"></select>
         <button class="btn icon" onclick="refresh()">↻</button>
       </div>
@@ -83,6 +86,9 @@ ${read('Style.html')}
 <script>
 /* ---- ข้อมูลตัวอย่าง (สร้างจากข้อมูลจริงในชีตเดิม) ---- */
 var FIXTURES = ${JSON.stringify(fx)};
+var ACCESS_KEY = '';
+var USER_ROLE = 'admin';
+var CAN_EDIT = true;
 </script>
 <script>${strip(read('App.html'))}</script>
 <script>${strip(read('Views.html'))}</script>
@@ -112,6 +118,7 @@ callApi = function(action, payload){
     }, 90);
   });
 };
+function startPolling(){ var d = document.getElementById('liveDot'); if (d) d.innerHTML = ''; }
 document.getElementById('navFoot').innerHTML =
   'หน้าตัวอย่างแบบอ่านอย่างเดียว<br>ข้อมูลจริงจากชีตเดิม ณ ส.ค. 2569';
 boot();

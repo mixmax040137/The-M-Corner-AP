@@ -1,48 +1,106 @@
 /**
- * Auth.gs — ควบคุมสิทธิ์เข้าใช้งาน
+ * Auth.gs — สิทธิ์เข้าใช้งานแบบลิงก์
  *
- * ระบบนี้ออกแบบมาให้ "ใช้งานคนเดียว" — เจ้าของชีตเข้าได้เสมอ ไม่ต้องตั้งค่าอะไร
- * และตอน Deploy ให้เลือก Who has access = Only myself
+ * ระบบถูก deploy แบบ "ใครมีลิงก์ก็เปิดได้" (Anyone) เพื่อให้แชร์ให้คนอื่นดูได้
+ * โดยไม่ต้องให้เขาเข้าถึง Google Sheet ของเรา สิทธิ์จึงคุมด้วย "กุญแจ" ในลิงก์แทน
  *
- * ถ้าวันหนึ่งอยากให้คนอื่น (แม่บ้าน/ช่าง) เข้าได้ ค่อยตั้ง Script Property
- *   ALLOWED_EMAILS = a@gmail.com,b@gmail.com
- * แล้วเปลี่ยน Who has access เป็น Anyone with Google account
+ *   ลิงก์ผู้ดูแล  .../exec?key=<admin_token>   → เพิ่ม/แก้/ลบได้ทุกอย่าง
+ *   ลิงก์แชร์     .../exec?key=<view_token>    → ดูอย่างเดียว แก้อะไรไม่ได้
+ *   ไม่มีกุญแจ                                  → เข้าไม่ได้
+ *
+ * กุญแจสองชุดนี้สุ่มขึ้นตอนติดตั้ง เก็บอยู่ในชีต Settings
+ * ถ้าลิงก์แชร์หลุด ให้กด "ออกกุญแจแชร์ใหม่" ลิงก์เดิมจะใช้ไม่ได้ทันที
+ *
+ * ⚠️ การกันสิทธิ์ทำที่ฝั่งเซิร์ฟเวอร์ (ฟังก์ชัน api) ไม่ใช่แค่ซ่อนปุ่มในหน้าเว็บ
  */
 
-function isAllowed_() {
-  var email = currentUserEmail_();
-  var owner = ownerEmail_();
-  if (owner && email && email.toLowerCase() === owner.toLowerCase()) return true;
+var ROLE = { ADMIN: 'admin', VIEWER: 'viewer', NONE: 'none' };
 
-  var raw = props_().getProperty(PROP.ALLOWED_EMAILS) || '';
-  if (!raw.trim()) return !!(owner && email && email.toLowerCase() === owner.toLowerCase());
+/** คำสั่งที่เปลี่ยนแปลงข้อมูล — ต้องเป็นผู้ดูแลเท่านั้น */
+var MUTATING_ACTIONS = /\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow)$/;
 
-  var list = raw.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(String);
-  if (list.indexOf('*') >= 0) return true;
-  return list.indexOf(String(email).toLowerCase()) >= 0;
+function resolveRole_(key) {
+  key = String(key || '').trim();
+  if (key) {
+    if (key === getSetting_('admin_token', '')) return ROLE.ADMIN;
+    if (key === getSetting_('view_token', '')) return ROLE.VIEWER;
+  }
+  // เจ้าของชีต (หรืออีเมลที่อนุญาตไว้) เข้าได้เสมอ แม้ไม่มีกุญแจในลิงก์
+  var email = String(currentUserEmail_() || '').toLowerCase();
+  if (email && email !== 'unknown') {
+    if (email === String(ownerEmail_() || '').toLowerCase()) return ROLE.ADMIN;
+    var allow = String(getSetting_('admin_emails', '') || '')
+      .split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(String);
+    if (allow.indexOf(email) >= 0) return ROLE.ADMIN;
+  }
+  return ROLE.NONE;
+}
+
+function requireRole_(action, key) {
+  var role = resolveRole_(key);
+  if (role === ROLE.NONE) {
+    throw new Error('ลิงก์นี้ไม่มีสิทธิ์เข้าใช้งาน — ขอลิงก์ที่ถูกต้องจากเจ้าของหอพัก');
+  }
+  if (MUTATING_ACTIONS.test(action) && role !== ROLE.ADMIN) {
+    throw new Error('ลิงก์นี้เป็นแบบดูอย่างเดียว จึงแก้ไขข้อมูลไม่ได้');
+  }
+  return role;
+}
+
+function currentUserEmail_() {
+  try { return Session.getActiveUser().getEmail() || ''; }
+  catch (e) { return ''; }
 }
 
 function ownerEmail_() {
   try {
-    var ss = getSpreadsheet_();
-    var o = ss.getOwner();
-    return o ? o.getEmail() : '';
-  } catch (e) {
-    try { return Session.getEffectiveUser().getEmail(); } catch (e2) { return ''; }
-  }
+    var o = getSpreadsheet_().getOwner();
+    if (o) return o.getEmail();
+  } catch (e) { /* ชีตใน Shared Drive ไม่มีเจ้าของรายบุคคล */ }
+  try { return Session.getEffectiveUser().getEmail(); } catch (e2) { return ''; }
 }
 
-function requireAccess_() {
-  if (!isAllowed_()) {
-    throw new Error('ไม่มีสิทธิ์เข้าใช้งานระบบนี้ (' + currentUserEmail_() + ')');
-  }
+/** สุ่มกุญแจใหม่ (ตัวอักษรที่อ่านง่าย ไม่มี 0/O/1/l ปนกัน) */
+function newToken_(len) {
+  var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz';
+  var out = '';
+  for (var i = 0; i < (len || 22); i++) out += abc.charAt(Math.floor(Math.random() * abc.length));
+  return out;
 }
 
-/** ใช้ในหน้าเว็บ เพื่อรู้ว่าใครกำลังใช้งาน */
-function whoAmI() {
+/** สร้างกุญแจตอนติดตั้ง ถ้ายังไม่มี */
+function ensureTokens_() {
+  var made = [];
+  [['admin_token', 26], ['view_token', 22]].forEach(function (pair) {
+    if (!getSetting_(pair[0], '')) {
+      setSetting_(pair[0], newToken_(pair[1]));
+      made.push(pair[0]);
+    }
+  });
+  return made;
+}
+
+/** ออกกุญแจแชร์ชุดใหม่ — ลิงก์แชร์เดิมจะใช้ไม่ได้ทันที */
+function rotateViewToken_() {
+  var t = newToken_(22);
+  setSetting_('view_token', t);
+  logActivity_('ออกกุญแจแชร์ใหม่', 'view_token', '');
+  return { token: t, url: shareUrl_(t) };
+}
+
+function shareUrl_(token) {
+  var base = '';
+  try { base = ScriptApp.getService().getUrl() || ''; } catch (e) { }
+  return base ? base + '?key=' + token : '(ยังไม่ได้ deploy)';
+}
+
+/** ใช้ในหน้าเว็บ เพื่อรู้ว่ากำลังเปิดด้วยสิทธิ์อะไร */
+function whoAmI(key) {
+  var role = resolveRole_(key);
   return {
-    email: currentUserEmail_(),
-    allowed: isAllowed_(),
-    owner: ownerEmail_()
+    role: role,
+    canEdit: role === ROLE.ADMIN,
+    email: currentUserEmail_() || 'ผู้ใช้ผ่านลิงก์',
+    label: role === ROLE.ADMIN ? 'ผู้ดูแล' : (role === ROLE.VIEWER ? 'ดูอย่างเดียว' : 'ไม่มีสิทธิ์')
   };
 }

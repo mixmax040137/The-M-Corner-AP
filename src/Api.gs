@@ -8,10 +8,10 @@
 function api(action, payload) {
   payload = payload || {};
   try {
-    requireAccess_();
+    var role = requireRole_(action, payload._key);
     var fn = API_ROUTES[action];
     if (!fn) throw new Error('ไม่รู้จักคำสั่ง: ' + action);
-    return { ok: true, data: fn(payload) };
+    return { ok: true, data: fn(payload, role) };
   } catch (e) {
     console.error(action + ' -> ' + e);
     return { ok: false, error: String(e && e.message ? e.message : e) };
@@ -21,10 +21,11 @@ function api(action, payload) {
 var API_ROUTES = {
 
   /* ---------- ระบบ ---------- */
-  'app.bootstrap': function () {
+  'app.bootstrap': function (p, role) {
     return {
       app: { name: APP.NAME, subtitle: APP.SUBTITLE, version: APP.VERSION },
-      user: whoAmI(),
+      user: whoAmI(p._key),
+      canEdit: role === ROLE.ADMIN,
       floors: FLOORS,
       rooms: ROOMS,
       schema: {
@@ -48,11 +49,16 @@ var API_ROUTES = {
         acCycleMonths: Number(getSetting_('ac_cycle_months', 6)),
         warrantyAlertDays: Number(getSetting_('warranty_alert_days', 30)),
         overdueAlertDays: Number(getSetting_('overdue_alert_days', 7)),
-        buildingName: getSetting_('building_name', APP.NAME)
+        buildingName: getSetting_('building_name', APP.NAME),
+        refreshSeconds: Number(getSetting_('refresh_seconds', 25))
       },
-      sheetUrl: getSpreadsheet_().getUrl()
+      version: dataVersion_(),
+      sheetUrl: role === ROLE.ADMIN ? getSpreadsheet_().getUrl() : ''
     };
   },
+
+  /** เบามาก — หน้าเว็บเรียกถี่ ๆ เพื่อดูว่าข้อมูลเปลี่ยนหรือยัง */
+  'app.version': function () { return { version: dataVersion_() }; },
 
   'app.dashboard': function (p) { return dashboard_(p.year); },
   'app.search': function (p) { return globalSearch_(p.q); },
@@ -124,7 +130,24 @@ var API_ROUTES = {
 
   /* ---------- การแจ้งเตือน ---------- */
   'notify.digest': function () { return buildDigest_(); },
-  'notify.send': function () { return sendDigestNow(); }
+  'notify.send': function () { return sendDigestNow(); },
+
+  /* ---------- ลิงก์แชร์ ---------- */
+  'share.links': function (p, role) {
+    if (role !== ROLE.ADMIN) return { base: '', adminUrl: '', viewUrl: '' };
+    var base = '';
+    try { base = ScriptApp.getService().getUrl() || ''; } catch (e) { }
+    return {
+      base: base,
+      adminUrl: base ? base + '?key=' + getSetting_('admin_token', '') : '',
+      viewUrl: base ? base + '?key=' + getSetting_('view_token', '') : ''
+    };
+  },
+  'share.rotateToken': function () { return rotateViewToken_(); },
+
+  /* ---------- สำรองข้อมูลลง Drive ---------- */
+  'backup.backupNow': function () { return backupToDrive_(); },
+  'backup.history': function (p, role) { return role === ROLE.ADMIN ? listBackups_() : []; }
 };
 
 /** ดึงตัวเลือก dropdown จาก SCHEMA เพื่อให้หน้าเว็บกับชีตใช้ชุดเดียวกันเสมอ */

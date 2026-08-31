@@ -28,6 +28,10 @@ var PAGES = [
 /* ---------------- API ---------------- */
 
 function callApi(action, payload){
+  var body = {};
+  Object.keys(payload || {}).forEach(function(k){ body[k] = payload[k]; });
+  body._key = (typeof ACCESS_KEY === 'string') ? ACCESS_KEY : '';
+  payload = body;
   return new Promise(function(resolve, reject){
     google.script.run
       .withSuccessHandler(function(res){
@@ -46,8 +50,11 @@ function boot(){
     S.boot = b;
     renderNav();
     document.getElementById('navFoot').innerHTML = navFootHtml(b);
+    S.version = b.version || 0;
+    if (!b.canEdit) document.body.classList.add('readonly');
     var hash = (location.hash || '').replace('#','');
     go(PAGES.some(function(p){return p.id===hash;}) ? hash : 'dashboard');
+    startPolling(b.settings && b.settings.refreshSeconds);
   }).catch(function(e){
     document.getElementById('view').innerHTML =
       '<div class="card"><div class="card-b"><h3>เชื่อมต่อระบบไม่สำเร็จ</h3>' +
@@ -59,7 +66,9 @@ function boot(){
 
 /** ข้อความมุมล่างซ้าย — เวอร์ชันเว็บแอปจะเขียนทับฟังก์ชันนี้ */
 function navFootHtml(b){
-  return esc(b.user.email || 'ไม่ทราบผู้ใช้') +
+  var role = (b.user && b.user.label) ? b.user.label : '';
+  return '<b style="color:#c7d0e0">' + esc(role) + '</b>' +
+    (b.user && b.user.email && b.user.email !== 'ผู้ใช้ผ่านลิงก์' ? '<br>' + esc(b.user.email) : '') +
     (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '');
 }
 
@@ -107,6 +116,7 @@ function load(force){
     S.cache[S.page] = data;
     syncYearOptions(data.years || data.available || []);
     view.innerHTML = r.render(data);
+    applyReadOnly(view);
     if (r.after) r.after(data);
   }).catch(function(e){
     view.innerHTML = '<div class="card"><div class="card-b"><h3>โหลดข้อมูลไม่สำเร็จ</h3>' +
@@ -128,6 +138,40 @@ function syncYearOptions(years){
   sel.innerHTML = html;
   if (list.indexOf(Number(S.year)) < 0 && S.year !== 'all') S.year = String(cur);
   sel.value = S.year;
+}
+
+/* ---------------- โหมดดูอย่างเดียว ----------------
+   ฝั่งเซิร์ฟเวอร์กันไว้แล้วในฟังก์ชัน api() ตรงนี้แค่ซ่อนปุ่มที่กดไปก็ทำไม่ได้
+   เพื่อไม่ให้ผู้ที่เปิดด้วยลิงก์แชร์สับสน */
+var EDIT_ENTRYPOINTS = /\b(formDebt|formDebtPayment|formPurchase|formAc|formBulkAc|formRepair|formBuilding|formRoom|formFinance|delDebt|delDebtPayment|delPurchase|delAc|delRepair|delBuilding|delFinance|doImportJson|doRotateShare|doBackupNow)\s*\(/;
+
+function applyReadOnly(root){
+  if (typeof CAN_EDIT === 'undefined' || CAN_EDIT) return;
+  var nodes = root.querySelectorAll('[onclick]');
+  for (var i = 0; i < nodes.length; i++) {
+    if (EDIT_ENTRYPOINTS.test(nodes[i].getAttribute('onclick') || '')) nodes[i].remove();
+  }
+}
+
+/* ---------------- รีเฟรชอัตโนมัติเมื่อข้อมูลในชีตเปลี่ยน ---------------- */
+
+function startPolling(seconds){
+  var sec = Number(seconds || 0);
+  var dot = document.getElementById('liveDot');
+  if (!sec) { if (dot) dot.innerHTML = ''; return; }
+  if (dot) dot.innerHTML = '<span class="b ok" title="ข้อมูลอัปเดตอัตโนมัติทุก ' + sec + ' วินาที">● สด</span>';
+
+  setInterval(function(){
+    if (document.hidden) return;
+    if (document.getElementById('modalRoot').innerHTML) return;  // กำลังกรอกฟอร์มอยู่ อย่าเพิ่งรีเฟรช
+    callApi('app.version').then(function(v){
+      if (v && v.version && v.version !== S.version) {
+        S.version = v.version;
+        load();
+        toast('ข้อมูลมีการเปลี่ยนแปลง — โหลดใหม่ให้แล้ว');
+      }
+    }).catch(function(){ /* เน็ตสะดุด ไว้รอบหน้า */ });
+  }, sec * 1000);
 }
 
 /* ---------------- format helpers ---------------- */
@@ -220,7 +264,8 @@ function barChart(items, labelKey, valueKey, formatter){
 /* ---------------- modal ---------------- */
 
 function openModal(title, bodyHtml, footHtml, wide){
-  document.getElementById('modalRoot').innerHTML =
+  var root = document.getElementById('modalRoot');
+  root.innerHTML =
     '<div class="ov" onclick="if(event.target===this)closeModal()">' +
       '<div class="modal' + (wide?' wide':'') + '">' +
         '<div class="modal-h"><h3>' + esc(title) + '</h3><button class="x" onclick="closeModal()">×</button></div>' +
@@ -228,6 +273,7 @@ function openModal(title, bodyHtml, footHtml, wide){
         (footHtml ? '<div class="modal-f">' + footHtml + '</div>' : '') +
       '</div>' +
     '</div>';
+  applyReadOnly(root);
   document.body.style.overflow = 'hidden';
 }
 function closeModal(){

@@ -677,8 +677,12 @@ ROUTES.reports = {
     return Promise.all([
       callApi('report.costPerRoom', { year: S.year }),
       callApi('report.upcoming', { days: 90 }),
-      callApi('backup.sheets', {})
-    ]).then(function(r){ return { cost: r[0], upcoming: r[1], sheets: r[2], years: [] }; });
+      callApi('backup.sheets', {}),
+      callApi('share.links', {}).catch(function(){ return {}; }),
+      callApi('backup.history', {}).catch(function(){ return []; })
+    ]).then(function(r){
+      return { cost: r[0], upcoming: r[1], sheets: r[2], links: r[3] || {}, backups: r[4] || [], years: [] };
+    });
   },
   render: function(d){
     var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
@@ -731,7 +735,35 @@ ROUTES.reports = {
         return '<button class="chip" onclick="doExportCsv(\'' + esc(n) + '\')">' + esc(sheetLabel(n)) + '</button>';
       }).join('') + '</div>');
 
-    return upcoming + '<div class="mt12">' + costCard + '</div><div class="mt12">' + backup + '</div>';
+    var share = (CAN_EDIT && d.links && d.links.viewUrl) ? card('🔗 ลิงก์เข้าใช้งาน',
+      '<div class="f mb12"><label>🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — อย่าส่งต่อ)</label>' +
+        '<input class="inp" readonly value="' + esc(d.links.adminUrl) + '" onclick="this.select()"></div>' +
+      '<div class="f"><label>👀 ลิงก์แชร์ (เปิดดูได้อย่างเดียว — ส่งให้ใครก็ได้)</label>' +
+        '<input class="inp" id="shareUrl" readonly value="' + esc(d.links.viewUrl) + '" onclick="this.select()"></div>' +
+      '<div class="row mt12">' +
+        '<button class="btn pri" onclick="copyShare()">📋 คัดลอกลิงก์แชร์</button>' +
+        '<button class="btn dgr" onclick="doRotateShare()">🔁 ออกลิงก์แชร์ใหม่</button>' +
+      '</div>' +
+      '<p class="fs12 muted mt12">คนที่เปิดลิงก์แชร์จะเห็นข้อมูลทั้งหมดแบบอ่านอย่างเดียว ' +
+      'ไม่ต้องมีบัญชี Google และไม่เห็น Google Sheet ของคุณ · ' +
+      'ถ้าลิงก์หลุดให้กด "ออกลิงก์แชร์ใหม่" ลิงก์เดิมจะใช้ไม่ได้ทันที</p>') : '';
+
+    var drive = CAN_EDIT ? card('☁️ สำรองอัตโนมัติใน Google Drive (' + d.backups.length + ' ชุด)',
+      '<p class="fs13 muted">ระบบเก็บไฟล์สำรองไว้ในโฟลเดอร์ "สำรองข้อมูล" บนไดรฟ์ของคุณ ' +
+      'ตั้งให้ทำอัตโนมัติทุกวันได้จากเมนูในชีต</p>' +
+      '<div class="row mt12"><button class="btn" onclick="doBackupNow()">💾 สำรองเดี๋ยวนี้</button></div>' +
+      (d.backups.length ? '<div class="hr"></div><div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
+        '<th>ไฟล์</th><th>เวลา</th><th class="num">ขนาด</th></tr></thead><tbody>' +
+        d.backups.slice(0,10).map(function(b){
+          return '<tr><td class="fs12"><a href="' + esc(b.url) + '" target="_blank">' + esc(b.name) + '</a></td>' +
+            '<td class="fs12">' + esc(b.at) + '</td>' +
+            '<td class="num fs12">' + Math.round(b.size/1024) + ' KB</td></tr>';
+        }).join('') + '</tbody></table></div>' : '')) : '';
+
+    return upcoming + '<div class="mt12">' + costCard + '</div>' +
+           (share ? '<div class="mt12">' + share + '</div>' : '') +
+           '<div class="mt12">' + backup + '</div>' +
+           (drive ? '<div class="mt12">' + drive + '</div>' : '');
   }
 };
 

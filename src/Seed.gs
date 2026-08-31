@@ -327,6 +327,16 @@ function seedHistoricalData() {
 
   setupSystem();
 
+  // กันข้อมูลซ้ำ: ถ้าชีตมีข้อมูลอยู่แล้ว (เช่นได้ไฟล์ที่เตรียมมาให้) ไม่ต้องนำเข้าอีก
+  var existing = readRows_(SHEETS.PURCHASES).length + readRows_(SHEETS.DEBT_PAYMENTS).length;
+  if (existing > 0) {
+    props_().setProperty(SEED_FLAG, 'done');
+    var msg0 = 'ชีตนี้มีข้อมูลอยู่แล้ว (' + existing + ' รายการ) จึงข้ามการนำเข้าเพื่อไม่ให้ข้อมูลซ้ำ\n\n' +
+               'ถ้าต้องการนำเข้าใหม่จริง ๆ ให้ลบข้อมูลในชีตก่อน แล้วรัน resetSeedFlag() ตามด้วย seedHistoricalData()';
+    try { SpreadsheetApp.getUi().alert(msg0); } catch (e) { console.log(msg0); }
+    return msg0;
+  }
+
   var stat = {
     debts: seedDebts_(),
     payments: seedDebtPayments_(),

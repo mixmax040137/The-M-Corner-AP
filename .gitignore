@@ -13,3 +13,6 @@ Thumbs.db
 # local scratch
 *.local
 /tmp/
+
+# ผลลัพธ์จากการ build (สร้างใหม่ได้ด้วย node artifact/build.js)
+dist/

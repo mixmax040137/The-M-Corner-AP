@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
-['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Debt.gs','Purchase.gs',
+['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs','Debt.gs','Purchase.gs',
  'Maintenance.gs','Building.gs','Dashboard.gs','Api.gs','Web.gs','Notify.gs']
   .forEach(f => vm.runInThisContext(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f }));
 
@@ -42,8 +42,13 @@ put('app.bootstrap', {});
   put('repair.matrix', { year });
   put('building.summary', { year });
   put('building.list', { year, zone: '', status: '' });
+  put('finance.summary', { year });
+  put('finance.list', { year, kind: '' });
+  put('report.costPerRoom', { year });
 });
 put('room.list', {});
+put('report.upcoming', { days: 90 });
+put('backup.sheets', {});
 ROOMS.forEach(r => put('room.profile', { room: r }));
 
 const read = f => fs.readFileSync(path.join(SRC, 'ui', f), 'utf8');
@@ -52,7 +57,7 @@ const strip = s => s.replace(/^\s*<script>/, '').replace(/<\/script>\s*$/, '');
 const html = `<title>The M Corner AP — ระบบบริหารหอพัก</title>
 ${read('Style.html')}
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <div class="app">
   <aside class="nav" id="nav">

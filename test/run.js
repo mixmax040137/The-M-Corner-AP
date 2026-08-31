@@ -3,7 +3,7 @@ require('./mock-gas.js');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const order = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs',
+const order = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs',
                'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs',
                'Api.gs','Web.gs','Notify.gs'];
 order.forEach(f => vm.runInThisContext(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f }));
@@ -122,9 +122,38 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 38);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 48);
 
-console.log('\n── 10. ค้นหา & แจ้งเตือน ──');
+console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
+check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
+const fin = financeSummary_('2026');
+near('รายรับค่าเช่าปี 2026', fin.income, 32 && fin.byKind.find(k => k.kind === 'รายรับค่าเช่า').total, 0);
+check('รายรับ > รายจ่าย (หอมีกำไร)', fin.net > 0, true);
+check('แยก 12 เดือนครบ', fin.byMonth.length, 12);
+check('กำไรสุทธิ = รายรับ - รายจ่าย', Math.round(fin.net), Math.round(fin.income - fin.expense));
+const finRec = saveFinance_({ date: '2026-09-30', kind: 'ค่าไฟฟ้า', amount: 12000 });
+check('เติมปี/เดือนอัตโนมัติ', [finRec.year, finRec.month], [2026, 9]);
+check('เติมประเภทอัตโนมัติ', finRec.flow, 'รายจ่าย');
+check('รายรับถูกจัดฝั่งถูก', saveFinance_({ date: '2026-09-30', kind: 'รายรับค่าเช่า', amount: 1 }).flow, 'รายรับ');
+readRows_(SHEETS.FINANCE).filter(r => r.date === '2026-09-30').forEach(r => deleteFinance_(r.id));
+
+console.log('\n── 11. รายงาน & สำรองข้อมูล ──');
+const cpr = costPerRoom_('all');
+check('ค่าใช้จ่ายรายห้อง ครบ 24 ห้อง', cpr.rooms.length, 24);
+check('เรียงจากมากไปน้อย', cpr.rooms[0].total >= cpr.rooms[23].total, true);
+const up = upcomingSchedule_(365);
+check('ปฏิทินงานที่จะถึงทำงาน', Array.isArray(up), true);
+const dump = exportAll_();
+check('สำรองครบ 11 ชีต', Object.keys(dump.sheets).length, 11);
+check('สำรองรายการซื้อครบ', dump.counts.Purchases, 94);
+const csv = exportCsv_(SHEETS.PURCHASES);
+check('CSV มีหัวตาราง', csv.content.indexOf('รายการสินค้า') > 0, true);
+check('CSV มี 95 บรรทัด (หัว + 94)', csv.content.split('\r\n').length, 95);
+const before = readRows_(SHEETS.PURCHASES).length;
+importAll_({ data: dump, mode: 'merge' });
+check('นำเข้าแบบ merge ไม่ทำข้อมูลซ้ำ', readRows_(SHEETS.PURCHASES).length, before);
+
+console.log('\n── 12. ค้นหา & แจ้งเตือน ──');
 check('ค้นหา "ยาแนว" เจอ', globalSearch_('ยาแนว').length > 0, true);
 check('ค้นหาสั้นเกินไปคืนว่าง', globalSearch_('ก').length, 0);
 const digest = buildDigest_();

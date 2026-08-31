@@ -1,9 +1,12 @@
 /**
  * Auth.gs — ควบคุมสิทธิ์เข้าใช้งาน
  *
- * ค่าเริ่มต้น: เจ้าของสคริปต์เข้าได้เสมอ
- * ถ้าต้องการให้คนอื่น (เช่น แม่บ้าน/ช่าง) เข้าได้ ให้ตั้ง Script Property
+ * ระบบนี้ออกแบบมาให้ "ใช้งานคนเดียว" — เจ้าของชีตเข้าได้เสมอ ไม่ต้องตั้งค่าอะไร
+ * และตอน Deploy ให้เลือก Who has access = Only myself
+ *
+ * ถ้าวันหนึ่งอยากให้คนอื่น (แม่บ้าน/ช่าง) เข้าได้ ค่อยตั้ง Script Property
  *   ALLOWED_EMAILS = a@gmail.com,b@gmail.com
+ * แล้วเปลี่ยน Who has access เป็น Anyone with Google account
  */
 
 function isAllowed_() {

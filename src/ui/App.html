@@ -17,10 +17,12 @@ var PAGES = [
   { id:'debtMain',  ic:'💰', label:'รายการสรุปรวม',       sub:'บัญชีโอนใช้หนี้หลักของหอพัก',        sec:'การเงิน' },
   { id:'debtSub',   ic:'🧾', label:'หนี้สิน',              sub:'บัญชีโอนใช้หนี้รองของหอพัก' },
   { id:'purchases', ic:'🛒', label:'รายการซื้อของ',        sub:'ของเข้าหอพัก ราคา ประกัน และสลิป' },
+  { id:'finance',   ic:'📒', label:'รายรับ-รายจ่ายหอ',      sub:'ค่าเช่าที่เก็บได้ · ค่าไฟ · ค่าน้ำ · ค่าเน็ต · ภาษี' },
   { id:'ac',        ic:'❄️', label:'ล้างแอร์',            sub:'ตารางล้างแอร์รายห้อง 24 ห้อง',      sec:'ซ่อมบำรุง' },
   { id:'repairs',   ic:'🔧', label:'ซ่อมแซมตามห้อง',      sub:'งานแจ้งซ่อมแยกตามห้อง' },
   { id:'building',  ic:'🏢', label:'ซ่อมแซมตึกโดยรวม',    sub:'งานส่วนกลางของอาคาร' },
-  { id:'rooms',     ic:'🚪', label:'ห้องพัก',             sub:'ทะเบียนห้องและประวัติรายห้อง',       sec:'ข้อมูล' }
+  { id:'rooms',     ic:'🚪', label:'ห้องพัก',             sub:'ทะเบียนห้องและประวัติรายห้อง',       sec:'ข้อมูล' },
+  { id:'reports',   ic:'📈', label:'รายงาน & สำรองข้อมูล', sub:'ค่าใช้จ่ายรายห้อง · ปฏิทินงาน · ส่งออกข้อมูล' }
 ];
 
 /* ---------------- API ---------------- */
@@ -43,9 +45,7 @@ function boot(){
   callApi('app.bootstrap').then(function(b){
     S.boot = b;
     renderNav();
-    document.getElementById('navFoot').innerHTML =
-      esc(b.user.email || 'ไม่ทราบผู้ใช้') +
-      '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>';
+    document.getElementById('navFoot').innerHTML = navFootHtml(b);
     var hash = (location.hash || '').replace('#','');
     go(PAGES.some(function(p){return p.id===hash;}) ? hash : 'dashboard');
   }).catch(function(e){
@@ -55,6 +55,12 @@ function boot(){
       '<p class="fs13">ตรวจสอบว่า: เปิดชีตแล้วรัน <b>เมนู 🏢 The M Corner AP → ติดตั้งระบบ</b> เรียบร้อยแล้ว ' +
       'และอีเมลที่ใช้อยู่มีสิทธิ์เข้าใช้งาน</p></div></div>';
   });
+}
+
+/** ข้อความมุมล่างซ้าย — เวอร์ชันเว็บแอปจะเขียนทับฟังก์ชันนี้ */
+function navFootHtml(b){
+  return esc(b.user.email || 'ไม่ทราบผู้ใช้') +
+    (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '');
 }
 
 function renderNav(){

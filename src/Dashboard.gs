@@ -12,6 +12,7 @@ function dashboard_(year) {
   var ac = acMatrix_(y);
   var fix = repairMatrix_(y);
   var bld = buildingSummary_(y);
+  var fin = financeSummary_(y);
 
   var openRepairs = listRoomRepairs_('all', 'all', 'all').filter(function (r) {
     return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก';
@@ -71,7 +72,13 @@ function dashboard_(year) {
       yearCount: bld.yearCount, yearCost: bld.yearCost,
       openCount: bld.openCount, upcoming: bld.upcoming.length
     },
+    finance: {
+      income: fin.income, expense: fin.expense, net: fin.net, margin: fin.margin,
+      avgIncome: fin.avgIncome, avgExpense: fin.avgExpense,
+      byMonth: fin.byMonth, monthsWithData: fin.monthsWithData
+    },
     spendThisYear: spendThisYear,
+    upcoming: upcomingSchedule_(60),
     alerts: buildAlerts_(overdueRepairs, ac, bld, today)
   };
 }
@@ -119,6 +126,16 @@ function buildAlerts_(overdueRepairs, ac, bld, today) {
     });
   });
 
+  var bills = missingBills_();
+  if (bills.missing.length) {
+    alerts.push({
+      level: 'info', icon: '🧾', module: 'finance',
+      title: 'ยังไม่ได้บันทึกบิลเดือน ' + bills.label,
+      detail: 'ขาด: ' + bills.missing.join(' · '),
+      ref: ''
+    });
+  }
+
   var order = { danger: 0, warn: 1, info: 2 };
   alerts.sort(function (a, b) { return order[a.level] - order[b.level]; });
   return alerts;
@@ -158,4 +175,81 @@ function globalSearch_(q) {
   scan(readRows_(SHEETS.ROOMS), 'rooms', 'ห้อง', ['tenant', 'phone', 'note']);
 
   return out.slice(0, 60);
+}
+
+/**
+ * ปฏิทินงานที่กำลังจะถึงภายใน N วัน — รวมทุกโมดูล
+ * ใช้ตอบคำถาม "อาทิตย์นี้ต้องทำอะไรบ้าง"
+ */
+function upcomingSchedule_(days) {
+  days = Number(days || 60);
+  var today = todayIso_();
+  var out = [];
+
+  listAcService_('all', 'all').forEach(function (r) {
+    if (r.serviceDate || !r.bookDate) return;
+    var d = daysBetween_(today, r.bookDate);
+    if (d === null || d < -30 || d > days) return;
+    out.push({ date: r.bookDate, daysLeft: d, icon: '❄️', module: 'ac',
+               title: 'ล้างแอร์ ห้อง ' + r.room, detail: r.technician || '', id: r.id });
+  });
+
+  listRoomRepairs_('all', 'all', 'all').forEach(function (r) {
+    if (r.repairDate || !r.bookDate) return;
+    var d = daysBetween_(today, r.bookDate);
+    if (d === null || d < -30 || d > days) return;
+    out.push({ date: r.bookDate, daysLeft: d, icon: '🔧', module: 'repairs',
+               title: 'ซ่อม ห้อง ' + r.room, detail: String(r.items || '').slice(0, 60), id: r.id });
+  });
+
+  listBuildingRepairs_('all', 'all', 'all').forEach(function (r) {
+    var ref = r.endDate ? r.nextDue : (r.bookDate || r.nextDue);
+    if (!ref) return;
+    var d = daysBetween_(today, ref);
+    if (d === null || d < -30 || d > days) return;
+    out.push({ date: ref, daysLeft: d, icon: '🏢', module: 'building',
+               title: r.title, detail: r.zone || '', id: r.id });
+  });
+
+  out.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+  return out;
+}
+
+/** ค่าใช้จ่ายสะสมรายห้อง — ซ่อม + ล้างแอร์ + ของที่ซื้อเข้าห้อง */
+function costPerRoom_(year) {
+  var repairs = listRoomRepairs_(year, 'all', 'all');
+  var ac = listAcService_(year, 'all');
+  var purchases = listPurchases_(year, {});
+
+  var map = {};
+  ROOMS.forEach(function (r) {
+    map[r] = { room: r, floor: floorOf_(r), repair: 0, ac: 0, purchase: 0, total: 0, jobs: 0 };
+  });
+  repairs.forEach(function (r) {
+    if (!map[r.room]) return;
+    map[r.room].repair += toNumber_(r.cost) || 0;
+    map[r.room].jobs++;
+  });
+  ac.forEach(function (r) {
+    if (!map[r.room]) return;
+    map[r.room].ac += toNumber_(r.cost) || 0;
+  });
+  purchases.forEach(function (p) {
+    if (!map[p.room]) return;
+    map[p.room].purchase += toNumber_(p.price) || 0;
+  });
+
+  var rows = ROOMS.map(function (r) {
+    var x = map[r];
+    x.total = round2_(x.repair + x.ac + x.purchase);
+    x.repair = round2_(x.repair); x.ac = round2_(x.ac); x.purchase = round2_(x.purchase);
+    return x;
+  });
+  var total = sum_(rows, function (r) { return r.total; });
+  return {
+    year: year || 'all',
+    rooms: rows.slice().sort(function (a, b) { return b.total - a.total; }),
+    total: round2_(total),
+    average: rows.length ? round2_(total / rows.length) : 0
+  };
 }

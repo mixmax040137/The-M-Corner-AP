@@ -39,7 +39,10 @@ var API_ROUTES = {
         debtStatuses: fieldOptions_(SHEETS.DEBTS, 'status'),
         payKinds: fieldOptions_(SHEETS.DEBT_PAYMENTS, 'kind'),
         payChannels: fieldOptions_(SHEETS.DEBT_PAYMENTS, 'channel'),
-        assetStatuses: fieldOptions_(SHEETS.ASSETS, 'status')
+        assetStatuses: fieldOptions_(SHEETS.ASSETS, 'status'),
+        financeKinds: fieldOptions_(SHEETS.FINANCE, 'kind'),
+        financeChannels: fieldOptions_(SHEETS.FINANCE, 'channel'),
+        incomeKinds: INCOME_KINDS
       },
       settings: {
         acCycleMonths: Number(getSetting_('ac_cycle_months', 6)),
@@ -100,6 +103,24 @@ var API_ROUTES = {
   /* ---------- ไฟล์แนบ ---------- */
   'file.upload': function (p) { return uploadFiles_(p); },
   'file.trash': function (p) { return trashFile_(p.id); },
+
+  /* ---------- รายรับ-รายจ่ายรายเดือน ---------- */
+  'finance.summary': function (p) { return financeSummary_(p.year); },
+  'finance.list': function (p) { return listFinance_(p.year, p.kind); },
+  'finance.save': function (p) { return saveFinance_(p.record); },
+  'finance.delete': function (p) { return deleteFinance_(p.id); },
+
+  /* ---------- รายงาน ---------- */
+  'report.costPerRoom': function (p) { return costPerRoom_(p.year); },
+  'report.upcoming': function (p) { return upcomingSchedule_(p.days); },
+
+  /* ---------- สำรองข้อมูล ---------- */
+  'backup.export': function () { return exportAll_(); },
+  'backup.csv': function (p) { return exportCsv_(p.sheet); },
+  'backup.import': function (p) { return importAll_(p); },
+  'backup.sheets': function () {
+    return Object.keys(SHEETS).map(function (k) { return SHEETS[k]; });
+  },
 
   /* ---------- การแจ้งเตือน ---------- */
   'notify.digest': function () { return buildDigest_(); },

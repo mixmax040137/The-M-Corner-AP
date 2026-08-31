@@ -44,6 +44,7 @@ var SHEETS = {
   ROOM_REPAIRS: 'RoomRepairs',        // แจ้งซ่อมตามห้อง
   BUILDING_REPAIRS: 'BuildingRepairs',// ซ่อมแซมตึกโดยรวม
   ASSETS: 'RoomAssets',               // ทรัพย์สินประจำห้อง
+  FINANCE: 'Finance',                 // รายรับ-รายจ่ายประจำเดือนของหอ
   SETTINGS: 'Settings',               // ค่าตั้งต้น / ข้อมูลอาคาร
   LOG: 'ActivityLog'                  // ประวัติการแก้ไข
 };
@@ -194,6 +195,25 @@ SCHEMA[SHEETS.ASSETS] = [
   { key: 'updatedAt',  label: 'แก้ไขล่าสุด',     type: 'date' }
 ];
 
+SCHEMA[SHEETS.FINANCE] = [
+  { key: 'id',       label: 'รหัส',           type: 'text' },
+  { key: 'date',     label: 'วันที่',          type: 'date' },
+  { key: 'year',     label: 'ปี (ค.ศ.)',       type: 'number' },
+  { key: 'month',    label: 'เดือน',          type: 'number' },
+  { key: 'flow',     label: 'ประเภท',         type: 'select', options: ['รายรับ', 'รายจ่าย'] },
+  { key: 'kind',     label: 'รายการ',         type: 'select', options: [
+      'รายรับค่าเช่า', 'รายรับอื่น ๆ',
+      'ค่าไฟฟ้า', 'ค่าน้ำประปา', 'ค่าอินเทอร์เน็ต', 'ค่าเก็บขยะ',
+      'ภาษีที่ดินและสิ่งปลูกสร้าง', 'ค่าประกันภัยอาคาร', 'ใบอนุญาต/ค่าธรรมเนียม',
+      'ค่าระบบบริหารหอพัก', 'เงินเดือน/ค่าแรง', 'ค่าใช้จ่ายอื่น ๆ'] },
+  { key: 'amount',   label: 'จำนวนเงิน',      type: 'money' },
+  { key: 'billMonth', label: 'รอบบิลเดือน',    type: 'text' },
+  { key: 'channel',  label: 'ช่องทาง',        type: 'select', options: ['โอน QR', 'โอนธนาคาร', 'เงินสด', 'บัตรเครดิต', 'หักบัญชีอัตโนมัติ', 'อื่น ๆ'] },
+  { key: 'slips',    label: 'สลิป/ใบเสร็จ',    type: 'files' },
+  { key: 'note',     label: 'หมายเหตุ',       type: 'multiline' },
+  { key: 'updatedAt', label: 'แก้ไขล่าสุด',    type: 'date' }
+];
+
 SCHEMA[SHEETS.SETTINGS] = [
   { key: 'key',   label: 'คีย์',      type: 'text' },
   { key: 'label', label: 'รายการ',    type: 'text' },
@@ -212,8 +232,11 @@ SCHEMA[SHEETS.LOG] = [
 /** ชีตที่มีคอลัมน์ปี — ใช้ทำตัวกรอง "แยกตามปี" */
 var YEAR_SHEETS = [
   SHEETS.DEBT_PAYMENTS, SHEETS.PURCHASES,
-  SHEETS.AC_SERVICE, SHEETS.ROOM_REPAIRS, SHEETS.BUILDING_REPAIRS
+  SHEETS.AC_SERVICE, SHEETS.ROOM_REPAIRS, SHEETS.BUILDING_REPAIRS, SHEETS.FINANCE
 ];
+
+/** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
+var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
 
 /** ค่าตั้งต้นของชีต Settings (ค่าที่เป็นความลับ เช่น รหัสประตู ให้กรอกเองในชีต) */
 var DEFAULT_SETTINGS = [

@@ -46,6 +46,26 @@ ROUTES.dashboard = {
         kpi('ประกันใกล้หมด', d.purchases.warranty.expiring + ' รายการ', 'หมดอายุแล้ว ' + d.purchases.warranty.expired, d.purchases.warranty.expiring ? 'warn' : '') +
       '</div>' +
 
+      '<div class="grid g2 mb12">' +
+        card('📒 รายรับ-รายจ่ายหอ ปี ' + d.year,
+          '<div class="grid g3 mb12">' +
+            kpi('รายรับ', baht(d.finance.income), 'เฉลี่ย ' + baht(d.finance.avgIncome) + '/เดือน', 'good') +
+            kpi('รายจ่าย', baht(d.finance.expense), 'เฉลี่ย ' + baht(d.finance.avgExpense) + '/เดือน', 'bad') +
+            kpi('คงเหลือสุทธิ', baht(d.finance.net), 'อัตรากำไร ' + pct(d.finance.margin)) +
+          '</div>' + miniMonthChart(d.finance.byMonth),
+          '<button class="btn sm" onclick="go(\'finance\')">ดูทั้งหมด →</button>') +
+        card('🗓️ งานที่กำลังจะถึง (' + d.upcoming.length + ')',
+          d.upcoming.length ? '<div class="alist">' + d.upcoming.slice(0,7).map(function(u){
+            var lvl = u.daysLeft < 0 ? 'danger' : (u.daysLeft <= 7 ? 'warn' : 'info');
+            return '<div class="ali l-' + lvl + '" onclick="go(\'' + jumpPage(u.module) + '\')">' +
+              '<div class="ic">' + u.icon + '</div><div><div class="tt">' + esc(u.title) + '</div>' +
+              '<div class="dd">' + thDate(u.date) + ' · ' +
+                (u.daysLeft < 0 ? 'เลยกำหนด ' + (-u.daysLeft) + ' วัน' : (u.daysLeft === 0 ? 'วันนี้' : 'อีก ' + u.daysLeft + ' วัน')) +
+              '</div></div></div>';
+          }).join('') + '</div>' : '<div class="empty"><div class="big">🌤️</div>ไม่มีงานนัดหมายเร็ว ๆ นี้</div>',
+          '<button class="btn sm" onclick="go(\'reports\')">ปฏิทินเต็ม →</button>', true) +
+      '</div>' +
+
       '<div class="grid g2">' +
         card('🔔 สิ่งที่ต้องทำ (' + d.alerts.length + ')', alerts, '', true) +
         card('🏢 งานซ่อมแซมตึกโดยรวม',
@@ -67,6 +87,19 @@ ROUTES.dashboard = {
     setBadge('ac', d.ac.roomsPending);
   }
 };
+
+function miniMonthChart(byMonth){
+  var max = Math.max.apply(null, byMonth.map(function(m){ return Math.max(m.income, m.expense); })) || 1;
+  return '<div style="display:flex;gap:3px;align-items:flex-end;height:74px">' + byMonth.map(function(m){
+    var hi = Math.round(m.income / max * 66), he = Math.round(m.expense / max * 66);
+    return '<div style="flex:1;text-align:center" title="' + m.label + ' · รับ ' + money(m.income) + ' · จ่าย ' + money(m.expense) + '">' +
+      '<div style="display:flex;gap:1px;align-items:flex-end;justify-content:center;height:66px">' +
+        '<div style="width:6px;height:' + hi + 'px;background:var(--ok);border-radius:2px 2px 0 0"></div>' +
+        '<div style="width:6px;height:' + he + 'px;background:var(--danger);border-radius:2px 2px 0 0"></div>' +
+      '</div><div class="faint" style="font-size:9.5px">' + m.label.replace('.','') + '</div></div>';
+  }).join('') + '</div>' +
+  '<div class="row fs12 muted mt8"><span class="b ok">รายรับ</span><span class="b dgr">รายจ่าย</span></div>';
+}
 
 function debtMini(x, page){
   return '<div class="pmeta" style="margin:0 0 6px"><span>ชำระแล้ว <b>' + baht(x.paid) + '</b></span>' +
@@ -547,6 +580,167 @@ function openRoom(room){
     openModal('🚪 ห้อง ' + room + ' · ชั้น ' + (i.floor||''), body,
       '<button class="btn" onclick="closeModal()">ปิด</button>', true);
   }).catch(function(e){ toast(e.message||e, 'err'); closeModal(); });
+}
+
+
+/* ============================================================
+   8) รายรับ-รายจ่ายหอ (รายเดือน)
+   ============================================================ */
+ROUTES.finance = {
+  load: function(){
+    return Promise.all([
+      callApi('finance.summary', { year: S.year }),
+      callApi('finance.list', { year: S.year, kind: S.params.kind || '' })
+    ]).then(function(r){ var d = r[0]; d.items = r[1]; return d; });
+  },
+  render: function(d){
+    var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+    var head = '<div class="grid g4 mb12">' +
+      kpi('รายรับ ' + yearLabel, baht(d.income), 'เฉลี่ย ' + baht(d.avgIncome) + '/เดือน', 'good') +
+      kpi('รายจ่าย ' + yearLabel, baht(d.expense), 'เฉลี่ย ' + baht(d.avgExpense) + '/เดือน', 'bad') +
+      kpi('คงเหลือสุทธิ', baht(d.net), 'อัตรากำไร ' + pct(d.margin), 'accent ' + (d.net >= 0 ? 'good' : 'bad')) +
+      kpi('บันทึกแล้ว', d.monthsWithData + ' เดือน', d.count + ' รายการ') +
+    '</div>';
+
+    var maxBar = Math.max.apply(null, d.byMonth.map(function(m){ return Math.max(m.income, m.expense); })) || 1;
+    var monthly = card('📅 รายเดือน · ' + yearLabel,
+      '<div class="tw"><table class="t"><thead><tr>' +
+      '<th>เดือน</th><th class="num">รายรับ</th><th class="num">รายจ่าย</th><th class="num">คงเหลือ</th>' +
+      '<th style="width:38%">เทียบรายรับ / รายจ่าย</th></tr></thead><tbody>' +
+      d.byMonth.map(function(m){
+        var blank = !m.income && !m.expense;
+        return '<tr' + (blank ? ' style="opacity:.45"' : '') + '>' +
+          '<td><b>' + m.label + '</b></td>' +
+          '<td class="num">' + (m.income ? money(m.income) : '–') + '</td>' +
+          '<td class="num">' + (m.expense ? money(m.expense) : '–') + '</td>' +
+          '<td class="num"><b style="color:' + (m.net >= 0 ? 'var(--ok)' : 'var(--danger)') + '">' +
+            (blank ? '–' : money(m.net)) + '</b></td>' +
+          '<td>' +
+            '<div class="bar-track mb8"><div class="bar-fill" style="width:' + (m.income/maxBar*100) + '%;background:var(--ok)"></div></div>' +
+            '<div class="bar-track"><div class="bar-fill" style="width:' + (m.expense/maxBar*100) + '%;background:var(--danger)"></div></div>' +
+          '</td></tr>';
+      }).join('') + '</tbody></table></div>', '', true);
+
+    var byKind = card('🧾 แยกตามรายการ · ' + yearLabel,
+      barChart(d.byKind.map(function(k){ return { label: k.kind + ' (' + k.count + ')', total: k.total }; }),
+               'label', 'total', function(i){ return money(i.total) + ' ฿'; }));
+
+    var byYear = card('📊 เทียบรายปี',
+      d.byYear.length ? '<div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
+        '<th>ปี</th><th class="num">รายรับ</th><th class="num">รายจ่าย</th><th class="num">คงเหลือ</th></tr></thead><tbody>' +
+        d.byYear.map(function(y){
+          return '<tr onclick="setYearFromTable(' + y.year + ')" style="cursor:pointer">' +
+            '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
+            '<td class="num">' + money(y.income) + '</td><td class="num">' + money(y.expense) + '</td>' +
+            '<td class="num"><b style="color:' + (y.net>=0?'var(--ok)':'var(--danger)') + '">' + money(y.net) + '</b></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="empty">ยังไม่มีข้อมูล</div>', '', true);
+
+    var kinds = '<div class="chips mb12">' +
+      '<button class="chip ' + (!S.params.kind?'on':'') + '" onclick="setParam(\'kind\',\'\')">ทุกรายการ</button>' +
+      d.byKind.map(function(k){
+        return '<button class="chip ' + (S.params.kind===k.kind?'on':'') + '" onclick="setParam(\'kind\',\'' + esc(k.kind) + '\')">' +
+               esc(k.kind) + ' (' + k.count + ')</button>';
+      }).join('') + '</div>';
+
+    var rows = d.items;
+    var list = card('📒 รายการทั้งหมด · ' + yearLabel + ' (' + rows.length + ')',
+      rows.length ? '<div class="tw"><table class="t"><thead><tr>' +
+        '<th>วันที่</th><th>รายการ</th><th class="num">จำนวนเงิน</th><th>รอบบิล</th><th>ช่องทาง</th>' +
+        '<th>สลิป</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>' +
+        rows.map(function(x){
+          var inc = x.flow === 'รายรับ';
+          return '<tr>' +
+            '<td class="nowrap fs12">' + thDate(x.date) + '</td>' +
+            '<td><b>' + esc(x.kind) + '</b> ' + (inc ? '<span class="b ok">รายรับ</span>' : '<span class="b mute">รายจ่าย</span>') + '</td>' +
+            '<td class="num"><b style="color:' + (inc?'var(--ok)':'var(--ink)') + '">' + (inc?'+':'−') + money(x.amount, 2) + '</b></td>' +
+            '<td class="fs12">' + esc(x.billMonth || '–') + '</td>' +
+            '<td class="fs12">' + esc(x.channel || '–') + '</td>' +
+            '<td>' + thumbsHtml(x.slipRefs) + '</td>' +
+            '<td class="fs12 muted clip">' + esc(x.note || '') + '</td>' +
+            '<td><div class="t-actions">' +
+              '<button class="btn sm icon" onclick=\'formFinance(' + attr(x) + ')\'>✏️</button>' +
+              '<button class="btn sm icon dgr" onclick="delFinance(\'' + x.id + '\')">🗑</button>' +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyBox('ยังไม่มีรายการใน' + yearLabel, '<button class="btn pri" onclick="formFinance(null)">+ บันทึกรายการ</button>'),
+      '<button class="btn pri sm" onclick="formFinance(null)">+ บันทึกรายรับ-รายจ่าย</button>', true);
+
+    return head + monthly + '<div class="grid g2 mt12 mb12">' + byKind + byYear + '</div>' + kinds + list;
+  }
+};
+
+/* ============================================================
+   9) รายงาน & สำรองข้อมูล
+   ============================================================ */
+ROUTES.reports = {
+  load: function(){
+    return Promise.all([
+      callApi('report.costPerRoom', { year: S.year }),
+      callApi('report.upcoming', { days: 90 }),
+      callApi('backup.sheets', {})
+    ]).then(function(r){ return { cost: r[0], upcoming: r[1], sheets: r[2], years: [] }; });
+  },
+  render: function(d){
+    var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
+    var c = d.cost;
+    var top = c.rooms.filter(function(r){ return r.total > 0; });
+    var maxCost = top.length ? top[0].total : 1;
+
+    var upcoming = card('🗓️ ปฏิทินงานที่กำลังจะถึง (90 วัน) · ' + d.upcoming.length + ' งาน',
+      d.upcoming.length ? '<div class="alist">' + d.upcoming.map(function(u){
+        var lvl = u.daysLeft < 0 ? 'danger' : (u.daysLeft <= 7 ? 'warn' : 'info');
+        return '<div class="ali l-' + lvl + '" onclick="go(\'' + jumpPage(u.module) + '\')">' +
+          '<div class="ic">' + u.icon + '</div><div>' +
+          '<div class="tt">' + esc(u.title) + '</div>' +
+          '<div class="dd">' + thDate(u.date) + ' · ' +
+            (u.daysLeft < 0 ? 'เลยกำหนด ' + (-u.daysLeft) + ' วัน' : (u.daysLeft === 0 ? 'วันนี้' : 'อีก ' + u.daysLeft + ' วัน')) +
+            (u.detail ? ' · ' + esc(u.detail) : '') + '</div></div></div>';
+      }).join('') + '</div>' : '<div class="empty"><div class="big">🌤️</div>ไม่มีงานนัดหมายใน 90 วันข้างหน้า</div>', '', true);
+
+    var costCard = card('🏷️ ค่าใช้จ่ายสะสมรายห้อง · ' + yearLabel,
+      '<div class="grid g3 mb12">' +
+        kpi('รวมทุกห้อง', baht(c.total), '') +
+        kpi('เฉลี่ยต่อห้อง', baht(c.average), '') +
+        kpi('ห้องที่ใช้จ่ายสูงสุด', top.length ? ('ห้อง ' + top[0].room) : '–', top.length ? baht(top[0].total) : '') +
+      '</div>' +
+      (top.length ? '<div class="tw"><table class="t"><thead><tr>' +
+        '<th>ห้อง</th><th class="num">งานซ่อม</th><th class="num">ค่าซ่อม</th><th class="num">ล้างแอร์</th>' +
+        '<th class="num">ของเข้าห้อง</th><th class="num">รวม</th><th style="width:26%"></th></tr></thead><tbody>' +
+        top.map(function(r){
+          return '<tr onclick="openRoom(\'' + r.room + '\')" style="cursor:pointer">' +
+            '<td><b>' + r.room + '</b> <span class="faint fs12">ชั้น ' + r.floor + '</span></td>' +
+            '<td class="num">' + r.jobs + '</td>' +
+            '<td class="num">' + (r.repair ? money(r.repair) : '–') + '</td>' +
+            '<td class="num">' + (r.ac ? money(r.ac) : '–') + '</td>' +
+            '<td class="num">' + (r.purchase ? money(r.purchase) : '–') + '</td>' +
+            '<td class="num"><b>' + money(r.total) + '</b></td>' +
+            '<td><div class="bar-track"><div class="bar-fill" style="width:' + (r.total/maxCost*100) + '%"></div></div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="empty">ยังไม่มีค่าใช้จ่ายที่บันทึกไว้รายห้อง<div class="fs12 mt8">ใส่ "ค่าใช้จ่าย" ในงานซ่อม/ล้างแอร์ หรือระบุห้องในรายการซื้อของ แล้วตัวเลขจะขึ้นที่นี่</div></div>'));
+
+    var backup = card('💾 สำรองและกู้คืนข้อมูล',
+      '<p class="fs13 muted">ข้อมูลทั้งหมดอยู่ในระบบนี้ — ควรดาวน์โหลดสำรองไว้เดือนละครั้ง ' +
+      'ไฟล์ JSON นำกลับเข้าระบบได้ ส่วน CSV เปิดใน Excel หรือ Google Sheets ได้เลย</p>' +
+      '<div class="row mt12">' +
+        '<button class="btn pri" onclick="doExportJson()">⬇️ ดาวน์โหลดสำรองทั้งหมด (JSON)</button>' +
+        '<button class="btn" onclick="doImportJson()">⬆️ กู้คืนจากไฟล์สำรอง</button>' +
+      '</div>' +
+      '<div class="hr"></div>' +
+      '<div class="fs12 muted mb8">ส่งออกเป็น CSV แยกตาราง</div>' +
+      '<div class="chips">' + d.sheets.map(function(n){
+        return '<button class="chip" onclick="doExportCsv(\'' + esc(n) + '\')">' + esc(sheetLabel(n)) + '</button>';
+      }).join('') + '</div>');
+
+    return upcoming + '<div class="mt12">' + costCard + '</div><div class="mt12">' + backup + '</div>';
+  }
+};
+
+function sheetLabel(n){
+  return ({
+    Debts:'ก้อนหนี้', DebtPayments:'รายการชำระหนี้', Purchases:'รายการซื้อของ', Rooms:'ทะเบียนห้อง',
+    AcService:'ล้างแอร์', RoomRepairs:'ซ่อมแซมห้อง', BuildingRepairs:'ซ่อมแซมตึก',
+    RoomAssets:'ทรัพย์สินห้อง', Finance:'รายรับ-รายจ่าย', Settings:'ตั้งค่า', ActivityLog:'ประวัติการแก้ไข'
+  })[n] || n;
 }
 
 /* ============================================================

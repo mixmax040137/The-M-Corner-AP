@@ -418,4 +418,101 @@ function formRoom(rec){
     ]
   });
 }
+
+/* ============================================================
+   ฟอร์ม: รายรับ-รายจ่ายหอ
+   ============================================================ */
+function formFinance(rec){
+  openForm({
+    title: rec && rec.id ? 'แก้ไขรายการ' : 'บันทึกรายรับ-รายจ่าย',
+    record: rec || { date: today(), channel: 'โอน QR' },
+    action: 'finance.save', bucket: 'misc',
+    onDelete: delFinance,
+    fields: [
+      { key:'kind',   label:'รายการ', type:'select', options:opt('financeKinds'), required:true, blank:false,
+        hint:'เลือก "รายรับค่าเช่า" หรือ "รายรับอื่น ๆ" ระบบจะนับเป็นฝั่งรายรับให้อัตโนมัติ' },
+      { key:'date',   label:'วันที่', type:'date', required:true },
+      { key:'amount', label:'จำนวนเงิน (บาท)', type:'money', required:true },
+      { key:'billMonth', label:'รอบบิลของเดือน', ph:'เช่น ก.ค. 2569' },
+      { key:'channel', label:'ช่องทาง', type:'select', options:opt('financeChannels') },
+      { key:'slips',  label:'สลิป / ใบเสร็จ', type:'files', full:true },
+      { key:'note',   label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+function delFinance(id){
+  confirmAction('ลบรายการนี้?', function(){
+    callApi('finance.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+      .catch(function(e){ toast(e.message||e,'err'); });
+  });
+}
+
+/* ============================================================
+   สำรอง / กู้คืนข้อมูล
+   ============================================================ */
+function doExportJson(){
+  toast('กำลังเตรียมไฟล์สำรอง…');
+  callApi('backup.export', {}).then(function(dump){
+    saveTextFile('the-m-corner-ap-backup-' + today() + '.json',
+                 JSON.stringify(dump, null, 1), 'application/json');
+  }).catch(function(e){ toast(e.message||e, 'err'); });
+}
+
+function doExportCsv(sheet){
+  callApi('backup.csv', { sheet: sheet }).then(function(r){
+    saveTextFile(r.filename, r.content, 'text/csv');
+  }).catch(function(e){ toast(e.message||e, 'err'); });
+}
+
+/** ดาวน์โหลดไฟล์ — ใช้ downloads capability ถ้ามี ไม่งั้นใช้ลิงก์ปกติ */
+function saveTextFile(filename, content, mime){
+  if (typeof window.saveViaHost === 'function') return window.saveViaHost(filename, content, mime);
+  var blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('ดาวน์โหลด ' + filename + ' แล้ว', 'ok');
+}
+
+function doImportJson(){
+  openModal('⬆️ กู้คืนจากไฟล์สำรอง',
+    '<p class="fs13">เลือกไฟล์ <b>.json</b> ที่เคยดาวน์โหลดไว้</p>' +
+    '<label class="file-drop" for="impFile">📄 เลือกไฟล์สำรอง' +
+      '<input type="file" id="impFile" accept="application/json,.json" style="display:none" ' +
+      'onchange="document.getElementById(\'impName\').textContent=this.files[0]?this.files[0].name:\'\'"></label>' +
+    '<div class="fs12 muted mt8" id="impName"></div>' +
+    '<div class="hr"></div>' +
+    '<div class="f"><label>วิธีกู้คืน</label>' +
+    '<select class="sel" id="impMode">' +
+      '<option value="merge">เพิ่มเฉพาะรายการที่ยังไม่มี (แนะนำ)</option>' +
+      '<option value="replace">ล้างข้อมูลเดิมแล้วแทนที่ทั้งหมด</option>' +
+    '</select></div>',
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn pri" id="impGo">กู้คืนข้อมูล</button>');
+
+  document.getElementById('impGo').onclick = function(){
+    var f = document.getElementById('impFile').files[0];
+    if (!f) return toast('กรุณาเลือกไฟล์ก่อน', 'err');
+    var mode = document.getElementById('impMode').value;
+    var btn = this; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> กำลังกู้คืน…';
+    var r = new FileReader();
+    r.onload = function(){
+      var parsed;
+      try { parsed = JSON.parse(r.result); }
+      catch (e) { btn.disabled = false; btn.textContent = 'กู้คืนข้อมูล'; return toast('ไฟล์ไม่ใช่ JSON ที่ถูกต้อง', 'err'); }
+      callApi('backup.import', { data: parsed, mode: mode }).then(function(stat){
+        closeModal();
+        var n = Object.keys(stat).reduce(function(a,k){ return a + (stat[k]||0); }, 0);
+        toast('กู้คืนสำเร็จ ' + n + ' รายการ', 'ok');
+        load();
+      }).catch(function(e){
+        btn.disabled = false; btn.textContent = 'กู้คืนข้อมูล'; toast(e.message||e, 'err');
+      });
+    };
+    r.readAsText(f);
+  };
+}
 </script>

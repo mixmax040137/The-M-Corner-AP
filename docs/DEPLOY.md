@@ -43,6 +43,8 @@
 | `Purchase` | `src/Purchase.gs` |
 | `Maintenance` | `src/Maintenance.gs` |
 | `Building` | `src/Building.gs` |
+| `Finance` | `src/Finance.gs` |
+| `Backup` | `src/Backup.gs` |
 | `Dashboard` | `src/Dashboard.gs` |
 | `Api` | `src/Api.gs` |
 | `Web` | `src/Web.gs` |
@@ -78,6 +80,7 @@
 • ล้างแอร์: 41 ครั้ง
 • ซ่อมแซมตามห้อง: 42 รายการ
 • ซ่อมแซมตึกโดยรวม: 4 รายการ
+• รายรับ-รายจ่ายรายเดือน: 32 รายการ
 • ทรัพย์สินประจำห้อง: 72 รายการ
 ```
 
@@ -90,7 +93,7 @@
 3. ตั้งค่า:
    - **Description**: `The M Corner AP v1`
    - **Execute as**: `Me (อีเมลคุณ)`
-   - **Who has access**: `Only myself` ← เริ่มต้นแบบนี้ก่อน ปลอดภัยที่สุด
+   - **Who has access**: `Only myself` ← ระบบนี้ใช้คนเดียว เลือกอันนี้
 4. กด **Deploy** → คัดลอก **Web app URL**
 5. เปิด URL นั้นในเบราว์เซอร์ — ระบบพร้อมใช้งาน 🎉
 
@@ -123,7 +126,7 @@ clasp open
 
 | Property | ใส่อะไร | ใช้ทำอะไร |
 |---|---|---|
-| `ALLOWED_EMAILS` | `mae@gmail.com,chang@gmail.com` | ให้คนอื่นเข้าใช้ระบบได้ (ต้องเปลี่ยน "Who has access" เป็น *Anyone with Google account* ด้วย) |
+| `ALLOWED_EMAILS` | `mae@gmail.com,chang@gmail.com` | เผื่ออนาคตอยากให้คนอื่นเข้าได้ (ต้องเปลี่ยน "Who has access" เป็น *Anyone with Google account* ด้วย) — ใช้งานคนเดียวไม่ต้องตั้ง |
 | `NOTIFY_EMAIL` | อีเมลที่จะรับสรุป | ถ้าไม่ตั้ง จะส่งไปที่เจ้าของชีต |
 | `LINE_TOKEN` + `LINE_TO` | token และ userId จาก LINE Messaging API | ส่งสรุปเข้า LINE ด้วย |
 

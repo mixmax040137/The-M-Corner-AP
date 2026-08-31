@@ -15,6 +15,7 @@
 |---|---|
 | 📁 โฟลเดอร์ | [The M Corner AP](https://drive.google.com/drive/folders/1jIGt_ebYv-8TvIrSoRrsp1QPnDZ9-kMM) |
 | 📊 Google Sheet (ฐานข้อมูล) | [The M Corner AP — ฐานข้อมูล](https://docs.google.com/spreadsheets/d/1frGWki1sBDG3T4eJxNm5wUZQkXUFcdEIPwKZLaQuSrg/edit) |
+| 📄 โค้ดที่ต้องคัดลอก | [build/Code.gs](https://github.com/mixmax040137/The-M-Corner-AP/blob/claude/m-corner-ap-system-18u8bz/build/Code.gs) · [build/Index.html](https://github.com/mixmax040137/The-M-Corner-AP/blob/claude/m-corner-ap-system-18u8bz/build/Index.html) |
 
 ชีตยังว่างอยู่ — ขั้นตอนที่ 5 จะสร้างตารางและใส่ข้อมูลเดิมให้ครบเอง
 
@@ -31,7 +32,7 @@
 
 ## ขั้นตอนที่ 2 — วางโค้ดฝั่งเซิร์ฟเวอร์
 
-1. เปิดไฟล์ [`build/Code.gs`](../build/Code.gs) ใน GitHub → กดปุ่ม **Copy raw file** (ไอคอนสองแผ่นซ้อนกัน มุมขวาบนของกล่องโค้ด)
+1. เปิดไฟล์ **[build/Code.gs](https://github.com/mixmax040137/The-M-Corner-AP/blob/claude/m-corner-ap-system-18u8bz/build/Code.gs)** → กดปุ่ม **Copy raw file** (ไอคอนสองแผ่นซ้อนกัน มุมขวาบนของกล่องโค้ด)
 2. กลับมาที่ Apps Script → คลิกในไฟล์ `Code.gs` → **เลือกทั้งหมด (Ctrl+A / ⌘A) แล้วลบ**
 3. **วาง (Ctrl+V / ⌘V)** โค้ดที่คัดลอกมา
 4. กด 💾 บันทึก
@@ -44,7 +45,7 @@
 
 1. ในแถบไฟล์ทางซ้าย กด **+ → HTML**
 2. ตั้งชื่อไฟล์ว่า **`Index`** (พิมพ์แค่นี้ ไม่ต้องใส่ `.html`)
-3. เปิด [`build/Index.html`](../build/Index.html) ใน GitHub → **Copy raw file**
+3. เปิด **[build/Index.html](https://github.com/mixmax040137/The-M-Corner-AP/blob/claude/m-corner-ap-system-18u8bz/build/Index.html)** → **Copy raw file**
 4. กลับมาที่ไฟล์ `Index` → เลือกทั้งหมด ลบ แล้ววางทับ
 5. กด 💾 บันทึก
 

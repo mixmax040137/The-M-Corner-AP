@@ -216,6 +216,26 @@ console.log('\n── 13. ตัวติดตั้งรวบยอด START
   check('รันซ้ำไม่สร้างห้องซ้ำ', readRows_(SHEETS.ROOMS).length, 24);
 }
 
+console.log('\n── 13b. ลิงก์ /dev กับ /exec ──');
+check('รู้จักลิงก์ทดสอบ /dev', isTestUrl_('https://script.google.com/macros/s/AKfy/dev'), true);
+check('รู้จักลิงก์ทดสอบ /dev ที่มี query', isTestUrl_('https://script.google.com/macros/s/AKfy/dev?key=abc'), true);
+check('ลิงก์ /exec ไม่ใช่ลิงก์ทดสอบ', isTestUrl_('https://script.google.com/macros/s/AKfy/exec'), false);
+{
+  const real = global.ScriptApp.getService;
+  global.ScriptApp.getService = () => ({ getUrl: () => 'https://script.google.com/macros/s/AKfy/dev' });
+  const m = linksMessage_();
+  check('เตือนเมื่อยังไม่ได้ deploy', m.indexOf('/dev') > 0 && m.indexOf('แชร์ให้คนอื่นไม่ได้') > 0, true);
+  check('บอกวิธี deploy ต่อ', m.indexOf('Who has access') > 0, true);
+  global.ScriptApp.getService = () => ({ getUrl: () => 'https://script.google.com/macros/s/AKfy/exec' });
+  const m2 = linksMessage_();
+  check('ลิงก์ /exec แสดงกุญแจครบสองชุด',
+    m2.indexOf('?key=' + getSetting_('admin_token','')) > 0 &&
+    m2.indexOf('?key=' + getSetting_('view_token','')) > 0, true);
+  global.ScriptApp.getService = real;
+}
+check('กรองกุญแจตัดอักขระอันตรายทิ้ง', safeKey_('ab"><script>x</script>-1_2'), 'abscriptxscript-1_2');
+check('กรองกุญแจไม่แตะตัวอักษรปกติ', safeKey_('qMYhE5AEcDsyk6WMCQJLMTfPdN'), 'qMYhE5AEcDsyk6WMCQJLMTfPdN');
+
 console.log('\n── 14. อัปเดตสด & สำรองลง Drive ──');
 const v1 = dataVersion_();
 check('รุ่นข้อมูลเป็นตัวเลขเวลา', typeof v1 === 'number' && v1 > 0, true);

@@ -68,14 +68,28 @@ console.log('\n── build/AllInOne.gs ──');
   put('room.list', {}); put('report.upcoming', { days: 90 });
   put('backup.sheets', {}); put('share.links', {}); put('backup.history', {});
 
-  // Index.html เป็น template ของ Apps Script — แทนค่าตัวแปรเหมือนที่ doGet ทำ
-  let html = fs.readFileSync(path.join(ROOT, 'build', 'Index.html'), 'utf8');
-  html = html.replace(/<\?=\s*appName\s*\?>/g, 'The M Corner AP')
-             .replace(/<\?=\s*subtitle\s*\?>/g, 'ระบบบริหารหอพัก')
-             .replace(/<\?=\s*version\s*\?>/g, '1.0.0')
-             .replace(/<\?=\s*JSON\.stringify\(accessKey\)\s*\?>/g, JSON.stringify(adminKey))
-             .replace(/<\?=\s*JSON\.stringify\(role\)\s*\?>/g, '"admin"');
-  check('แทนค่า template ครบ ไม่มี <?= เหลือ', !/<\?/.test(html), html.match(/<\?[^>]{0,40}/g));
+  // เรนเดอร์ template แบบเดียวกับ Apps Script ของจริง:
+  //   <?=  expr ?>  พิมพ์ค่าโดย escape HTML  (ถ้าใช้ในแท็ก script จะพัง เพราะ &quot; ไม่ถูกถอดกลับ)
+  //   <?!= expr ?>  พิมพ์ค่าดิบ
+  // จำลองให้ตรงจุดนี้สำคัญมาก — เคยพลาดมาแล้วจนกุญแจไม่ถึงหน้าเว็บ
+  const tplVars = { appName: 'The M Corner AP', subtitle: 'ระบบบริหารหอพัก', version: '1.0.0',
+                    accessKey: adminKey, role: 'admin' };
+  const htmlEscape = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  function renderTemplate(tpl, vars) {
+    return tpl.replace(/<\?(!?)=\s*([\s\S]*?)\s*\?>/g, (m, force, expr) => {
+      const val = Function('JSON', ...Object.keys(vars), 'return (' + expr + ')')(JSON, ...Object.values(vars));
+      return force ? String(val) : htmlEscape(val);
+    });
+  }
+
+  let html = renderTemplate(fs.readFileSync(path.join(ROOT, 'build', 'Index.html'), 'utf8'), tplVars);
+  check('แทนค่า template ครบ ไม่มี <?= เหลือ', !/<\?/.test(html), (html.match(/<\?[^>]{0,40}/g) || []).join(' '));
+  check('กุญแจถึงหน้าเว็บโดยไม่ถูก escape',
+        html.indexOf('var ACCESS_KEY = "' + adminKey + '"') > 0 &&
+        html.indexOf('&quot;') !== html.indexOf('var ACCESS_KEY'),
+        (html.split('\n').find(l => l.includes('ACCESS_KEY')) || '').trim());
 
   const stub = `<script>
     var __FX__ = ${JSON.stringify(fx)};
@@ -111,6 +125,14 @@ console.log('\n── build/AllInOne.gs ──');
   await pg.waitForTimeout(1200);
 
   check('ไม่มี JS error', errs.length === 0, errs.join(' | '));
+  const vars = await pg.evaluate(() => ({
+    key: typeof ACCESS_KEY !== 'undefined' ? ACCESS_KEY : null,
+    role: typeof USER_ROLE !== 'undefined' ? USER_ROLE : null,
+    edit: typeof canEdit === 'function' ? canEdit() : null
+  }));
+  check('ตัวแปรกุญแจถูกประกาศในหน้าเว็บ', vars.key === adminKey, 'ได้ ' + JSON.stringify(vars.key));
+  check('บทบาทถูกส่งถึงหน้าเว็บ', vars.role === 'admin', 'ได้ ' + JSON.stringify(vars.role));
+  check('canEdit() คืน true สำหรับผู้ดูแล', vars.edit === true, 'ได้ ' + JSON.stringify(vars.edit));
   check('CSS ถูกฝังมาด้วย', await pg.evaluate(() => getComputedStyle(document.querySelector('.nav')).width) !== 'auto');
   const navCount = await pg.$$eval('.nav-item', e => e.length);
   check('เมนู 10 หน้า', navCount === 10, 'ได้ ' + navCount);
@@ -147,7 +169,8 @@ console.log('\n── build/AllInOne.gs ──');
   await pg.screenshot({ path: OUT + '/bundle-reports.png' });
 
   // โหมดดูอย่างเดียว
-  const ro = html.replace('"admin"', '"viewer"').replace(JSON.stringify(adminKey), JSON.stringify(viewKey));
+  const ro = renderTemplate(fs.readFileSync(path.join(ROOT, 'build', 'Index.html'), 'utf8'),
+                            Object.assign({}, tplVars, { accessKey: viewKey, role: 'viewer' }));
   const f2 = path.join(OUT, 'bundle-readonly.html');
   fs.writeFileSync(f2, ro.replace('</head>', stub + '</head>'));
   const pg2 = await b.newPage({ viewport: { width: 1400, height: 1000 } });

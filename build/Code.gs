@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 13:28 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 16:19 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -709,20 +709,40 @@ function getSetting_(key, fallback) {
 }
 
 function showWebAppUrl() {
-  var url = '';
-  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { }
-  if (!url) {
-    alert_('ยังไม่ได้ Deploy — ไปที่ Deploy > New deployment > Web app แล้วค่อยเปิดเมนูนี้อีกครั้ง');
-    return;
-  }
   ensureTokens_();
-  var msg =
-    '🔑 ลิงก์ผู้ดูแล (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' +
+  return alert_(linksMessage_());
+}
+
+/** ข้อความบอกลิงก์ พร้อมเตือนถ้ายังไม่ได้ deploy เป็นเวอร์ชัน */
+function linksMessage_() {
+  var url = webAppUrl_();
+  if (!url) {
+    return 'ยังไม่ได้ Deploy\n\n' + deploySteps_();
+  }
+  if (isTestUrl_(url)) {
+    return '⚠️ ลิงก์ที่ได้ตอนนี้ลงท้ายด้วย /dev — เป็นลิงก์ทดสอบ\n\n' +
+      'ลิงก์ /dev เปิดได้เฉพาะบัญชีที่เป็นเจ้าของสคริปต์ และ "แชร์ให้คนอื่นไม่ได้"\n' +
+      'แปลว่าขั้นตอน Deploy ยังไม่เสร็จ\n\n' + deploySteps_() +
+      '\n\nทำเสร็จแล้วรัน START_HERE อีกครั้ง จะได้ลิงก์ที่ลงท้ายด้วย /exec';
+  }
+  return '━━━━━━━━━━━━━━━━━━━━━━\n' +
+    '🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' +
     url + '?key=' + getSetting_('admin_token', '') + '\n\n' +
-    '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้คนอื่นได้)\n' +
-    url + '?key=' + getSetting_('view_token', '') + '\n\n' +
+    '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้ใครก็ได้)\n' +
+    url + '?key=' + getSetting_('view_token', '') + '\n' +
+    '━━━━━━━━━━━━━━━━━━━━━━\n\n' +
     'เปิดในมือถือแล้วกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป';
-  return alert_(msg);
+}
+
+function deployMessage_() { return deploySteps_(); }
+
+function deploySteps_() {
+  return 'วิธี Deploy ให้ได้ลิงก์ที่แชร์ได้:\n' +
+    '1. กด Deploy (มุมขวาบน) → New deployment\n' +
+    '2. กดเฟือง ⚙️ ข้าง Select type → เลือก Web app\n' +
+    '3. Execute as   = Me (อีเมลของคุณ)\n' +
+    '4. Who has access = Anyone   ← ไม่ใช่ "Anyone with Google account"\n' +
+    '5. กด Deploy → กด Done จนหน้าต่างปิด';
 }
 
 function rotateShareLink() {
@@ -775,25 +795,7 @@ function START_HERE() {
     QUIET_ = wasQuiet;
   }
 
-  var url = '';
-  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { }
-
-  var msg = 'The M Corner AP — ติดตั้งเรียบร้อย\n\n' + log.join('\n') + '\n\n';
-  msg += url
-    ? '━━━━━━━━━━━━━━━━━━━━━━\n' +
-      '🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' + url + '?key=' + getSetting_('admin_token', '') + '\n\n' +
-      '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้ใครก็ได้)\n' + url + '?key=' + getSetting_('view_token', '') + '\n' +
-      '━━━━━━━━━━━━━━━━━━━━━━\n\n' +
-      'เปิดลิงก์แรกได้เลย · บนมือถือกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป'
-    : '⏭️ เหลืออีกขั้นตอนเดียว — สร้างลิงก์เข้าใช้งาน\n\n' +
-      '1. กด Deploy (มุมขวาบน) → New deployment\n' +
-      '2. กดเฟือง ⚙️ ข้าง Select type → เลือก Web app\n' +
-      '3. Execute as = Me   |   Who has access = Anyone\n' +
-      '4. กด Deploy → Done\n' +
-      '5. กลับมาที่ Google Sheet กด F5 แล้วเลือกเมนู\n' +
-      '   🏢 The M Corner AP → 🔗 แสดงลิงก์เข้าใช้งาน';
-
-  return alert_(msg);
+  return alert_('The M Corner AP — ติดตั้งเรียบร้อย\n\n' + log.join('\n') + '\n\n' + linksMessage_());
 }
 
 /** ชื่อไทยของ START_HERE เผื่อหาในรายการฟังก์ชันง่ายขึ้น */
@@ -894,9 +896,21 @@ function rotateViewToken_() {
   return { token: t, url: shareUrl_(t) };
 }
 
+/**
+ * URL ของเว็บแอป
+ *   ลงท้าย /exec = deploy แล้ว ใช้ได้กับทุกคน แชร์ได้
+ *   ลงท้าย /dev  = ยังไม่ได้ deploy เป็นเวอร์ชัน ใช้ได้เฉพาะเจ้าของสคริปต์ แชร์ไม่ได้
+ */
+function webAppUrl_() {
+  try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
+}
+
+function isTestUrl_(url) {
+  return /\/dev(\?|$)/.test(String(url || ''));
+}
+
 function shareUrl_(token) {
-  var base = '';
-  try { base = ScriptApp.getService().getUrl() || ''; } catch (e) { }
+  var base = webAppUrl_();
   return base ? base + '?key=' + token : '(ยังไม่ได้ deploy)';
 }
 
@@ -3284,7 +3298,7 @@ function escapeHtml_(s) {
  */
 
 function doGet(e) {
-  var key = (e && e.parameter && e.parameter.key) || '';
+  var key = safeKey_((e && e.parameter && e.parameter.key) || '');
   var role = resolveRole_(key);
 
   if (role === ROLE.NONE) return denyPage_();
@@ -3293,7 +3307,7 @@ function doGet(e) {
   t.appName = APP.NAME;
   t.subtitle = APP.SUBTITLE;
   t.version = APP.VERSION;
-  t.accessKey = key;
+  t.accessKey = key;   // กรองแล้ว ปลอดภัยที่จะฝังลงหน้าโดยตรง
   t.role = role;
 
   return t.evaluate()
@@ -3301,6 +3315,14 @@ function doGet(e) {
     .setFaviconUrl('https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_jfk2.png')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * กรองกุญแจให้เหลือเฉพาะตัวอักษรที่ตัวสร้างกุญแจใช้จริง
+ * เพื่อให้ฝังลงในหน้าเว็บด้วย <?!= ?> ได้อย่างปลอดภัย
+ */
+function safeKey_(k) {
+  return String(k || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
 }
 
 /** ใช้ใน template: <?!= include('ui/Style') ?> */

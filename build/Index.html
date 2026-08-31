@@ -374,8 +374,14 @@ table.t tbody tr:hover{background:var(--surface-2)}
 <div id="toastRoot"></div>
 
 <script>
-  var ACCESS_KEY = <?= JSON.stringify(accessKey) ?>;
-  var USER_ROLE  = <?= JSON.stringify(role) ?>;
+  /* ค่าทั้งสองถูกกรองให้เหลือแค่ A-Z a-z 0-9 _ - มาแล้วจากฝั่งเซิร์ฟเวอร์ (safeKey_)
+     จึงหลุดออกจากเครื่องหมายคำพูดไม่ได้
+
+     ต้องพิมพ์แบบดิบ (force-printing) เท่านั้น ห้ามใช้แบบ standard-printing
+     เพราะแบบหลังจะ escape เครื่องหมายคำพูดเป็น &quot; ซึ่งในแท็ก script
+     เบราว์เซอร์ไม่ถอดกลับ ทำให้ทั้งบล็อกนี้พังทั้งก้อนและกุญแจไม่ถึงหน้าเว็บ */
+  var ACCESS_KEY = "<?!= accessKey ?>";
+  var USER_ROLE  = "<?!= role ?>";
   var CAN_EDIT   = USER_ROLE === 'admin';
 </script>
 <script>
@@ -407,10 +413,25 @@ var PAGES = [
 
 /* ---------------- API ---------------- */
 
+/** กุญแจที่จะแนบไปกับทุกคำสั่ง — มี 2 ทางสำรองเผื่อทางแรกไม่มา */
+var RESOLVED_KEY = null;
+
+function accessKey(){
+  if (RESOLVED_KEY !== null) return RESOLVED_KEY;
+  RESOLVED_KEY = (typeof ACCESS_KEY === 'string' && ACCESS_KEY) ? ACCESS_KEY : '';
+  return RESOLVED_KEY;
+}
+
+/** true ถ้าเปิดด้วยลิงก์ผู้ดูแล — ใช้แทนตัวแปร CAN_EDIT ตรง ๆ ที่อาจไม่ถูกประกาศ */
+function canEdit(){
+  if (typeof CAN_EDIT !== 'undefined') return !!CAN_EDIT;
+  return !!(S.boot && S.boot.canEdit);
+}
+
 function callApi(action, payload){
   var body = {};
   Object.keys(payload || {}).forEach(function(k){ body[k] = payload[k]; });
-  body._key = (typeof ACCESS_KEY === 'string') ? ACCESS_KEY : '';
+  body._key = accessKey();
   payload = body;
   return new Promise(function(resolve, reject){
     google.script.run
@@ -426,6 +447,21 @@ function callApi(action, payload){
 /* ---------------- boot & routing ---------------- */
 
 function boot(){
+  // ถ้าตัวแปรกุญแจไม่มาถึงหน้าเว็บ (เช่น template เรนเดอร์ผิด) ลองอ่านจาก URL ของหน้าแม่ก่อน
+  if (!accessKey() && window.google && google.script && google.script.url) {
+    try {
+      google.script.url.getLocation(function(loc){
+        var k = loc && loc.parameter && loc.parameter.key;
+        RESOLVED_KEY = k ? String(k) : '';
+        bootNow();
+      });
+      return;
+    } catch (e) { /* ใช้ทางปกติ */ }
+  }
+  bootNow();
+}
+
+function bootNow(){
   callApi('app.bootstrap').then(function(b){
     S.boot = b;
     renderNav();
@@ -526,7 +562,7 @@ function syncYearOptions(years){
 var EDIT_ENTRYPOINTS = /\b(formDebt|formDebtPayment|formPurchase|formAc|formBulkAc|formRepair|formBuilding|formRoom|formFinance|delDebt|delDebtPayment|delPurchase|delAc|delRepair|delBuilding|delFinance|doImportJson|doRotateShare|doBackupNow)\s*\(/;
 
 function applyReadOnly(root){
-  if (typeof CAN_EDIT === 'undefined' || CAN_EDIT) return;
+  if (canEdit()) return;
   var nodes = root.querySelectorAll('[onclick]');
   for (var i = 0; i < nodes.length; i++) {
     if (EDIT_ENTRYPOINTS.test(nodes[i].getAttribute('onclick') || '')) nodes[i].remove();
@@ -1488,7 +1524,7 @@ ROUTES.reports = {
         return '<button class="chip" onclick="doExportCsv(\'' + esc(n) + '\')">' + esc(sheetLabel(n)) + '</button>';
       }).join('') + '</div>');
 
-    var share = (CAN_EDIT && d.links && d.links.viewUrl) ? card('🔗 ลิงก์เข้าใช้งาน',
+    var share = (canEdit() && d.links && d.links.viewUrl) ? card('🔗 ลิงก์เข้าใช้งาน',
       '<div class="f mb12"><label>🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — อย่าส่งต่อ)</label>' +
         '<input class="inp" readonly value="' + esc(d.links.adminUrl) + '" onclick="this.select()"></div>' +
       '<div class="f"><label>👀 ลิงก์แชร์ (เปิดดูได้อย่างเดียว — ส่งให้ใครก็ได้)</label>' +
@@ -1501,7 +1537,7 @@ ROUTES.reports = {
       'ไม่ต้องมีบัญชี Google และไม่เห็น Google Sheet ของคุณ · ' +
       'ถ้าลิงก์หลุดให้กด "ออกลิงก์แชร์ใหม่" ลิงก์เดิมจะใช้ไม่ได้ทันที</p>') : '';
 
-    var drive = CAN_EDIT ? card('☁️ สำรองอัตโนมัติใน Google Drive (' + d.backups.length + ' ชุด)',
+    var drive = canEdit() ? card('☁️ สำรองอัตโนมัติใน Google Drive (' + d.backups.length + ' ชุด)',
       '<p class="fs13 muted">ระบบเก็บไฟล์สำรองไว้ในโฟลเดอร์ "สำรองข้อมูล" บนไดรฟ์ของคุณ ' +
       'ตั้งให้ทำอัตโนมัติทุกวันได้จากเมนูในชีต</p>' +
       '<div class="row mt12"><button class="btn" onclick="doBackupNow()">💾 สำรองเดี๋ยวนี้</button></div>' +

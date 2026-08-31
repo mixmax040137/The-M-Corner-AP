@@ -735,7 +735,7 @@ ROUTES.reports = {
         return '<button class="chip" onclick="doExportCsv(\'' + esc(n) + '\')">' + esc(sheetLabel(n)) + '</button>';
       }).join('') + '</div>');
 
-    var share = (CAN_EDIT && d.links && d.links.viewUrl) ? card('🔗 ลิงก์เข้าใช้งาน',
+    var share = (canEdit() && d.links && d.links.viewUrl) ? card('🔗 ลิงก์เข้าใช้งาน',
       '<div class="f mb12"><label>🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — อย่าส่งต่อ)</label>' +
         '<input class="inp" readonly value="' + esc(d.links.adminUrl) + '" onclick="this.select()"></div>' +
       '<div class="f"><label>👀 ลิงก์แชร์ (เปิดดูได้อย่างเดียว — ส่งให้ใครก็ได้)</label>' +
@@ -748,7 +748,7 @@ ROUTES.reports = {
       'ไม่ต้องมีบัญชี Google และไม่เห็น Google Sheet ของคุณ · ' +
       'ถ้าลิงก์หลุดให้กด "ออกลิงก์แชร์ใหม่" ลิงก์เดิมจะใช้ไม่ได้ทันที</p>') : '';
 
-    var drive = CAN_EDIT ? card('☁️ สำรองอัตโนมัติใน Google Drive (' + d.backups.length + ' ชุด)',
+    var drive = canEdit() ? card('☁️ สำรองอัตโนมัติใน Google Drive (' + d.backups.length + ' ชุด)',
       '<p class="fs13 muted">ระบบเก็บไฟล์สำรองไว้ในโฟลเดอร์ "สำรองข้อมูล" บนไดรฟ์ของคุณ ' +
       'ตั้งให้ทำอัตโนมัติทุกวันได้จากเมนูในชีต</p>' +
       '<div class="row mt12"><button class="btn" onclick="doBackupNow()">💾 สำรองเดี๋ยวนี้</button></div>' +

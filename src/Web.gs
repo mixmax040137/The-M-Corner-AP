@@ -3,7 +3,7 @@
  */
 
 function doGet(e) {
-  var key = (e && e.parameter && e.parameter.key) || '';
+  var key = safeKey_((e && e.parameter && e.parameter.key) || '');
   var role = resolveRole_(key);
 
   if (role === ROLE.NONE) return denyPage_();
@@ -12,7 +12,7 @@ function doGet(e) {
   t.appName = APP.NAME;
   t.subtitle = APP.SUBTITLE;
   t.version = APP.VERSION;
-  t.accessKey = key;
+  t.accessKey = key;   // กรองแล้ว ปลอดภัยที่จะฝังลงหน้าโดยตรง
   t.role = role;
 
   return t.evaluate()
@@ -20,6 +20,14 @@ function doGet(e) {
     .setFaviconUrl('https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_jfk2.png')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * กรองกุญแจให้เหลือเฉพาะตัวอักษรที่ตัวสร้างกุญแจใช้จริง
+ * เพื่อให้ฝังลงในหน้าเว็บด้วย <?!= ?> ได้อย่างปลอดภัย
+ */
+function safeKey_(k) {
+  return String(k || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
 }
 
 /** ใช้ใน template: <?!= include('ui/Style') ?> */

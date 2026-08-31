@@ -49,8 +49,14 @@
 <div id="toastRoot"></div>
 
 <script>
-  var ACCESS_KEY = <?= JSON.stringify(accessKey) ?>;
-  var USER_ROLE  = <?= JSON.stringify(role) ?>;
+  /* ค่าทั้งสองถูกกรองให้เหลือแค่ A-Z a-z 0-9 _ - มาแล้วจากฝั่งเซิร์ฟเวอร์ (safeKey_)
+     จึงหลุดออกจากเครื่องหมายคำพูดไม่ได้
+
+     ต้องพิมพ์แบบดิบ (force-printing) เท่านั้น ห้ามใช้แบบ standard-printing
+     เพราะแบบหลังจะ escape เครื่องหมายคำพูดเป็น &quot; ซึ่งในแท็ก script
+     เบราว์เซอร์ไม่ถอดกลับ ทำให้ทั้งบล็อกนี้พังทั้งก้อนและกุญแจไม่ถึงหน้าเว็บ */
+  var ACCESS_KEY = "<?!= accessKey ?>";
+  var USER_ROLE  = "<?!= role ?>";
   var CAN_EDIT   = USER_ROLE === 'admin';
 </script>
 <?!= include('ui/App'); ?>

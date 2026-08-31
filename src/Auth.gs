@@ -88,9 +88,21 @@ function rotateViewToken_() {
   return { token: t, url: shareUrl_(t) };
 }
 
+/**
+ * URL ของเว็บแอป
+ *   ลงท้าย /exec = deploy แล้ว ใช้ได้กับทุกคน แชร์ได้
+ *   ลงท้าย /dev  = ยังไม่ได้ deploy เป็นเวอร์ชัน ใช้ได้เฉพาะเจ้าของสคริปต์ แชร์ไม่ได้
+ */
+function webAppUrl_() {
+  try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
+}
+
+function isTestUrl_(url) {
+  return /\/dev(\?|$)/.test(String(url || ''));
+}
+
 function shareUrl_(token) {
-  var base = '';
-  try { base = ScriptApp.getService().getUrl() || ''; } catch (e) { }
+  var base = webAppUrl_();
   return base ? base + '?key=' + token : '(ยังไม่ได้ deploy)';
 }
 

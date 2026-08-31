@@ -8,6 +8,7 @@
 var ACCESS_KEY = '';
 var USER_ROLE = 'admin';
 var CAN_EDIT = true;
+function canEdit(){ return true; }
 var DB = window.__SEED__ || {};
 Object.keys(SHEETS).forEach(function (k) {
   var n = SHEETS[k];

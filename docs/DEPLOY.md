@@ -216,6 +216,7 @@ PIN ผูกกับ *เครื่องนั้น ๆ* ไม่ใช�
 # แก้ที่ src/ แล้วสร้างใหม่
 node build/bundle.js         # ได้ AllInOne.gs + Code.gs + Index.html
 node test/run.js             # ทดสอบตรรกะ 312 ข้อ
+node test/upgrade.js         # ซ้อมอัปเกรดระบบที่มีข้อมูลอยู่แล้ว 35 ข้อ
 node build/verify-bundle.js  # ทดสอบไฟล์ที่จะนำไปวางบนเบราว์เซอร์จริง 60 ข้อ
 ```
 

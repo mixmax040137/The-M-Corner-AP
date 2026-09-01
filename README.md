@@ -174,6 +174,7 @@ test/
 ```bash
 node test/run.js             # ทดสอบตรรกะฝั่งเซิร์ฟเวอร์ รวมระบบสิทธิ์และล็อกอิน (312 ข้อ)
 node build/bundle.js         # รวมซอร์สเป็นไฟล์สำหรับ Apps Script
+node test/upgrade.js         # ซ้อมอัปเกรดระบบที่มีข้อมูลอยู่แล้ว (35 ข้อ)
 node build/verify-bundle.js  # เปิดไฟล์ที่รวมแล้วด้วย Chromium จริง (60 ข้อ)
 node artifact/build.js       # ประกอบเว็บแอปหน้าเดียว
 node artifact/verify.js      # ทดสอบการบันทึกข้าม 3 รุ่น (26 ข้อ)

@@ -42,6 +42,7 @@ class Range {
 
 class Sheet {
   constructor(name) { this.name = name; this.data = []; }
+  getName() { return this.name; }
   cell(r, c) { const row = this.data[r - 1]; const v = row ? row[c - 1] : ''; return v === undefined ? '' : v; }
   set(r, c, v) { while (this.data.length < r) this.data.push([]); const row = this.data[r - 1]; while (row.length < c) row.push(''); row[c - 1] = v; }
   getRange(r, c, nr = 1, nc = 1) { return new Range(this, r, c, nr, nc); }
@@ -58,7 +59,9 @@ const spreadsheet = {
   getUrl: () => 'https://docs.google.com/spreadsheets/d/MOCK_SS/edit',
   getOwner: () => ({ getEmail: () => 'owner@example.com' }),
   getSheetByName: n => store.sheets.get(n) || null,
-  insertSheet: n => { const s = new Sheet(n); store.sheets.set(n, s); return s; }
+  insertSheet: n => { const s = new Sheet(n); store.sheets.set(n, s); return s; },
+  deleteSheet: sh => { store.sheets.delete(sh.getName ? sh.getName() : String(sh)); },
+  getSheets: () => Array.from(store.sheets.values())
 };
 
 global.SpreadsheetApp = {

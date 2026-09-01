@@ -321,6 +321,68 @@ console.log('\n── build/AllInOne.gs ──');
     await p4.close();
   }
 
+  /* ---------- ปุ่มแก้ไขต้องแก้ของเดิม ไม่ใช่สร้างใหม่ ----------
+     เคยพลาดมาแล้ว: ประกาศ attr() ชื่อซ้ำใน Settings.html ไปทับของ Views.html
+     ทำให้ปุ่มแก้ไขได้ข้อความแทน object → ฟอร์มขึ้นว่าง → กดบันทึกกลายเป็นรายการใหม่
+  --------------------------------------------------------------- */
+  console.log('\n── ปุ่มแก้ไขทุกโมดูล ──');
+  {
+    // หน้า, ฟังก์ชันฟอร์ม, ช่องที่ต้องมีค่าเดิมขึ้นมา
+    const cases = [
+      ['debtMain',  'formDebt',        'f_title'],
+      ['debtMain',  'formDebtPayment', 'f_payDate'],
+      ['purchases', 'formPurchase',    'f_item'],
+      ['ac',        'formAc',          'f_room'],
+      ['repairs',   'formRepair',      'f_items'],
+      ['building',  'formBuilding',    'f_title'],
+      ['finance',   'formFinance',     'f_amount']
+    ];
+
+    for (const [pageId, fn, probe] of cases) {
+      await pg.evaluate(x => go(x), pageId);
+      await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+
+      // หาปุ่มดินสอของฟอร์มนั้นในตาราง แล้วกดจริง ๆ เหมือนผู้ใช้
+      // ต้องเป็นปุ่มที่ส่ง object ของรายการเข้าไป (ดินสอ) ไม่ใช่ปุ่ม "+ เพิ่ม" ที่ส่ง null
+      const clicked = await pg.evaluate(f => {
+        var btn = Array.prototype.slice.call(document.querySelectorAll('#view [onclick]'))
+          .filter(function(e){ return (e.getAttribute('onclick') || '').indexOf(f + '({') === 0; })[0];
+        if (!btn) return 'ไม่เจอปุ่มดินสอที่ส่งข้อมูลรายการ';
+        btn.click();
+        return 'ok';
+      }, fn);
+      if (clicked !== 'ok') { check(fn + ': มีปุ่มแก้ไขให้กด', false, clicked); continue; }
+      await pg.waitForTimeout(250);
+
+      const got = await pg.evaluate(id => ({
+        title: (document.querySelector('.modal-h h3') || {}).textContent || '',
+        probe: (document.getElementById(id) || {}).value,
+        recId: (FORM.rec || {}).id || ''
+      }), probe);
+
+      check(fn + ': หัวฟอร์มขึ้นว่า "แก้ไข" ไม่ใช่ "เพิ่ม/บันทึก"',
+            /แก้ไข|ข้อมูลห้อง/.test(got.title), got.title);
+      check(fn + ': ข้อมูลเดิมถูกเติมลงฟอร์ม',
+            got.probe !== undefined && String(got.probe).trim() !== '', JSON.stringify(got.probe));
+      check(fn + ': จำรหัสรายการเดิมไว้ (กดบันทึกแล้วจะแก้ทับ ไม่สร้างใหม่)',
+            !!got.recId, JSON.stringify(got.recId));
+      await pg.evaluate(() => closeModal());
+    }
+
+    // กดปุ่ม "เพิ่มรายการ" ต้องได้ฟอร์มเปล่าและไม่มีรหัสเดิม
+    await pg.evaluate(() => go('finance'));
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+    await pg.evaluate(() => formFinance(null));
+    await pg.waitForTimeout(200);
+    const fresh = await pg.evaluate(() => ({
+      title: (document.querySelector('.modal-h h3') || {}).textContent || '',
+      recId: (FORM.rec || {}).id || ''
+    }));
+    check('กดเพิ่มรายการใหม่: หัวฟอร์มไม่ใช่ "แก้ไข"', !/แก้ไข/.test(fresh.title), fresh.title);
+    check('กดเพิ่มรายการใหม่: ไม่มีรหัสเดิมติดมา', !fresh.recId, JSON.stringify(fresh.recId));
+    await pg.evaluate(() => closeModal());
+  }
+
   /* ---------- การรีเฟรชอัตโนมัติต้องไม่รบกวนการกรอกข้อมูล ---------- */
   console.log('\n── การรีเฟรชอัตโนมัติ ──');
   {

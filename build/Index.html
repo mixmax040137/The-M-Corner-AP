@@ -2481,13 +2481,9 @@ function roleBadge(role){
   return '<span class="b ' + cls + '">' + esc(role) + '</span>';
 }
 
-/** ฝัง object ลงใน onclick อย่างปลอดภัย */
-function attr(obj){
-  // ต้องแปลง & ก่อนตัวอื่น ไม่งั้น &quot; ที่เพิ่งสร้างจะโดนแปลงซ้ำ
-  return JSON.stringify(JSON.stringify(obj))
-    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// หมายเหตุ: ใช้ attr() ตัวเดียวกับที่ Views.html ประกาศไว้
+// เคยประกาศชื่อซ้ำไว้ตรงนี้ครั้งหนึ่ง แล้วไปทับของเดิมจนปุ่มแก้ไขทั้งระบบพัง
+// (ฟอร์มขึ้นว่าง และกดบันทึกกลายเป็นสร้างรายการใหม่แทนการแก้ของเดิม)
 
 function formUser(json){
   var u = json ? (typeof json === 'string' ? JSON.parse(json) : json) : {};
@@ -2575,7 +2571,13 @@ function copyField(id){
    Forms.html — ฟอร์มเพิ่ม/แก้ไข และการลบ
    ========================================================= */
 
-var FORM = { specs: [], keep: {}, bucket: 'misc', ocr: null };
+var FORM = {
+  specs: [],       // ผังช่องกรอกของฟอร์มที่เปิดอยู่
+  keep: {},        // ไฟล์แนบเดิมที่ยังไม่ได้เอาออก
+  bucket: 'misc',  // โฟลเดอร์ที่จะเก็บไฟล์แนบใหม่
+  ocr: null,       // ผังการเติมค่าจากรูป
+  rec: null        // รายการที่กำลังแก้อยู่ (null = กำลังเพิ่มรายการใหม่)
+};
 
 /* ---------------- form engine ---------------- */
 
@@ -2717,6 +2719,7 @@ function readForm(specs, bucket){
 function openForm(opts){
   var rec = opts.record || {};
   FORM.ocr = opts.ocr || null;
+  FORM.rec = rec.id ? rec : null;   // จำไว้ว่ากำลังแก้ของเดิม หรือกำลังเพิ่มใหม่
   openModal(opts.title,
     fieldsHtml(opts.fields, rec),
     '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +

@@ -3,7 +3,13 @@
    Forms.html — ฟอร์มเพิ่ม/แก้ไข และการลบ
    ========================================================= */
 
-var FORM = { specs: [], keep: {}, bucket: 'misc', ocr: null };
+var FORM = {
+  specs: [],       // ผังช่องกรอกของฟอร์มที่เปิดอยู่
+  keep: {},        // ไฟล์แนบเดิมที่ยังไม่ได้เอาออก
+  bucket: 'misc',  // โฟลเดอร์ที่จะเก็บไฟล์แนบใหม่
+  ocr: null,       // ผังการเติมค่าจากรูป
+  rec: null        // รายการที่กำลังแก้อยู่ (null = กำลังเพิ่มรายการใหม่)
+};
 
 /* ---------------- form engine ---------------- */
 
@@ -145,6 +151,7 @@ function readForm(specs, bucket){
 function openForm(opts){
   var rec = opts.record || {};
   FORM.ocr = opts.ocr || null;
+  FORM.rec = rec.id ? rec : null;   // จำไว้ว่ากำลังแก้ของเดิม หรือกำลังเพิ่มใหม่
   openModal(opts.title,
     fieldsHtml(opts.fields, rec),
     '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +

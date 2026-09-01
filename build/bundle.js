@@ -46,6 +46,47 @@ let html = read(path.join(SRC, 'ui', 'Index.html'));
   });
 if (/include\(/.test(html)) throw new Error('ยังมี include() ตกค้างใน Index.html');
 
+/* ---------- กันชื่อฟังก์ชันซ้ำข้ามไฟล์ ----------
+   ไฟล์ ui/*.html ทุกไฟล์อยู่ใน global scope เดียวกัน
+   ถ้าประกาศชื่อซ้ำ ตัวที่โหลดทีหลังจะทับตัวแรกเงียบ ๆ โดยไม่มี error
+   เคยเกิดขึ้นจริง: attr() ใน Settings.html ไปทับของ Views.html
+   จนปุ่มแก้ไขทั้งระบบเปิดฟอร์มเปล่าและกดบันทึกกลายเป็นสร้างรายการใหม่
+----------------------------------------------------- */
+{
+  const seen = {}, dup = [];
+  ['App', 'Auth', 'Views', 'Settings', 'Forms'].forEach(name => {
+    const src = read(path.join(SRC, 'ui', name + '.html'));
+    const re = /^function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      if (seen[m[1]]) dup.push(m[1] + ' — ประกาศทั้งใน ' + seen[m[1]] + ' และ ' + name);
+      else seen[m[1]] = name;
+    }
+  });
+  if (dup.length) {
+    throw new Error('ชื่อฟังก์ชันซ้ำข้ามไฟล์ ui/ (ตัวหลังจะทับตัวแรกเงียบ ๆ):\n  ' + dup.join('\n  '));
+  }
+}
+
+/* ---------- กันฟังก์ชันที่ถูกเรียกแต่ไม่มีตัวจริง ----------
+   จับกรณีลบฟังก์ชันทิ้งแล้วลืมแก้ที่เรียก — ตรวจเฉพาะชื่อที่ขึ้นต้นด้วย form/del
+   ซึ่งเป็นปุ่มที่ผู้ใช้กดจริงในตาราง
+----------------------------------------------------------- */
+{
+  const all = ['App', 'Auth', 'Views', 'Settings', 'Forms']
+    .map(n => read(path.join(SRC, 'ui', n + '.html'))).join('\n');
+  const declared = new Set();
+  let m;
+  const dre = /^function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
+  while ((m = dre.exec(all)) !== null) declared.add(m[1]);
+  const missing = new Set();
+  const cre = /\b((?:form|del)[A-Z][\w$]*)\s*\(/g;
+  while ((m = cre.exec(all)) !== null) if (!declared.has(m[1])) missing.add(m[1]);
+  if (missing.size) {
+    throw new Error('มีปุ่มเรียกฟังก์ชันที่ไม่มีอยู่จริง: ' + [...missing].join(', '));
+  }
+}
+
 fs.mkdirSync(path.join(ROOT, 'build'), { recursive: true });
 fs.writeFileSync(path.join(ROOT, 'build', 'Code.gs'), code);
 fs.writeFileSync(path.join(ROOT, 'build', 'Index.html'), html);

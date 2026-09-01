@@ -230,13 +230,9 @@ function roleBadge(role){
   return '<span class="b ' + cls + '">' + esc(role) + '</span>';
 }
 
-/** ฝัง object ลงใน onclick อย่างปลอดภัย */
-function attr(obj){
-  // ต้องแปลง & ก่อนตัวอื่น ไม่งั้น &quot; ที่เพิ่งสร้างจะโดนแปลงซ้ำ
-  return JSON.stringify(JSON.stringify(obj))
-    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// หมายเหตุ: ใช้ attr() ตัวเดียวกับที่ Views.html ประกาศไว้
+// เคยประกาศชื่อซ้ำไว้ตรงนี้ครั้งหนึ่ง แล้วไปทับของเดิมจนปุ่มแก้ไขทั้งระบบพัง
+// (ฟอร์มขึ้นว่าง และกดบันทึกกลายเป็นสร้างรายการใหม่แทนการแก้ของเดิม)
 
 function formUser(json){
   var u = json ? (typeof json === 'string' ? JSON.parse(json) : json) : {};

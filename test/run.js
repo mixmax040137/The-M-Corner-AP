@@ -814,6 +814,86 @@ console.log('\n── 19. รอบตรวจข้อมูลใหม่ �
   api('purchase.delete', { _key: admKey, id: added.data.id });
 }
 
+console.log('\n── 20. บิลเดียวหลายรายการ (ซื้อออนไลน์) ──');
+{
+  const admKey = getSetting_('admin_token', '');
+
+  // --- แยกบรรทัด ---
+  const L = parseLines_('ปั๊มน้ำ 750W | 1 | เครื่อง | 4250\nสายไฟ VAF 2x1.5 | 20 | เมตร | 17.5');
+  check('แยกได้ 2 รายการ', L.length, 2);
+  check('ชื่อสินค้าครบ ไม่โดนตัด', L[0].name, 'ปั๊มน้ำ 750W');
+  check('จำนวนกับหน่วยแยกกันถูก', [L[1].qty, L[1].unit], [20, 'เมตร']);
+  check('คิดราคารวมต่อรายการให้', L[1].total, 350);
+  check('ชื่อที่มี x ไม่ถูกตีความเป็นคูณ', L[1].name, 'สายไฟ VAF 2x1.5');
+
+  check('เขียนกลับเป็นข้อความรูปแบบเดิมได้', formatLines_(L),
+    'ปั๊มน้ำ 750W | 1 | เครื่อง | 4250\nสายไฟ VAF 2x1.5 | 20 | เมตร | 17.5');
+  check('อ่าน-เขียนวนกลับแล้วได้เท่าเดิม', parseLines_(formatLines_(L)), L);
+
+  // --- รูปแบบที่กรอกไม่ครบ ต้องไม่พัง ---
+  check('3 ช่อง = ชื่อ|จำนวน|ราคา', parseLines_('เทปพันสายไฟ | 3 | 15')[0].total, 45);
+  check('2 ช่อง = ชื่อ|ราคา (ถือว่า 1 ชิ้น)', parseLines_('ค่าส่ง | 50')[0].total, 50);
+  check('ช่องเดียว = ชื่ออย่างเดียว', parseLines_('ของแถม')[0].total, 0);
+  check('บรรทัดว่างถูกข้าม', parseLines_('ก | 1 | ชิ้น | 10\n\n   \nข | 2 | ชิ้น | 5').length, 2);
+  check('ตัวเลขเพี้ยนไม่ทำให้ยอดเป็น NaN', parseLines_('ของ | มั่ว | ชิ้น | เท่าไหร่ก็ไม่รู้')[0].total, 0);
+  check('ช่องว่างเปล่าได้ array ว่าง', parseLines_(''), []);
+  check('| ในชื่อสินค้าไม่ทำโครงสร้างพัง',
+    parseLines_(formatLines_([{name:'ท่อ PVC | 4 หุน', qty:2, unit:'เส้น', unitPrice:35}]))[0].name, 'ท่อ PVC / 4 หุน');
+
+  // --- ยอดรวมของบิล ---
+  const bill = billOf_({ lines: 'ก | 2 | ชิ้น | 100\nข | 1 | ชิ้น | 250', shipping: 40, discount: 90 });
+  check('ค่าสินค้ารวมถูก', bill.itemsTotal, 450);
+  check('ยอดรวมทั้งบิล = ค่าสินค้า + ค่าส่ง − ส่วนลด', bill.grand, 400);
+  check('นับจำนวนรายการในบิลได้', bill.count, 2);
+  check('บิลที่ไม่มีรายการย่อย ยอดเป็น 0 ไม่ใช่ NaN', billOf_({}).grand, 0);
+  check('ทศนิยมไม่เพี้ยน (0.1+0.2)', billOf_({ lines: 'ก | 3 | ชิ้น | 0.1' }).grand, 0.3);
+
+  // --- บันทึกจริงผ่าน api ---
+  const r = api('purchase.save', { _key: admKey, record: {
+    item: '', buyDate: '2026-03-15', vendor: 'Shopee ร้าน ABC', orderNo: '2603ABCXYZ',
+    lines: 'ปั๊มน้ำ 750W | 1 | เครื่อง | 4250\nสายไฟ VAF | 20 | เมตร | 17.5\nเทปพันสายไฟ | 3 | ม้วน | 15',
+    shipping: 60, discount: 100
+  }});
+  check('บันทึกบิลหลายรายการได้', r.ok, true);
+  const saved = findRow_(SHEETS.PURCHASES, r.data.id);
+  // 4250 + (20×17.5=350) + (3×15=45) = 4645 · +60 ค่าส่ง −100 ส่วนลด = 4605
+  check('ราคารวมถูกคิดให้อัตโนมัติ', saved.price, 4605);
+  check('จำนวนรวมนับจากทุกรายการ', saved.qty, 24);
+  check('เว้นชื่อบิลว่างไว้ ระบบตั้งให้เอง', saved.item, 'ปั๊มน้ำ 750W และอีก 2 รายการ');
+  check('หน่วยตั้งให้เป็น "รายการ"', saved.unit, 'รายการ');
+  check('เลขที่คำสั่งซื้อถูกเก็บ', saved.orderNo, '2603ABCXYZ');
+
+  // ต้องเข้าไปรวมในยอดค่าใช้จ่ายตามปกติ
+  const inList = api('purchase.list', { _key: admKey, year: '2026' }).data
+    .filter(x => x.id === r.data.id)[0];
+  check('รายการโผล่ในตารางพร้อมรายการย่อย', inList.bill.count, 3);
+  check('หน้าเว็บได้ยอดแยกค่าส่ง/ส่วนลดไปแสดง',
+    [inList.bill.shipping, inList.bill.discount], [60, 100]);
+
+  // ค้นหาต้องเจอจากชื่อสินค้าที่อยู่ในบิลย่อย
+  check('ค้นหาเจอจากชื่อสินค้าในบิลย่อย',
+    api('app.search', { _key: admKey, q: 'เทปพันสายไฟ' }).data.some(x => x.title.indexOf('ปั๊มน้ำ') >= 0), true);
+
+  // แก้ไขแล้วยอดต้องคิดใหม่
+  api('purchase.save', { _key: admKey, record: Object.assign({}, saved, {
+    lines: 'ปั๊มน้ำ 750W | 1 | เครื่อง | 4250', shipping: 0, discount: 0
+  })});
+  check('แก้รายการย่อยแล้วยอดรวมคิดใหม่', findRow_(SHEETS.PURCHASES, r.data.id).price, 4250);
+
+  // ของเดิมที่ไม่มีรายการย่อย ต้องไม่ถูกแตะ
+  const plain = api('purchase.save', { _key: admKey, record: {
+    item: 'ซื้อชิ้นเดียวแบบเดิม', buyDate: '2026-03-16', qty: 2, unit: 'ชิ้น', price: 999
+  }});
+  const p2 = findRow_(SHEETS.PURCHASES, plain.data.id);
+  check('รายการแบบเดิมยังกรอกราคาเองได้', p2.price, 999);
+  check('รายการแบบเดิมจำนวนไม่ถูกเขียนทับ', p2.qty, 2);
+  check('รายการแบบเดิมชื่อไม่ถูกเขียนทับ', p2.item, 'ซื้อชิ้นเดียวแบบเดิม');
+
+  api('purchase.delete', { _key: admKey, id: r.data.id });
+  api('purchase.delete', { _key: admKey, id: plain.data.id });
+  check('ลบแล้วจำนวนรายการกลับเท่าเดิม', readRows_(SHEETS.PURCHASES).length, 94);
+}
+
 console.log('\n════════════════════════════');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

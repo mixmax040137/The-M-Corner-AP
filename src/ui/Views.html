@@ -293,7 +293,9 @@ ROUTES.purchases = {
           return '<tr>' +
             '<td class="nowrap fs12">' + thDate(p.buyDate) + '</td>' +
             '<td><div class="clip" title="' + esc(p.item) + '"><b>' + esc(p.item) + '</b></div>' +
-              '<div class="fs12 faint">' + esc(p.category || '') + (p.room ? ' · ห้อง ' + esc(p.room) : '') + '</div></td>' +
+              '<div class="fs12 faint">' + esc(p.category || '') + (p.room ? ' · ห้อง ' + esc(p.room) : '') +
+                (p.orderNo ? ' · ออร์เดอร์ ' + esc(p.orderNo) : '') + '</div>' +
+              billHtml(p) + '</td>' +
             '<td class="num">' + num(p.qty) + '</td>' +
             '<td class="num"><b>' + money(p.price) + '</b></td>' +
             '<td class="fs12">' + esc(p.vendor || '–') + '</td>' +
@@ -313,6 +315,40 @@ ROUTES.purchases = {
     return head + charts + cats + table;
   }
 };
+
+/**
+ * บิลที่มีของหลายอย่าง — แสดงเป็นปุ่มกางดู ไม่ให้ตารางยาวเกินไป
+ * บิลที่มีรายการเดียวหรือไม่มีรายการย่อยเลย ไม่ต้องแสดงอะไรเพิ่ม
+ */
+function billHtml(p){
+  var b = p.bill;
+  if (!b || b.count < 2) return '';
+  var id = 'bill_' + p.id;
+  return '<button type="button" class="bill-toggle" onclick="toggleBill(\'' + id + '\')">' +
+      '🧾 ' + b.count + ' รายการในบิล ▾</button>' +
+    '<div class="bill-lines" id="' + id + '" hidden>' +
+      b.lines.map(function(l){
+        return '<div class="bill-line">' +
+          '<span class="nm" title="' + esc(l.name) + '">' + esc(l.name) + '</span>' +
+          '<span class="qt">' + num(l.qty) + (l.unit ? ' ' + esc(l.unit) : '') + ' × ' + money(l.unitPrice, 2) + '</span>' +
+          '<span class="tt">' + money(l.total, 2) + '</span></div>';
+      }).join('') +
+      ((b.shipping || b.discount)
+        ? '<div class="bill-extra">' +
+            (b.shipping ? 'ค่าส่ง ' + money(b.shipping, 2) : '') +
+            (b.shipping && b.discount ? ' · ' : '') +
+            (b.discount ? 'ส่วนลด −' + money(b.discount, 2) : '') + '</div>'
+        : '') +
+    '</div>';
+}
+
+function toggleBill(id){
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.hidden = !el.hidden;
+  var btn = el.previousElementSibling;
+  if (btn) btn.textContent = btn.textContent.replace(el.hidden ? '▴' : '▾', el.hidden ? '▾' : '▴');
+}
 
 function setParam(key, val){
   S.params[key] = val;

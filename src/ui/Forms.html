@@ -8,7 +8,8 @@ var FORM = {
   keep: {},        // ไฟล์แนบเดิมที่ยังไม่ได้เอาออก
   bucket: 'misc',  // โฟลเดอร์ที่จะเก็บไฟล์แนบใหม่
   ocr: null,       // ผังการเติมค่าจากรูป
-  rec: null        // รายการที่กำลังแก้อยู่ (null = กำลังเพิ่มรายการใหม่)
+  rec: null,       // รายการที่กำลังแก้อยู่ (null = กำลังเพิ่มรายการใหม่)
+  lines: []        // รายการย่อยในบิล (ใช้กับช่องชนิด lines)
 };
 
 /* ---------------- form engine ---------------- */
@@ -43,6 +44,10 @@ function fieldsHtml(specs, rec){
         '<div id="' + id + '_preview" class="thumbs mt8"></div>' +
         '<div id="' + id + '_ocr"></div>';
 
+    } else if (f.type === 'lines') {
+      FORM.lines = parseLinesText(v);
+      inner = '<div id="' + id + '" class="lines">' + linesTableHtml() + '</div>';
+
     } else if (f.type === 'computed') {
       inner = '<div class="inp" id="' + id + '" style="background:var(--surface-2);font-weight:600;' +
               'font-variant-numeric:tabular-nums;cursor:default">0</div>';
@@ -53,7 +58,7 @@ function fieldsHtml(specs, rec){
     } else if (f.type === 'number' || f.type === 'money') {
       inner = '<input type="number" step="' + (f.type === 'money' ? '0.01' : '1') + '" class="inp" id="' + id + '" ' +
               'value="' + (v == null || v === '' ? '' : esc(v)) + '" placeholder="' + esc(f.ph||'') + '" inputmode="decimal"' +
-              (f.sums ? ' oninput="recalcSums()"' : '') + '>';
+              (f.sums ? ' oninput="recalcSums()"' : (f.oninput ? ' oninput="' + esc(f.oninput) + '"' : '')) + '>';
 
     } else {
       inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(v || '') + '" placeholder="' + esc(f.ph||'') + '">';
@@ -61,8 +66,176 @@ function fieldsHtml(specs, rec){
 
     return '<div class="f' + (f.full ? ' full' : '') + '">' +
       '<label for="' + id + '">' + esc(f.label) + (f.required ? ' <span style="color:var(--danger)">*</span>' : '') + '</label>' +
-      inner + (f.hint ? '<div class="hint">' + esc(f.hint) + '</div>' : '') + '</div>';
+      inner + (f.hint ? '<div class="hint">' +
+        (f.hint.charAt(0) === '<' ? f.hint : esc(f.hint)) + '</div>' : '') + '</div>';
   }).join('') + '</div>';
+}
+
+/* ============================================================
+   บิลเดียวหลายรายการ — ซื้อออนไลน์ทีเดียวได้ของหลายอย่าง
+
+   เก็บลงชีตเป็นข้อความ บรรทัดละรายการ  ชื่อ | จำนวน | หน่วย | ราคาต่อหน่วย
+   (รูปแบบเดียวกับ parseLines_ ฝั่งเซิร์ฟเวอร์ — แก้ที่ไหนต้องแก้ให้ตรงกัน)
+   ============================================================ */
+
+function parseLinesText(text){
+  return String(text == null ? '' : text).split(/\r?\n/)
+    .map(function(s){ return s.trim(); }).filter(Boolean)
+    .map(function(raw){
+      var a = raw.split('|').map(function(x){ return x.trim(); });
+      var name = a[0] || '', qty = 1, unit = '', price = 0;
+      if (a.length >= 4)      { qty = numOr(a[1], 1); unit = a[2] || ''; price = numOr(a[3], 0); }
+      else if (a.length === 3){ qty = numOr(a[1], 1); price = numOr(a[2], 0); }
+      else if (a.length === 2){ price = numOr(a[1], 0); }
+      return { name: name, qty: qty, unit: unit, price: price };
+    });
+}
+
+function numOr(v, dflt){
+  var n = Number(String(v).replace(/,/g, ''));
+  return isFinite(n) ? n : dflt;
+}
+
+function formatLinesText(list){
+  return (list || [])
+    .filter(function(l){ return String(l.name || '').trim() || Number(l.price); })
+    .map(function(l){
+      return [String(l.name || '').replace(/\|/g, '/'),
+              l.qty || 1,
+              String(l.unit || '').replace(/\|/g, '/'),
+              l.price || 0].join(' | ');
+    }).join('\n');
+}
+
+function lineTotal(l){ return (Number(l.qty) || 0) * (Number(l.price) || 0); }
+function linesSum(){ return (FORM.lines || []).reduce(function(a, l){ return a + lineTotal(l); }, 0); }
+
+function linesTableHtml(){
+  var rows = (FORM.lines || []).map(function(l, i){
+    return '<div class="line-row">' +
+      '<input class="inp" placeholder="ชื่อสินค้า" value="' + esc(l.name || '') + '" ' +
+        'oninput="setLine(' + i + ',\'name\',this.value)">' +
+      '<input class="inp num" type="number" step="any" inputmode="decimal" placeholder="จำนวน" ' +
+        'value="' + (l.qty == null ? '' : esc(l.qty)) + '" oninput="setLine(' + i + ',\'qty\',this.value)">' +
+      '<input class="inp" placeholder="หน่วย" value="' + esc(l.unit || '') + '" ' +
+        'oninput="setLine(' + i + ',\'unit\',this.value)">' +
+      '<input class="inp num" type="number" step="any" inputmode="decimal" placeholder="ราคา/หน่วย" ' +
+        'value="' + (l.price == null ? '' : esc(l.price)) + '" oninput="setLine(' + i + ',\'price\',this.value)">' +
+      '<div class="line-sum">' + money(lineTotal(l), 2) + '</div>' +
+      '<button type="button" class="btn sm dgr" title="เอารายการนี้ออก" onclick="delLine(' + i + ')">×</button>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="line-head">' +
+      '<span>ชื่อสินค้า</span><span class="num">จำนวน</span><span>หน่วย</span>' +
+      '<span class="num">ราคา/หน่วย</span><span class="num">รวม</span><span></span>' +
+    '</div>' +
+    (rows || '<div class="hint" style="padding:8px 2px">ยังไม่มีรายการ — กด “เพิ่มรายการ” เพื่อใส่สินค้าทีละอย่าง</div>') +
+    '<div class="row mt8">' +
+      '<button type="button" class="btn sm" onclick="addLine()">+ เพิ่มรายการ</button>' +
+      '<button type="button" class="btn sm" onclick="pasteLines()">📋 วางทีเดียวหลายรายการ</button>' +
+      '<div class="line-total">รวมค่าสินค้า <b>' + money(linesSum(), 2) + ' ฿</b></div>' +
+    '</div>';
+}
+
+function redrawLines(){
+  var box = document.getElementById('f_lines');
+  if (!box) return;
+  box.innerHTML = linesTableHtml();
+  recalcBill();
+}
+
+function setLine(i, key, val){
+  if (!FORM.lines[i]) return;
+  FORM.lines[i][key] = (key === 'qty' || key === 'price') ? numOr(val, 0) : val;
+  // ไม่วาดใหม่ทั้งตาราง เดี๋ยวเคอร์เซอร์เด้งออกจากช่องที่กำลังพิมพ์
+  var row = document.querySelectorAll('#f_lines .line-row')[i];
+  if (row) row.querySelector('.line-sum').textContent = money(lineTotal(FORM.lines[i]), 2);
+  var tot = document.querySelector('#f_lines .line-total b');
+  if (tot) tot.textContent = money(linesSum(), 2) + ' ฿';
+  recalcBill();
+}
+
+function addLine(){
+  FORM.lines.push({ name: '', qty: 1, unit: '', price: 0 });
+  redrawLines();
+  var inputs = document.querySelectorAll('#f_lines .line-row .inp');
+  if (inputs.length) inputs[(FORM.lines.length - 1) * 4].focus();
+}
+
+function delLine(i){
+  FORM.lines.splice(i, 1);
+  redrawLines();
+}
+
+/**
+ * วางรายการจากหน้าคำสั่งซื้อทีเดียวทั้งก้อน แล้วให้ระบบแยกบรรทัดให้
+ *
+ * ทำเป็นช่องพับเก็บอยู่ในฟอร์มเดิม ไม่เปิดหน้าต่างซ้อน
+ * เพราะ openModal() เขียนทับหน้าต่างเดิม ถ้าเปิดซ้อนฟอร์มที่กรอกค้างไว้จะหายทั้งใบ
+ */
+function pasteLines(){
+  var box = document.getElementById('pasteWrap');
+  if (box) { box.hidden = !box.hidden; if (!box.hidden) document.getElementById('pasteBox').focus(); return; }
+
+  var host = document.getElementById('f_lines');
+  if (!host) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'pasteWrap';
+  wrap.className = 'mt8';
+  wrap.innerHTML =
+    '<textarea class="ta" id="pasteBox" style="min-height:120px" ' +
+      'placeholder="ปั๊มน้ำ 750W | 1 | เครื่อง | 4250&#10;สายไฟ VAF 2x1.5 | 20 | เมตร | 17.5&#10;เทปพันสายไฟ 45"></textarea>' +
+    '<div class="hint mt8">คั่นด้วย <b>|</b> ตามลำดับ ชื่อ · จำนวน · หน่วย · ราคาต่อหน่วย<br>' +
+      'ถ้าวางมาเป็นข้อความธรรมดา ระบบจะพยายามแยกชื่อกับราคาให้เอง</div>' +
+    '<div class="row mt8">' +
+      '<button type="button" class="btn sm pri" onclick="applyPastedLines()">เพิ่มเข้ารายการ</button>' +
+      '<button type="button" class="btn sm" onclick="document.getElementById(\'pasteWrap\').hidden=true">ปิด</button>' +
+    '</div>';
+  host.appendChild(wrap);
+  document.getElementById('pasteBox').focus();
+}
+
+function applyPastedLines(){
+  var text = (document.getElementById('pasteBox') || {}).value || '';
+  var added = text.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean).map(function(raw){
+    if (raw.indexOf('|') >= 0) return parseLinesText(raw)[0];
+    // ไม่มี | — เดาจากตัวเลขท้ายบรรทัดว่าเป็นราคา
+    var m = raw.match(/^(.*?)[\s:x×]*([\d,]+(?:\.\d+)?)\s*(?:บาท|฿)?$/);
+    if (m && m[1].trim()) return { name: m[1].trim(), qty: 1, unit: '', price: numOr(m[2], 0) };
+    return { name: raw, qty: 1, unit: '', price: 0 };
+  }).filter(Boolean);
+
+  if (!added.length) return toast('ไม่พบรายการที่อ่านได้', 'err');
+  FORM.lines = (FORM.lines || []).filter(function(l){ return String(l.name || '').trim(); }).concat(added);
+  redrawLines();   // วาดใหม่แล้วช่องวางจะหายไปเอง เพราะอยู่ข้างใน f_lines
+  toast('เพิ่มให้ ' + added.length + ' รายการ — ตรวจตัวเลขอีกครั้งก่อนบันทึก', 'ok');
+}
+
+/**
+ * คิดยอดรวมของบิล = ค่าสินค้า + ค่าส่ง − ส่วนลด แล้วเติมลงช่อง "ราคารวม"
+ * ให้ตรงกับที่ฝั่งเซิร์ฟเวอร์คิดตอนบันทึก จะได้ไม่มีทางที่ตัวเลขสองฝั่งไม่ตรงกัน
+ */
+function recalcBill(){
+  if (!document.getElementById('f_lines')) return;
+  var price = document.getElementById('f_price');
+  if (!price) return;
+  var n = (FORM.lines || []).filter(function(l){ return String(l.name || '').trim() || Number(l.price); }).length;
+  if (!n) { price.readOnly = false; price.style.background = ''; return; }
+
+  var ship = Number((document.getElementById('f_shipping') || {}).value) || 0;
+  var disc = Number((document.getElementById('f_discount') || {}).value) || 0;
+  price.value = Math.round((linesSum() + ship - disc) * 100) / 100;
+  price.readOnly = true;                       // มีรายการย่อยแล้ว ห้ามพิมพ์ทับให้ไม่ตรงกัน
+  price.style.background = 'var(--surface-2)';
+  price.title = 'คิดจากรายการในบิลให้อัตโนมัติ — แก้ที่รายการย่อย ค่าส่ง หรือส่วนลด';
+
+  var hint = document.getElementById('billHint');
+  if (hint) {
+    hint.innerHTML = n + ' รายการ · ค่าสินค้า ' + money(linesSum(), 2) +
+      (ship ? ' + ค่าส่ง ' + money(ship, 2) : '') +
+      (disc ? ' − ส่วนลด ' + money(disc, 2) : '');
+  }
 }
 
 /** อัปเดตช่องผลรวมทุกช่องในฟอร์มปัจจุบัน */
@@ -137,6 +310,8 @@ function readForm(specs, bucket){
           out[f.key] = (FORM.keep[f.key] || []).concat(refs.map(function(r){ return r.url; }));
         })
       );
+    } else if (f.type === 'lines') {
+      out[f.key] = formatLinesText(FORM.lines);
     } else if (f.type === 'number' || f.type === 'money') {
       out[f.key] = el.value === '' ? null : Number(el.value);
     } else {
@@ -164,6 +339,7 @@ function openForm(opts){
   }
 
   recalcSums();
+  recalcBill();
 
   document.getElementById('fSave').onclick = function(){
     var btn = this;
@@ -256,10 +432,17 @@ function ocrPairs(r){
   if (m.vendor && g.vendor) out.push({ field: m.vendor, label: 'ร้าน/ผู้ขาย', value: g.vendor, show: g.vendor });
   if (m.title  && g.title)  out.push({ field: m.title,  label: 'ชื่อรายการ',  value: g.title,  show: g.title });
   if (m.note   && g.ref)    out.push({ field: m.note,   label: 'เลขอ้างอิง',  value: 'อ้างอิง ' + g.ref, show: g.ref });
-  // ใบเสร็จหลายรายการ — รวมเป็นข้อความหลายบรรทัดให้เลือกใส่ทีเดียว
-  if (m.title && g.items && g.items.length > 1) {
-    var lines = g.items.map(function(it, i){ return (i+1) + '.' + it.name + ' ' + money(it.price, 2) + ' ฿'; }).join('\n');
-    out.push({ field: m.title, label: 'ทุกรายการ (' + g.items.length + ')', value: lines, show: g.items.length + ' รายการในใบเสร็จ', multi: true });
+  // ใบเสร็จหลายรายการ
+  if (g.items && g.items.length > 1) {
+    if (document.getElementById('f_lines')) {
+      // ฟอร์มนี้มีตารางรายการย่อย — เติมลงตารางเลย ได้ทั้งชื่อ จำนวน และราคาแยกกัน
+      out.push({ field: '_lines', label: 'รายการในบิล', value: g.items,
+                 show: 'เติม ' + g.items.length + ' รายการลงตาราง', lines: true });
+    } else if (m.title) {
+      var lines = g.items.map(function(it, i){ return (i+1) + '.' + it.name + ' ' + money(it.price, 2) + ' ฿'; }).join('\n');
+      out.push({ field: m.title, label: 'ทุกรายการ (' + g.items.length + ')', value: lines,
+                 show: g.items.length + ' รายการในใบเสร็จ', multi: true });
+    }
   }
   return out;
 }
@@ -280,7 +463,7 @@ function ocrBoxHtml(id, r){
     '<div class="ocr-hits">' + pairs.map(function(p, i){
       return '<div class="ocr-hit">' +
         '<span class="k">' + esc(p.label) + '</span>' +
-        '<span class="v" title="' + esc(String(p.value)) + '">' + esc(p.show) + '</span>' +
+        '<span class="v" title="' + esc(p.lines ? p.show : String(p.value)) + '">' + esc(p.show) + '</span>' +
         '<button type="button" class="btn sm" onclick="ocrApplyOne(\'' + id + '\',' + i + ')">เติม</button>' +
       '</div>';
     }).join('') + '</div>' +
@@ -296,6 +479,22 @@ function ocrToggleRaw(id){
 
 /** ใส่ค่าลงช่อง แล้วไฮไลต์ให้เห็นว่าช่องไหนถูกเติม */
 function ocrFill(fieldKey, value){
+  // เติมลงตารางรายการย่อย (ใบเสร็จที่มีของหลายอย่าง)
+  if (fieldKey === '_lines') {
+    var add = (value || []).map(function(it){
+      return { name: it.name, qty: 1, unit: '', price: Number(it.price) || 0 };
+    });
+    if (!add.length) return false;
+    FORM.lines = (FORM.lines || []).filter(function(l){ return String(l.name || '').trim(); }).concat(add);
+    redrawLines();
+    var box = document.getElementById('f_lines');
+    if (box) {
+      box.classList.add('ocr-filled');
+      setTimeout(function(){ box.classList.remove('ocr-filled'); }, 1600);
+    }
+    return true;
+  }
+
   var el = document.getElementById('f_' + fieldKey);
   if (!el) return false;
   el.value = value;
@@ -309,7 +508,9 @@ function ocrApplyOne(id, idx){
   var r = OCR_LAST[id];
   if (!r) return;
   var p = ocrPairs(r)[idx];
-  if (p && ocrFill(p.field, p.value)) toast('เติม' + p.label + 'แล้ว', 'ok');
+  if (p && ocrFill(p.field, p.value)) {
+    toast(p.lines ? 'เติม ' + p.value.length + ' รายการลงบิลแล้ว — ตรวจจำนวนกับราคาอีกครั้ง' : 'เติม' + p.label + 'แล้ว', 'ok');
+  }
 }
 
 /**
@@ -324,9 +525,14 @@ function ocrApplyAll(id, onlyEmpty){
   var n = 0;
   ocrPairs(r).forEach(function(p){
     if (done[p.field]) return;                       // ช่องเดียวกันเติมครั้งเดียว เอาตัวแรก
-    var el = document.getElementById('f_' + p.field);
-    if (!el) return;
-    if (onlyEmpty && String(el.value || '').trim() !== '') return;
+    if (p.field === '_lines') {
+      // ตารางรายการย่อย: "ว่าง" หมายถึงยังไม่มีรายการที่ตั้งชื่อไว้
+      if (onlyEmpty && (FORM.lines || []).some(function(l){ return String(l.name || '').trim(); })) return;
+    } else {
+      var el = document.getElementById('f_' + p.field);
+      if (!el) return;
+      if (onlyEmpty && String(el.value || '').trim() !== '') return;
+    }
     if (ocrFill(p.field, p.value)) { done[p.field] = true; n++; }
   });
   if (!onlyEmpty) toast(n ? 'เติมให้ ' + n + ' ช่องแล้ว — ตรวจดูก่อนบันทึก' : 'ช่องที่จะเติมไม่อยู่ในฟอร์มนี้', n ? 'ok' : 'err');
@@ -423,12 +629,19 @@ function formPurchase(rec){
     ocr: { date:'buyDate', amount:'price', vendor:'vendor', title:'item' },
     onDelete: delPurchase,
     fields: [
-      { key:'item',    label:'รายการสินค้า', type:'textarea', required:true, full:true, ph:'ชื่อสินค้า / รุ่น / รายละเอียด' },
+      { key:'item',    label:'ชื่อบิล / รายการหลัก', type:'textarea', required:true, full:true,
+        ph:'เช่น สั่งของเข้าหอ Shopee ร้าน ABC',
+        hint:'ถ้าใส่รายการย่อยข้างล่างไว้ แล้วเว้นช่องนี้ว่าง ระบบจะตั้งชื่อให้เองจากรายการแรก' },
       { key:'buyDate', label:'วันที่ซื้อ', type:'date', required:true },
       { key:'category', label:'หมวดหมู่', type:'select', options:opt('purchaseCategories') },
-      { key:'qty',     label:'จำนวน', type:'number' },
-      { key:'unit',    label:'หน่วย', ph:'ชิ้น / ชุด / เครื่อง' },
-      { key:'price',   label:'ราคารวม (บาท)', type:'money', required:true },
+
+      { key:'lines',   label:'รายการในบิล (ซื้อทีเดียวหลายอย่างใส่ตรงนี้)', type:'lines', full:true,
+        hint:'สั่งออนไลน์ครั้งเดียวได้ของหลายอย่าง ใส่แยกทีละรายการได้เลย · ระบบรวมราคาให้อัตโนมัติ' },
+      { key:'shipping', label:'ค่าส่ง (บาท)', type:'money', ph:'0', oninput:'recalcBill()' },
+      { key:'discount', label:'ส่วนลด (บาท)', type:'money', ph:'0', oninput:'recalcBill()' },
+      { key:'price',   label:'ราคารวมทั้งบิล (บาท)', type:'money', required:true,
+        hint:'<span id="billHint"></span>' },
+      { key:'orderNo', label:'เลขที่คำสั่งซื้อ', ph:'เลขออร์เดอร์จาก Shopee / Lazada' },
       { key:'vendor',  label:'แหล่งที่ซื้อ', ph:'Shopee / ไทวัสดุ / ร้าน…' },
       { key:'payer',   label:'ผู้ชำระ' },
       { key:'warrantyMonths', label:'ระยะเวลารับประกัน (เดือน)', type:'number',

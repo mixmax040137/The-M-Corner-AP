@@ -103,7 +103,11 @@ SCHEMA[SHEETS.PURCHASES] = [
       'IT/เครือข่าย', 'ค่าบริการ/ค่าธรรมเนียม', 'อื่น ๆ'] },
   { key: 'qty',         label: 'จำนวน',           type: 'number' },
   { key: 'unit',        label: 'หน่วย',           type: 'text' },
+  { key: 'lines',       label: 'รายการในบิล',      type: 'multiline' },
+  { key: 'shipping',    label: 'ค่าส่ง',           type: 'money' },
+  { key: 'discount',    label: 'ส่วนลด',           type: 'money' },
   { key: 'price',       label: 'ราคารวม',         type: 'money' },
+  { key: 'orderNo',     label: 'เลขที่คำสั่งซื้อ',   type: 'text' },
   { key: 'vendor',      label: 'แหล่งที่ซื้อ',      type: 'text' },
   { key: 'payer',       label: 'ผู้ชำระ',          type: 'text' },
   { key: 'warrantyMonths', label: 'ประกัน (เดือน)', type: 'number' },
@@ -274,7 +278,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 5;
+var SCHEMA_VERSION = 6;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];

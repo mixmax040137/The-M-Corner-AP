@@ -321,6 +321,99 @@ console.log('\n── build/AllInOne.gs ──');
     await p4.close();
   }
 
+  /* ---------- บิลเดียวหลายรายการ (ซื้อออนไลน์) ---------- */
+  console.log('\n── กรอกบิลหลายรายการ ──');
+  {
+    await pg.evaluate(() => go('purchases'));
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+    await pg.evaluate(() => formPurchase(null));
+    await pg.waitForTimeout(300);
+
+    check('ฟอร์มซื้อของมีตารางรายการในบิล', await pg.$('#f_lines') !== null);
+    check('เริ่มต้นยังไม่มีรายการย่อย', await pg.$$eval('#f_lines .line-row', e => e.length) === 0);
+
+    // กรอกสามรายการเหมือนสั่งของออนไลน์จริง
+    await pg.evaluate(() => {
+      addLine(); setLine(0, 'name', 'ปั๊มน้ำ 750W'); setLine(0, 'qty', 1); setLine(0, 'unit', 'เครื่อง'); setLine(0, 'price', 4250);
+      addLine(); setLine(1, 'name', 'สายไฟ VAF 2x1.5'); setLine(1, 'qty', 20); setLine(1, 'unit', 'เมตร'); setLine(1, 'price', 17.5);
+      addLine(); setLine(2, 'name', 'เทปพันสายไฟ'); setLine(2, 'qty', 3); setLine(2, 'unit', 'ม้วน'); setLine(2, 'price', 15);
+    });
+    await pg.waitForTimeout(150);
+    check('เพิ่มรายการย่อยได้ 3 แถว', await pg.$$eval('#f_lines .line-row', e => e.length) === 3);
+    check('ราคารวมคิดให้อัตโนมัติ (4250+350+45)',
+      await pg.evaluate(() => Number(document.getElementById('f_price').value)) === 4645);
+    check('ช่องราคารวมถูกล็อกไม่ให้พิมพ์ทับ',
+      await pg.evaluate(() => document.getElementById('f_price').readOnly) === true);
+
+    // ใส่ค่าส่งกับส่วนลด
+    await pg.evaluate(() => {
+      document.getElementById('f_shipping').value = '60';
+      document.getElementById('f_discount').value = '100';
+      recalcBill();
+    });
+    check('บวกค่าส่ง หักส่วนลด แล้วยอดถูก (4645+60−100)',
+      await pg.evaluate(() => Number(document.getElementById('f_price').value)) === 4605);
+
+    // ลบรายการกลางออก ยอดต้องคิดใหม่
+    await pg.evaluate(() => delLine(1));
+    await pg.waitForTimeout(120);
+    check('ลบรายการย่อยแล้วยอดคิดใหม่ (4250+45+60−100)',
+      await pg.evaluate(() => Number(document.getElementById('f_price').value)) === 4255);
+    check('เหลือ 2 แถว', await pg.$$eval('#f_lines .line-row', e => e.length) === 2);
+
+    // แปลงกลับเป็นข้อความที่จะเก็บลงชีต — ต้องตรงรูปแบบเดียวกับฝั่งเซิร์ฟเวอร์
+    check('แปลงเป็นข้อความสำหรับเก็บลงชีตได้ถูกรูปแบบ',
+      await pg.evaluate(() => formatLinesText(FORM.lines)) ===
+      'ปั๊มน้ำ 750W | 1 | เครื่อง | 4250\nเทปพันสายไฟ | 3 | ม้วน | 15');
+
+    // วางทีเดียวหลายรายการ
+    await pg.evaluate(() => { FORM.lines = []; redrawLines(); });
+    await pg.evaluate(() => {
+      pasteLines();
+      document.getElementById('pasteBox').value =
+        'พัดลมโคจร | 3 | ตัว | 890\nหลอดไฟ LED 9W 145\nสวิตช์ไฟ | 5 | อัน | 45';
+      applyPastedLines();
+    });
+    await pg.waitForTimeout(200);
+    check('วางทีเดียวได้ 3 รายการ', await pg.$$eval('#f_lines .line-row', e => e.length) === 3);
+    const guessed = await pg.evaluate(() => [FORM.lines[1].name, FORM.lines[1].price]);
+    check('บรรทัดที่ไม่มี | ระบบแยกชื่อกับราคาให้เอง',
+      guessed[0] === 'หลอดไฟ LED 9W' && guessed[1] === 145, JSON.stringify(guessed));
+    // ค่าส่ง/ส่วนลดจากขั้นก่อนหน้ายังอยู่ ต้องถูกคิดรวมด้วย
+    check('ยอดจากการวาง รวมค่าส่งกับส่วนลดที่ยังค้างอยู่ (2670+145+225+60−100)',
+      await pg.evaluate(() => Number(document.getElementById('f_price').value)) === 3000);
+    await pg.evaluate(() => {
+      document.getElementById('f_shipping').value = '';
+      document.getElementById('f_discount').value = '';
+      recalcBill();
+    });
+    check('ล้างค่าส่งกับส่วนลดแล้วเหลือค่าสินค้าล้วน (2670+145+225)',
+      await pg.evaluate(() => Number(document.getElementById('f_price').value)) === 3040);
+
+    await pg.evaluate(() => closeModal());
+
+    // บิลที่บันทึกไว้แล้วต้องกางดูรายการย่อยได้ในตาราง
+    await pg.evaluate(() => go('purchases'));
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+    const hasToggle = await pg.evaluate(() => {
+      // ยัดบิลตัวอย่างเข้าไปในผลลัพธ์แล้ววาดใหม่ เพื่อดูว่าปุ่มกางทำงาน
+      var d = S.cache.purchases;
+      d.items[0].bill = { count: 2, shipping: 60, discount: 0,
+        lines: [{ name:'ปั๊มน้ำ', qty:1, unit:'เครื่อง', unitPrice:4250, total:4250 },
+                { name:'สายไฟ', qty:20, unit:'เมตร', unitPrice:17.5, total:350 }] };
+      document.getElementById('view').innerHTML = ROUTES.purchases.render(d);
+      var btn = document.querySelector('.bill-toggle');
+      if (!btn) return 'ไม่มีปุ่มกางดู';
+      var box = document.getElementById(btn.getAttribute('onclick').match(/'([^']+)'/)[1]);
+      var before = box.hidden;
+      btn.click();
+      return before === true && box.hidden === false ? 'ok' : 'กดแล้วไม่กาง';
+    });
+    check('บิลหลายรายการกางดูในตารางได้', hasToggle === 'ok', hasToggle);
+    check('รายการย่อยแสดงครบทุกบรรทัด',
+      await pg.$$eval('.bill-line', e => e.length) === 2);
+  }
+
   /* ---------- ปุ่มแก้ไขต้องแก้ของเดิม ไม่ใช่สร้างใหม่ ----------
      เคยพลาดมาแล้ว: ประกาศ attr() ชื่อซ้ำใน Settings.html ไปทับของ Views.html
      ทำให้ปุ่มแก้ไขได้ข้อความแทน object → ฟอร์มขึ้นว่าง → กดบันทึกกลายเป็นรายการใหม่

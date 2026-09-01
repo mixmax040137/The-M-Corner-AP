@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-01 10:15 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-01 16:20 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -117,7 +117,11 @@ SCHEMA[SHEETS.PURCHASES] = [
       'IT/เครือข่าย', 'ค่าบริการ/ค่าธรรมเนียม', 'อื่น ๆ'] },
   { key: 'qty',         label: 'จำนวน',           type: 'number' },
   { key: 'unit',        label: 'หน่วย',           type: 'text' },
+  { key: 'lines',       label: 'รายการในบิล',      type: 'multiline' },
+  { key: 'shipping',    label: 'ค่าส่ง',           type: 'money' },
+  { key: 'discount',    label: 'ส่วนลด',           type: 'money' },
   { key: 'price',       label: 'ราคารวม',         type: 'money' },
+  { key: 'orderNo',     label: 'เลขที่คำสั่งซื้อ',   type: 'text' },
   { key: 'vendor',      label: 'แหล่งที่ซื้อ',      type: 'text' },
   { key: 'payer',       label: 'ผู้ชำระ',          type: 'text' },
   { key: 'warrantyMonths', label: 'ประกัน (เดือน)', type: 'number' },
@@ -288,7 +292,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 5;
+var SCHEMA_VERSION = 6;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -3852,6 +3856,7 @@ function listPurchases_(year, opts) {
     p.photoRefs = toFileRefs_(p.photos);
     p.slipRefs = toFileRefs_(p.slips);
     p.warranty = warrantyState_(p, today);
+    p.bill = billOf_(p);
     return p;
   });
 }
@@ -3944,11 +3949,114 @@ function expiringWarranties_(days) {
 
 /* ---------- CRUD ---------- */
 
+/* ------------------------------------------------------------------ */
+/*  บิลเดียวหลายรายการ (ซื้อออนไลน์)                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ซื้อออนไลน์ทีเดียวมักได้ของหลายอย่างจากร้านเดียว
+ * จึงเก็บรายการย่อยไว้ในช่องเดียว บรรทัดละหนึ่งรายการ คั่นด้วย |
+ *
+ *   ชื่อสินค้า | จำนวน | หน่วย | ราคาต่อหน่วย
+ *   ปั๊มน้ำ 750W | 1 | เครื่อง | 4250
+ *   สายไฟ VAF 2x1.5 | 20 | เมตร | 17.5
+ *
+ * ตั้งใจเก็บเป็นข้อความ ไม่ใช่ JSON เพราะเจ้าของหอเปิดชีตแก้เองได้ด้วย
+ * อ่านรู้เรื่องและพิมพ์แก้ในชีตได้ทันที
+ *
+ * ยอดรวมของบิล = ผลรวมรายการย่อย + ค่าส่ง − ส่วนลด
+ * ซึ่งจะถูกเขียนลงช่อง "ราคารวม" ให้อัตโนมัติ รายงานทุกตัวจึงใช้ค่าเดิมได้เลย
+ */
+function parseLines_(text) {
+  return String(text == null ? '' : text)
+    .split(/\r?\n/)
+    .map(function (raw) { return String(raw).trim(); })
+    .filter(function (raw) { return raw.length > 0; })
+    .map(function (raw) {
+      var parts = raw.split('|').map(function (x) { return String(x).trim(); });
+      var name = parts[0] || '';
+      var qty = 1, unit = '', unitPrice = 0;
+
+      if (parts.length >= 4) {
+        qty = toNumber_(parts[1]);
+        unit = parts[2] || '';
+        unitPrice = toNumber_(parts[3]);
+      } else if (parts.length === 3) {
+        // ชื่อ | จำนวน | ราคาต่อหน่วย  (ไม่ได้ระบุหน่วย)
+        qty = toNumber_(parts[1]);
+        unitPrice = toNumber_(parts[2]);
+      } else if (parts.length === 2) {
+        // ชื่อ | ราคา  (ชิ้นเดียว)
+        unitPrice = toNumber_(parts[1]);
+      }
+
+      if (qty === null || !isFinite(qty)) qty = 1;
+      if (unitPrice === null || !isFinite(unitPrice)) unitPrice = 0;
+
+      return {
+        name: name,
+        qty: qty,
+        unit: unit,
+        unitPrice: unitPrice,
+        total: round2_(qty * unitPrice)
+      };
+    })
+    .filter(function (l) { return l.name || l.total; });
+}
+
+/** เขียนกลับเป็นข้อความรูปแบบเดียวกันเสมอ เพื่อให้ชีตอ่านง่าย */
+function formatLines_(list) {
+  return (list || []).map(function (l) {
+    return [
+      String(l.name || '').replace(/\|/g, '/'),   // กัน | ในชื่อสินค้าไม่ให้ทำโครงสร้างพัง
+      l.qty == null ? 1 : l.qty,
+      String(l.unit || '').replace(/\|/g, '/'),
+      l.unitPrice == null ? 0 : l.unitPrice
+    ].join(' | ');
+  }).join('\n');
+}
+
+function linesTotal_(list) {
+  return round2_((list || []).reduce(function (a, l) { return a + (Number(l.total) || 0); }, 0));
+}
+
+/**
+ * ยอดรวมของบิลหนึ่งใบ
+ * @return {{lines:Array, itemsTotal:number, shipping:number, discount:number, grand:number, count:number}}
+ */
+function billOf_(p) {
+  var lines = parseLines_(p.lines);
+  var itemsTotal = linesTotal_(lines);
+  var shipping = toNumber_(p.shipping) || 0;
+  var discount = toNumber_(p.discount) || 0;
+  return {
+    lines: lines,
+    count: lines.length,
+    itemsTotal: itemsTotal,
+    shipping: shipping,
+    discount: discount,
+    grand: round2_(itemsTotal + shipping - discount)
+  };
+}
+
 function savePurchase_(obj) {
   obj.year = yearOf_(obj.buyDate) || obj.year || new Date().getFullYear();
   if (obj.buyDate && obj.warrantyMonths) {
     obj.warrantyEnd = toIsoDate_(addMonths_(obj.buyDate, obj.warrantyMonths));
   }
+
+  // ถ้ากรอกรายการย่อยไว้ ให้ยอดรวมกับจำนวนคิดจากรายการย่อยเสมอ
+  // จะได้ไม่มีทางที่ยอดรวมกับรายละเอียดในบิลไม่ตรงกัน
+  var lines = parseLines_(obj.lines);
+  if (lines.length) {
+    obj.lines = formatLines_(lines);
+    var bill = billOf_(obj);
+    obj.price = bill.grand;
+    obj.qty = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0); }, 0);
+    if (!String(obj.unit || '').trim()) obj.unit = 'รายการ';
+    if (!String(obj.item || '').trim()) obj.item = summarizeLines_(lines);
+  }
+
   obj.updatedAt = new Date();
 
   if (obj.id) {
@@ -3961,6 +4069,13 @@ function savePurchase_(obj) {
   obj.id = obj.id || uid_('BUY');
   logActivity_('เพิ่มรายการซื้อ', obj.id, obj.item);
   return insertRow_(SHEETS.PURCHASES, obj);
+}
+
+/** ตั้งชื่อบิลให้อัตโนมัติจากรายการย่อย เช่น "ปั๊มน้ำ 750W และอีก 3 รายการ" */
+function summarizeLines_(lines) {
+  if (!lines.length) return '';
+  var first = lines[0].name || 'สินค้า';
+  return lines.length === 1 ? first : first + ' และอีก ' + (lines.length - 1) + ' รายการ';
 }
 
 function deletePurchase_(id) {
@@ -4611,7 +4726,7 @@ function globalSearch_(q) {
     });
   }
 
-  scan(readRows_(SHEETS.PURCHASES), 'purchases', 'รายการซื้อของ', ['item', 'vendor', 'note', 'category']);
+  scan(readRows_(SHEETS.PURCHASES), 'purchases', 'รายการซื้อของ', ['item', 'lines', 'vendor', 'orderNo', 'note', 'category']);
   scan(readRows_(SHEETS.ROOM_REPAIRS), 'repairs', 'ซ่อมแซมห้อง', ['items', 'note', 'technician', 'category']);
   scan(readRows_(SHEETS.BUILDING_REPAIRS), 'building', 'ซ่อมแซมตึก', ['title', 'note', 'contractor', 'zone']);
   scan(readRows_(SHEETS.AC_SERVICE), 'ac', 'ล้างแอร์', ['note', 'technician']);

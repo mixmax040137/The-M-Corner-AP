@@ -419,6 +419,61 @@ body.locked .app{filter:blur(3px);pointer-events:none;user-select:none}
   .theme-opt .hint{display:none}
 }
 
+/* ============ รายการย่อยในบิล (ซื้อทีเดียวหลายอย่าง) ============ */
+.lines{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px;background:var(--surface-2)}
+.line-head,.line-row{
+  display:grid;grid-template-columns:minmax(0,1fr) 84px 92px 108px 96px 34px;
+  gap:7px;align-items:center;
+}
+.line-head{font-size:11.5px;color:var(--muted);padding:0 2px 6px;font-weight:600}
+.line-head .num,.line-row .num{text-align:right}
+.line-row{margin-bottom:6px}
+.line-row .inp{padding:6px 9px;font-size:13px}
+.line-row .inp.num{text-align:right;font-variant-numeric:tabular-nums}
+.line-sum{
+  text-align:right;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;
+  color:var(--ink);white-space:nowrap;overflow:hidden;
+}
+.line-total{margin-left:auto;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.line-total b{color:var(--ink)}
+
+/* รายการย่อยที่กางดูในตาราง */
+.bill-lines{margin-top:6px;border-left:2px solid var(--line);padding-left:9px}
+.bill-line{
+  display:flex;gap:8px;font-size:12px;color:var(--ink-2);padding:1px 0;
+  font-variant-numeric:tabular-nums;
+}
+.bill-line .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bill-line .qt{color:var(--faint);white-space:nowrap}
+.bill-line .tt{white-space:nowrap;font-weight:600}
+.bill-extra{font-size:11.5px;color:var(--muted);margin-top:3px}
+.bill-toggle{
+  background:0;border:0;padding:0;margin-top:3px;cursor:pointer;font:inherit;
+  font-size:11.5px;color:var(--brand);text-align:left;
+}
+.bill-toggle:hover{text-decoration:underline}
+
+@media (max-width:640px){
+  /* จอแคบ: ชื่อสินค้าอยู่บรรทัดบน ส่วนจำนวน/หน่วย/ราคา/รวม อยู่บรรทัดเดียวกันข้างล่าง
+     จะได้ไม่กินพื้นที่แนวตั้งจนต้องเลื่อนจอยาวเวลาซื้อของหลายอย่าง */
+  .lines{padding:8px}
+  .line-head{display:none}
+  .line-row{
+    grid-template-columns:56px minmax(0,1fr) 72px minmax(0,86px);
+    grid-template-areas:'name name name del' 'qty unit price sum';
+    gap:5px;padding:8px;margin-bottom:8px;
+    border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);
+  }
+  .line-row .inp:nth-of-type(1){grid-area:name}
+  .line-row .inp:nth-of-type(2){grid-area:qty;text-align:center}
+  .line-row .inp:nth-of-type(3){grid-area:unit}
+  .line-row .inp:nth-of-type(4){grid-area:price}
+  .line-row .line-sum{grid-area:sum;align-self:center;font-size:12.5px}
+  .line-row .btn{grid-area:del;align-self:start;justify-self:end;width:34px;padding:6px 0}
+  .line-row .inp{padding:6px 7px;font-size:12.5px}
+  .line-total{width:100%;margin:6px 0 0;text-align:right}
+}
+
 @media print{
   .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
   .app{display:block} body{background:#fff}

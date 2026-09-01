@@ -95,6 +95,11 @@ console.log('\n── build/AllInOne.gs ──');
   put('settings.list', {}); put('auth.devices', {}); put('user.list', {});
 
   // auth.me ต้องตอบว่าล็อกอินแล้ว ไม่งั้นหน้าเว็บจะค้างอยู่ที่หน้าล็อกอิน
+  // คำตอบปลอมของคำสั่งที่ "บันทึกข้อมูล" ไว้ทดสอบว่าหน้าเว็บจดรุ่นข้อมูลใหม่หลังบันทึก
+  // (ไม่เรียก api จริง เพราะไม่อยากให้ข้อมูลทดสอบไปปนกับ fixture ชุดอื่น)
+  fx['purchase.save|{"record":{"item":"ทดสอบ","price":1,"buyDate":"2026-01-01"}}'] =
+    { ok: true, data: { id: 'PUR-TEST' } };
+
   const meAdmin = api('auth.me', { _key: adminKey });
   const meViewer = api('auth.me', { _key: viewKey });
   fx['auth.me|{}'] = meAdmin;
@@ -314,6 +319,68 @@ console.log('\n── build/AllInOne.gs ──');
     check('หน้าตั้งค่ามีปุ่มบันทึก', await p4.$$eval('#view [onclick*="saveSettingsForm"]', e => e.length) >= 1);
     await p4.screenshot({ path: OUT + '/bundle-settings-dark.png', fullPage: true });
     await p4.close();
+  }
+
+  /* ---------- การรีเฟรชอัตโนมัติต้องไม่รบกวนการกรอกข้อมูล ---------- */
+  console.log('\n── การรีเฟรชอัตโนมัติ ──');
+  {
+    const p5 = await b.newPage({ viewport: { width: 1300, height: 900 } });
+    const errs5 = [];
+    p5.on('pageerror', e => errs5.push(e.message));
+    await p5.goto('file://' + file);
+    await p5.waitForTimeout(1000);
+
+    check('ค่าตั้งต้นรีเฟรชคือ 5 นาที',
+      await p5.evaluate(() => S.boot.settings.refreshSeconds) === 300);
+    check('ป้ายบอกรอบเป็น "นาที" ไม่ใช่ "วินาที"',
+      (await p5.$eval('#liveDot', e => e.innerHTML)).includes('ทุก 5 นาที'));
+
+    // กำลังพิมพ์อยู่ในช่องค้นหา = ยุ่ง ห้ามโหลดทับ
+    await p5.focus('#searchBox');
+    check('พิมพ์อยู่ในช่องกรอก = ถือว่ากำลังยุ่ง', await p5.evaluate(() => userIsBusy()) === true);
+    await p5.evaluate(() => document.activeElement.blur());
+    check('ไม่ได้พิมพ์อะไร = ว่าง โหลดได้', await p5.evaluate(() => userIsBusy()) === false);
+
+    // เปิดฟอร์มค้างไว้ = ยุ่ง
+    await p5.evaluate(() => go('purchases'));
+    await p5.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+    await p5.evaluate(() => formPurchase());
+    await p5.waitForTimeout(300);
+    check('เปิดฟอร์มค้างไว้ = ถือว่ากำลังยุ่ง', await p5.evaluate(() => userIsBusy()) === true);
+
+    // พิมพ์ข้อความค้างไว้ในฟอร์ม แล้วจำลองว่ามีข้อมูลใหม่เข้ามา
+    await p5.evaluate(() => { document.getElementById('f_item').value = 'ปั๊มน้ำที่ยังกรอกไม่เสร็จ'; });
+    const typed = await p5.evaluate(() => {
+      S.version = 'เก่า';
+      // จำลองรอบตรวจข้อมูลหนึ่งรอบ ตามตรรกะเดียวกับใน startPolling
+      var changed = true;
+      if (changed && Date.now() >= S.selfChangeUntil && userIsBusy()) liveDotPending();
+      return document.getElementById('f_item').value;
+    });
+    check('มีข้อมูลใหม่ตอนกำลังกรอก → ข้อความที่พิมพ์ไว้ไม่หาย',
+      typed === 'ปั๊มน้ำที่ยังกรอกไม่เสร็จ', typed);
+    check('ขึ้นปุ่ม "มีข้อมูลใหม่" ให้กดเองแทนการโหลดทับ',
+      (await p5.$eval('#liveDot', e => e.innerHTML)).includes('มีข้อมูลใหม่'));
+    await p5.evaluate(() => closeModal());
+
+    // กดบันทึกแล้วต้องจดรุ่นข้อมูลใหม่ไว้ ไม่งั้นจะโหลดซ้ำและขึ้นข้อความผิด ๆ
+    const selfBefore = await p5.evaluate(() => S.selfChangeUntil);
+    const saved = await p5.evaluate(() => callApi('purchase.save',
+      { record: { item: 'ทดสอบ', price: 1, buyDate: '2026-01-01' } })
+      .then(function(d){ return d.id; }).catch(function(e){ return 'ผิดพลาด: ' + e.message; }));
+    check('คำสั่งบันทึกทำงานสำเร็จ', saved === 'PUR-TEST', saved);
+    await p5.waitForTimeout(200);
+    check('กดบันทึกแล้วระบบจำได้ว่าเป็นการแก้ของเราเอง',
+      await p5.evaluate(() => S.selfChangeUntil) > selfBefore);
+    check('ช่วงกันโหลดซ้ำหลังบันทึกยาวพอรองรับความหน่วงของ Drive',
+      await p5.evaluate(() => S.selfChangeUntil - Date.now()) > 60000);
+    check('คำสั่งที่แค่อ่านข้อมูล ไม่ถูกนับว่าเป็นการแก้',
+      await p5.evaluate(() => CLIENT_MUTATING.test('purchase.list') === false &&
+                              CLIENT_MUTATING.test('app.dashboard') === false &&
+                              CLIENT_MUTATING.test('purchase.save') === true &&
+                              CLIENT_MUTATING.test('file.upload') === true));
+    check('หน้ารีเฟรชไม่มี JS error', errs5.length === 0, errs5.join(' | '));
+    await p5.close();
   }
 
   console.log('\n════════════════════════════');

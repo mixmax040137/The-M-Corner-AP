@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-01 04:11 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-01 09:54 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -288,7 +288,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 4;
+var SCHEMA_VERSION = 5;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -308,7 +308,7 @@ var DEFAULT_SETTINGS = [
   { key: 'admin_emails',    label: 'อีเมลผู้ดูแลเพิ่มเติม',     value: '', note: 'คั่นด้วยเครื่องหมายจุลภาค เว้นว่างได้' },
   { key: 'webapp_url',      label: 'Web app URL (ลงท้าย /exec)', value: '', note: 'ระบบจำให้เองตอนเปิดเว็บครั้งแรก · หรือวางเองจาก Deploy > Manage deployments' },
   { key: 'backup_keep',     label: 'เก็บไฟล์สำรองย้อนหลัง (ชุด)', value: '30', note: '' },
-  { key: 'refresh_seconds', label: 'รีเฟรชข้อมูลอัตโนมัติทุก (วินาที)', value: '25', note: 'ใส่ 0 เพื่อปิด' },
+  { key: 'refresh_seconds', label: 'ตรวจข้อมูลใหม่อัตโนมัติ', value: '300', note: 'ระบบจะไม่โหลดทับตอนที่คุณกำลังกรอกข้อมูลอยู่ · กดบันทึกแล้วอัปเดตให้ทันทีเสมอ' },
   { key: 'share_link_enabled', label: 'เปิดลิงก์แชร์แบบไม่ต้องล็อกอิน', value: 'ปิด', note: 'เปิด = ใครมีลิงก์แชร์ก็ดูได้เลย · ปิด = ต้องล็อกอินทุกคน' },
   { key: 'session_hours',   label: 'อยู่ในระบบได้นาน (ชั่วโมง)', value: '12', note: 'ครบแล้วต้องล็อกอินหรือใส่ PIN ใหม่' },
   { key: 'device_days',     label: 'จำอุปกรณ์ที่ตั้ง PIN ไว้ (วัน)', value: '90', note: '' },
@@ -1613,6 +1613,10 @@ var SECRET_SETTINGS = ['door_code', 'admin_code', 'admin_token', 'view_token'];
 /**
  * ผังหน้าตั้งค่า — เรียงตามลำดับที่อยากให้เห็น
  * type: text | number | select | multiline
+ *
+ * options ของ select ใส่ได้ 2 แบบ
+ *   'ข้อความ'                   — ค่าที่เก็บกับข้อความที่เห็นเป็นตัวเดียวกัน
+ *   { value: '300', label: '…' } — เก็บค่าหนึ่ง แต่ให้ผู้ใช้เห็นอีกข้อความหนึ่ง
  */
 var SETTINGS_FORM = [
   {
@@ -1631,7 +1635,13 @@ var SETTINGS_FORM = [
       { key: 'number_format', type: 'select', options: ['1,234.56', '1,234'] },
       { key: 'date_format', type: 'select', options: ['พ.ศ. (2569)', 'ค.ศ. (2026)'] },
       { key: 'start_page', type: 'select', options: ['แดชบอร์ด', 'รายการสรุปรวม', 'หนี้สิน', 'รายการซื้อของ', 'ซ่อมแซมตามห้อง'] },
-      { key: 'refresh_seconds', type: 'number' }
+      { key: 'refresh_seconds', type: 'select', options: [
+        { value: '0',    label: 'ปิด — โหลดใหม่เองเมื่อกดปุ่ม ↻' },
+        { value: '60',   label: 'ทุก 1 นาที' },
+        { value: '300',  label: 'ทุก 5 นาที (แนะนำ)' },
+        { value: '900',  label: 'ทุก 15 นาที' },
+        { value: '1800', label: 'ทุก 30 นาที' }
+      ] }
     ]
   },
   {
@@ -1680,6 +1690,11 @@ var SETTINGS_FORM = [
   }
 ];
 
+/** ค่าที่เก็บจริงของตัวเลือกหนึ่งอัน (รองรับทั้งแบบข้อความล้วนและแบบมีป้ายกำกับ) */
+function optionValue_(o) {
+  return (o && typeof o === 'object') ? String(o.value) : String(o);
+}
+
 /** ป้ายชื่อของแต่ละคีย์ เอามาจาก DEFAULT_SETTINGS เพื่อไม่ให้เขียนซ้ำสองที่ */
 function settingMeta_(key) {
   for (var i = 0; i < DEFAULT_SETTINGS.length; i++) {
@@ -1717,7 +1732,11 @@ function listSettings_(role) {
           label: meta.label,
           note: it.note || meta.note || '',
           type: it.type,
-          options: it.options || null,
+          options: it.options ? it.options.map(function (o) {
+            return (o && typeof o === 'object')
+              ? { value: String(o.value), label: String(o.label) }
+              : { value: String(o), label: String(o) };
+          }) : null,
           readOnly: !!it.readOnly,
           value: current[it.key] !== undefined ? current[it.key] : String(meta.value || '')
         };
@@ -1750,7 +1769,8 @@ function saveSettings_(values) {
       if (n === null) throw new Error(settingMeta_(k).label + ': ต้องเป็นตัวเลข');
       v = String(n);
     }
-    if (spec.type === 'select' && spec.options && spec.options.indexOf(v) < 0) {
+    if (spec.type === 'select' && spec.options &&
+        spec.options.map(optionValue_).indexOf(v) < 0) {
       throw new Error(settingMeta_(k).label + ': ค่าที่เลือกไม่ถูกต้อง');
     }
     if (v.length > 500) throw new Error(settingMeta_(k).label + ': ข้อความยาวเกินไป');
@@ -2891,6 +2911,7 @@ function runMigrations_() {
   if (from < 2) done.push(migrateV2SplitPayment_());
   if (from < 3) done.push(migrateV3DebtParent_());
   if (from < 4) done.push(migrateV4Users_());
+  if (from < 5) done.push(migrateV5RefreshRate_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -3181,6 +3202,21 @@ function repairPaymentsSheet_() {
   rewriteSheet_(name, fixed);
   applyFormatting_(name);
   return 'รายการชำระ: เลื่อนคอลัมน์กลับที่เดิม ' + fixed.length + ' รายการ · กู้เป็นดอกเบี้ย ' + toInterest + ' รายการ';
+}
+
+/**
+ * รุ่น 5 — ยืดรอบตรวจข้อมูลใหม่ให้ห่างขึ้น
+ *
+ * ของเดิมตั้งไว้ 25 วินาที ซึ่งถี่เกินไปจนรบกวนตอนกรอกข้อมูล
+ * ขยับเฉพาะเครื่องที่ยังใช้ค่าถี่ ๆ อยู่ ใครตั้งเป็น 0 (ปิด) ไว้เองก็ปล่อยตามนั้น
+ */
+function migrateV5RefreshRate_() {
+  var cur = toNumber_(getSetting_('refresh_seconds', '300'));
+  if (cur !== null && cur > 0 && cur < 60) {
+    setSetting_('refresh_seconds', '300');
+    return 'ตรวจข้อมูลใหม่: ' + cur + ' วินาที → 5 นาที';
+  }
+  return 'ตรวจข้อมูลใหม่: ใช้ค่าเดิม (' + cur + ' วินาที)';
 }
 
 /**

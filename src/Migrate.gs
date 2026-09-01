@@ -15,6 +15,7 @@ function runMigrations_() {
   if (from < 2) done.push(migrateV2SplitPayment_());
   if (from < 3) done.push(migrateV3DebtParent_());
   if (from < 4) done.push(migrateV4Users_());
+  if (from < 5) done.push(migrateV5RefreshRate_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -305,6 +306,21 @@ function repairPaymentsSheet_() {
   rewriteSheet_(name, fixed);
   applyFormatting_(name);
   return 'รายการชำระ: เลื่อนคอลัมน์กลับที่เดิม ' + fixed.length + ' รายการ · กู้เป็นดอกเบี้ย ' + toInterest + ' รายการ';
+}
+
+/**
+ * รุ่น 5 — ยืดรอบตรวจข้อมูลใหม่ให้ห่างขึ้น
+ *
+ * ของเดิมตั้งไว้ 25 วินาที ซึ่งถี่เกินไปจนรบกวนตอนกรอกข้อมูล
+ * ขยับเฉพาะเครื่องที่ยังใช้ค่าถี่ ๆ อยู่ ใครตั้งเป็น 0 (ปิด) ไว้เองก็ปล่อยตามนั้น
+ */
+function migrateV5RefreshRate_() {
+  var cur = toNumber_(getSetting_('refresh_seconds', '300'));
+  if (cur !== null && cur > 0 && cur < 60) {
+    setSetting_('refresh_seconds', '300');
+    return 'ตรวจข้อมูลใหม่: ' + cur + ' วินาที → 5 นาที';
+  }
+  return 'ตรวจข้อมูลใหม่: ใช้ค่าเดิม (' + cur + ' วินาที)';
 }
 
 /**

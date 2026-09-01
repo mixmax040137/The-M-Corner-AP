@@ -158,8 +158,10 @@ function settingFieldHtml(it){
   if (it.readOnly) {
     inner = '<div class="inp" style="background:var(--surface-2);cursor:default">' + esc(it.value) + '</div>';
   } else if (it.type === 'select') {
+    // ฝั่งเซิร์ฟเวอร์ส่งมาเป็น {value,label} เสมอ — ค่าที่เก็บกับข้อความที่เห็นอาจคนละอัน
     inner = '<select class="sel" id="' + id + '">' + (it.options || []).map(function(o){
-      return '<option value="' + esc(o) + '"' + (o === it.value ? ' selected' : '') + '>' + esc(o) + '</option>';
+      return '<option value="' + esc(o.value) + '"' + (o.value === it.value ? ' selected' : '') +
+             '>' + esc(o.label) + '</option>';
     }).join('') + '</select>';
   } else if (it.type === 'multiline') {
     inner = '<textarea class="ta" id="' + id + '">' + esc(it.value) + '</textarea>';

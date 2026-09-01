@@ -14,6 +14,10 @@ var SECRET_SETTINGS = ['door_code', 'admin_code', 'admin_token', 'view_token'];
 /**
  * ผังหน้าตั้งค่า — เรียงตามลำดับที่อยากให้เห็น
  * type: text | number | select | multiline
+ *
+ * options ของ select ใส่ได้ 2 แบบ
+ *   'ข้อความ'                   — ค่าที่เก็บกับข้อความที่เห็นเป็นตัวเดียวกัน
+ *   { value: '300', label: '…' } — เก็บค่าหนึ่ง แต่ให้ผู้ใช้เห็นอีกข้อความหนึ่ง
  */
 var SETTINGS_FORM = [
   {
@@ -32,7 +36,13 @@ var SETTINGS_FORM = [
       { key: 'number_format', type: 'select', options: ['1,234.56', '1,234'] },
       { key: 'date_format', type: 'select', options: ['พ.ศ. (2569)', 'ค.ศ. (2026)'] },
       { key: 'start_page', type: 'select', options: ['แดชบอร์ด', 'รายการสรุปรวม', 'หนี้สิน', 'รายการซื้อของ', 'ซ่อมแซมตามห้อง'] },
-      { key: 'refresh_seconds', type: 'number' }
+      { key: 'refresh_seconds', type: 'select', options: [
+        { value: '0',    label: 'ปิด — โหลดใหม่เองเมื่อกดปุ่ม ↻' },
+        { value: '60',   label: 'ทุก 1 นาที' },
+        { value: '300',  label: 'ทุก 5 นาที (แนะนำ)' },
+        { value: '900',  label: 'ทุก 15 นาที' },
+        { value: '1800', label: 'ทุก 30 นาที' }
+      ] }
     ]
   },
   {
@@ -81,6 +91,11 @@ var SETTINGS_FORM = [
   }
 ];
 
+/** ค่าที่เก็บจริงของตัวเลือกหนึ่งอัน (รองรับทั้งแบบข้อความล้วนและแบบมีป้ายกำกับ) */
+function optionValue_(o) {
+  return (o && typeof o === 'object') ? String(o.value) : String(o);
+}
+
 /** ป้ายชื่อของแต่ละคีย์ เอามาจาก DEFAULT_SETTINGS เพื่อไม่ให้เขียนซ้ำสองที่ */
 function settingMeta_(key) {
   for (var i = 0; i < DEFAULT_SETTINGS.length; i++) {
@@ -118,7 +133,11 @@ function listSettings_(role) {
           label: meta.label,
           note: it.note || meta.note || '',
           type: it.type,
-          options: it.options || null,
+          options: it.options ? it.options.map(function (o) {
+            return (o && typeof o === 'object')
+              ? { value: String(o.value), label: String(o.label) }
+              : { value: String(o), label: String(o) };
+          }) : null,
           readOnly: !!it.readOnly,
           value: current[it.key] !== undefined ? current[it.key] : String(meta.value || '')
         };
@@ -151,7 +170,8 @@ function saveSettings_(values) {
       if (n === null) throw new Error(settingMeta_(k).label + ': ต้องเป็นตัวเลข');
       v = String(n);
     }
-    if (spec.type === 'select' && spec.options && spec.options.indexOf(v) < 0) {
+    if (spec.type === 'select' && spec.options &&
+        spec.options.map(optionValue_).indexOf(v) < 0) {
       throw new Error(settingMeta_(k).label + ': ค่าที่เลือกไม่ถูกต้อง');
     }
     if (v.length > 500) throw new Error(settingMeta_(k).label + ': ข้อความยาวเกินไป');

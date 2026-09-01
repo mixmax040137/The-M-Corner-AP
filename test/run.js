@@ -769,6 +769,51 @@ console.log('\n── 18. อ่านข้อความจากรูป (O
   setSetting_('ocr_enabled', 'เปิด');
 }
 
+console.log('\n── 19. รอบตรวจข้อมูลใหม่ ──');
+{
+  const admKey = getSetting_('admin_token', '');
+
+  check('ค่าตั้งต้นคือ 5 นาที ไม่ใช่ 25 วินาที', getSetting_('refresh_seconds', ''), '300');
+  check('bootstrap ส่งรอบตรวจไปให้หน้าเว็บ',
+    api('app.bootstrap', { _key: admKey }).data.settings.refreshSeconds, 300);
+
+  // หน้าตั้งค่าต้องเป็นตัวเลือกที่อ่านรู้เรื่อง ไม่ใช่ช่องกรอกวินาที
+  const item = api('settings.list', { _key: admKey }).data.groups
+    .reduce((a, g) => a.concat(g.items), []).filter(i => i.key === 'refresh_seconds')[0];
+  check('เป็นตัวเลือก ไม่ใช่ช่องกรอกตัวเลข', item.type, 'select');
+  check('ตัวเลือกเก็บเป็นวินาที แต่โชว์เป็นนาที',
+    item.options.filter(o => o.value === '300')[0].label.indexOf('5 นาที') >= 0, true);
+  check('มีตัวเลือกปิดการตรวจอัตโนมัติ', item.options.filter(o => o.value === '0').length, 1);
+  check('ค่าที่เลือกอยู่ตรงกับที่บันทึกไว้', item.value, '300');
+
+  check('เลือก 15 นาทีได้', api('settings.save', { _key: admKey, values: { refresh_seconds: '900' } }).ok, true);
+  check('บันทึกเป็นวินาทีลงชีตจริง', getSetting_('refresh_seconds', ''), '900');
+  check('ค่านอกตัวเลือกถูกปฏิเสธ',
+    api('settings.save', { _key: admKey, values: { refresh_seconds: '7' } }).ok, false);
+  check('ค่านอกตัวเลือกไม่ถูกเขียนทับ', getSetting_('refresh_seconds', ''), '900');
+  api('settings.save', { _key: admKey, values: { refresh_seconds: '300' } });
+
+  // ตัวย้ายรุ่น 5: ระบบเก่าที่ตั้งไว้ 25 วินาที ต้องถูกดันเป็น 5 นาที
+  setSetting_('refresh_seconds', '25');
+  check('ระบบเก่า 25 วินาที ถูกดันเป็น 5 นาที',
+    (migrateV5RefreshRate_(), getSetting_('refresh_seconds', '')), '300');
+  setSetting_('refresh_seconds', '0');
+  check('ใครตั้งปิดไว้เอง ต้องไม่ไปยุ่ง',
+    (migrateV5RefreshRate_(), getSetting_('refresh_seconds', '')), '0');
+  setSetting_('refresh_seconds', '1800');
+  check('ใครตั้งห่างไว้เอง ต้องไม่ไปยุ่ง',
+    (migrateV5RefreshRate_(), getSetting_('refresh_seconds', '')), '1800');
+  setSetting_('refresh_seconds', '300');
+
+  // รุ่นข้อมูลต้องขยับจริงเมื่อบันทึก ไม่งั้นหน้าเว็บจะไม่รู้ว่าต้องโหลดใหม่
+  const v1 = api('app.version', { _key: admKey }).data.version;
+  const added = api('purchase.save',
+    { _key: admKey, record: { item: 'ทดสอบรุ่นข้อมูล', price: 1, buyDate: '2026-01-01' } });
+  const v2 = api('app.version', { _key: admKey }).data.version;
+  check('บันทึกแล้วรุ่นข้อมูลเปลี่ยน (หน้าเว็บถึงจะรู้ว่าต้องโหลดใหม่)', v1 !== v2, true);
+  api('purchase.delete', { _key: admKey, id: added.data.id });
+}
+
 console.log('\n════════════════════════════');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

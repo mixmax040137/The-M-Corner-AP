@@ -9,7 +9,10 @@ var S = {
   year: String(new Date().getFullYear()),
   cache: {},           // เก็บผลลัพธ์ล่าสุดของแต่ละหน้า
   params: {},          // ตัวกรองย่อยของแต่ละหน้า เช่น {room:'311', status:'all'}
-  busy: false
+  busy: false,
+  version: 0,          // รุ่นข้อมูลที่หน้านี้ถืออยู่
+  selfChangeUntil: 0,  // เพิ่งกดบันทึกเอง — อย่าเด้งว่า "มีคนแก้ข้อมูล"
+  syncTimer: null
 };
 
 var ALL_DEBTS = [];
@@ -56,7 +59,10 @@ function callApi(action, payload){
     google.script.run
       .withSuccessHandler(function(res){
         if (!res) return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์'));
-        if (res.ok) return resolve(res.data);
+        if (res.ok) {
+          if (CLIENT_MUTATING.test(action)) markSelfChange();
+          return resolve(res.data);
+        }
         // หมดอายุระหว่างใช้งาน — พากลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความค้างไว้เฉย ๆ
         if (res.needLogin && typeof onSessionLost === 'function') onSessionLost();
         reject(new Error(res.error));
@@ -209,23 +215,102 @@ function applyReadOnly(root){
   }
 }
 
-/* ---------------- รีเฟรชอัตโนมัติเมื่อข้อมูลในชีตเปลี่ยน ---------------- */
+/* ---------------- รีเฟรชอัตโนมัติเมื่อข้อมูลในชีตเปลี่ยน ----------------
+
+   กฎเหล็กของส่วนนี้: ห้ามโหลดทับสิ่งที่ผู้ใช้กำลังพิมพ์อยู่เด็ดขาด
+   ถ้ามีข้อมูลใหม่ตอนที่ผู้ใช้กำลังกรอกอยู่ ให้ขึ้นปุ่มเล็ก ๆ ให้กดเองเมื่อพร้อม
+
+   หมายเหตุ: รุ่นข้อมูลดูจาก "เวลาที่ชีตถูกแก้ล่าสุด" ของ Google Drive
+   ซึ่งขยับทุกครั้งที่มีการเขียน รวมถึงตอนที่เราเองกดบันทึกด้วย
+   จึงต้องจดรุ่นใหม่ไว้หลังบันทึกทุกครั้ง ไม่งั้นจะโหลดซ้ำและขึ้นข้อความ
+   ว่า "มีคนแก้ข้อมูล" ทั้งที่คนแก้คือผู้ใช้เอง
+------------------------------------------------------------------ */
+
+/** คำสั่งที่ทำให้ข้อมูลในชีตเปลี่ยน (ให้ตรงกับ MUTATING_ACTIONS ฝั่งเซิร์ฟเวอร์) */
+var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|rotateToken|backupNow|upload|trash)$/;
+
+/**
+ * เพิ่งกดบันทึกเอง — หน้าโหลดข้อมูลใหม่ไปแล้วตอนกดบันทึก
+ * จดรุ่นข้อมูลล่าสุดไว้ และกันไม่ให้รอบตรวจถัดไปโหลดซ้ำ
+ * (เผื่อไว้ 2 นาที เพราะ Google Drive อัปเดตเวลาแก้ไขช้ากว่าการเขียนจริงเล็กน้อย)
+ */
+function markSelfChange(){
+  S.selfChangeUntil = Date.now() + 120000;
+  clearTimeout(S.syncTimer);
+  S.syncTimer = setTimeout(syncVersion, 1500);
+}
+
+function syncVersion(){
+  callApi('app.version')
+    .then(function(v){ if (v && v.version) S.version = v.version; })
+    .catch(function(){ /* ไว้รอบหน้า */ });
+}
+
+/** ผู้ใช้กำลังกรอกข้อมูลอยู่หรือเปล่า — ถ้าใช่ ห้ามโหลดทับ */
+function userIsBusy(){
+  var modal = document.getElementById('modalRoot');
+  if (modal && modal.innerHTML) return true;              // ฟอร์มเปิดค้างอยู่
+  var el = document.activeElement;
+  if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) &&
+      el.type !== 'button' && el.type !== 'submit') return true;   // เคอร์เซอร์อยู่ในช่องกรอก
+  return false;
+}
+
+function refreshLabel(sec){
+  if (sec % 3600 === 0) return 'ทุก ' + (sec / 3600) + ' ชั่วโมง';
+  if (sec % 60 === 0) return 'ทุก ' + (sec / 60) + ' นาที';
+  return 'ทุก ' + sec + ' วินาที';
+}
+
+function liveDotIdle(sec){
+  var dot = document.getElementById('liveDot');
+  if (!dot) return;
+  dot.dataset.pending = '';
+  dot.innerHTML = '<span class="b ok" title="ตรวจข้อมูลใหม่' + refreshLabel(sec) +
+                  ' · จะไม่โหลดทับตอนที่กำลังกรอกข้อมูลอยู่">● สด</span>';
+}
+
+/** มีข้อมูลใหม่แต่ผู้ใช้กำลังยุ่ง — บอกไว้เฉย ๆ ให้กดเองเมื่อพร้อม */
+function liveDotPending(){
+  var dot = document.getElementById('liveDot');
+  if (!dot || dot.dataset.pending === '1') return;
+  dot.dataset.pending = '1';
+  dot.innerHTML = '<button class="b warn" style="border:0;cursor:pointer;font:inherit" ' +
+                  'title="มีการแก้ข้อมูลจากที่อื่น กดเพื่อโหลดใหม่เมื่อคุณพร้อม" ' +
+                  'onclick="loadPending()">↻ มีข้อมูลใหม่</button>';
+}
+
+function loadPending(){
+  liveDotIdle(POLL_SECONDS);
+  load();
+}
+
+var POLL_SECONDS = 0;
+var POLL_TIMER = null;
 
 function startPolling(seconds){
   var sec = Number(seconds || 0);
+  POLL_SECONDS = sec;
+  clearInterval(POLL_TIMER);
+
   var dot = document.getElementById('liveDot');
   if (!sec) { if (dot) dot.innerHTML = ''; return; }
-  if (dot) dot.innerHTML = '<span class="b ok" title="ข้อมูลอัปเดตอัตโนมัติทุก ' + sec + ' วินาที">● สด</span>';
+  liveDotIdle(sec);
 
-  setInterval(function(){
+  POLL_TIMER = setInterval(function(){
     if (document.hidden) return;
-    if (document.getElementById('modalRoot').innerHTML) return;  // กำลังกรอกฟอร์มอยู่ อย่าเพิ่งรีเฟรช
     callApi('app.version').then(function(v){
-      if (v && v.version && v.version !== S.version) {
-        S.version = v.version;
-        load();
-        toast('ข้อมูลมีการเปลี่ยนแปลง — โหลดใหม่ให้แล้ว');
-      }
+      if (!v || !v.version || v.version === S.version) return;
+      S.version = v.version;
+
+      // เราเป็นคนแก้เอง และหน้าก็โหลดใหม่ไปแล้วตอนกดบันทึก
+      if (Date.now() < S.selfChangeUntil) return;
+
+      // กำลังกรอกข้อมูลอยู่ — ห้ามโหลดทับ รอให้ผู้ใช้กดเอง
+      if (userIsBusy()) { liveDotPending(); return; }
+
+      load();
+      toast('มีการแก้ข้อมูลจากที่อื่น — โหลดใหม่ให้แล้ว');
     }).catch(function(){ /* เน็ตสะดุด ไว้รอบหน้า */ });
   }, sec * 1000);
 }

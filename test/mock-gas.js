@@ -25,19 +25,32 @@ class Range {
   }
   setValues(m) {
     m.forEach((row, i) => row.forEach((v, j) => this.sheet.set(this.r + i, this.c + j, v)));
+    touched();
     return this;
   }
-  setValue(v) { this.sheet.set(this.r, this.c, v); return this; }
+  setValue(v) { this.sheet.set(this.r, this.c, v); touched(); return this; }
   getValue() { return this.sheet.cell(this.r, this.c); }
   clearContent() {
     for (let i = 0; i < this.nr; i++)
       for (let j = 0; j < this.nc; j++) this.sheet.set(this.r + i, this.c + j, '');
+    touched();
     return this;
   }
   setNumberFormat() { return this; } setDataValidation() { return this; }
   setWrap() { return this; } setFontWeight() { return this; }
   setBackground() { return this; } setFontColor() { return this; }
   setVerticalAlignment() { return this; }
+}
+
+/**
+ * ของจริง Google Drive จะขยับ "เวลาแก้ไขล่าสุด" ทุกครั้งที่มีการเขียนลงชีต
+ * ตัวจำลองก็ต้องทำแบบเดียวกัน ไม่งั้นจะทดสอบเรื่องรุ่นข้อมูลไม่ได้เลย
+ * (บวกทีละ 1 มิลลิวินาที เพื่อให้เขียนติด ๆ กันแล้วค่ายังต่างกันแน่นอน)
+ */
+function touched() {
+  const now = Date.now();
+  const prev = store.lastUpdated ? store.lastUpdated.getTime() : 0;
+  store.lastUpdated = new Date(Math.max(now, prev + 1));
 }
 
 class Sheet {
@@ -49,8 +62,8 @@ class Sheet {
   getLastRow() { let last = 0; this.data.forEach((row, i) => { if (row && row.some(v => v !== '' && v != null)) last = i + 1; }); return last; }
   getLastColumn() { return Math.max(0, ...this.data.map(r => (r ? r.length : 0))); }
   getMaxRows() { return Math.max(1000, this.data.length + 1); }
-  appendRow(vals) { const r = this.getLastRow() + 1; vals.forEach((v, j) => this.set(r, j + 1, v)); }
-  deleteRow(r) { this.data.splice(r - 1, 1); }
+  appendRow(vals) { const r = this.getLastRow() + 1; vals.forEach((v, j) => this.set(r, j + 1, v)); touched(); }
+  deleteRow(r) { this.data.splice(r - 1, 1); touched(); }
   setFrozenRows() { return this; } setColumnWidth() { return this; }
 }
 

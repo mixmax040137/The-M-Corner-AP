@@ -11,7 +11,9 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 
-const GS = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs','Migrate.gs',
+// ไม่รวม Ocr.gs เพราะการอ่านข้อความจากรูปต้องพึ่ง Google Drive — มีเฉพาะเวอร์ชัน Apps Script
+const GS = ['Config.gs','Util.gs','Setup.gs','Users.gs','Auth.gs','Settings.gs','Drive.gs','Seed.gs',
+            'Finance.gs','Backup.gs','Migrate.gs',
             'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs','Api.gs','Notify.gs'];
 
 /* ---- 1. เตรียมข้อมูลตั้งต้นด้วย runtime จำลอง ---- */
@@ -19,7 +21,14 @@ GS.concat(['Web.gs']).forEach(f =>
   vm.runInThisContext(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f }));
 setupSystem();
 seedHistoricalData();
+
+// หน้าตัวอย่างไม่มีเซิร์ฟเวอร์ จึงไม่มีบัญชีผู้ใช้และอ่านรูปไม่ได้ — ปิดไว้ไม่ให้ปุ่มโผล่มาแล้วกดไม่ได้
+setSetting_('ocr_enabled', 'ปิด');
+clearSheet_(SHEETS.USERS);
+clearSheet_(SHEETS.SESSIONS);
+
 const SEED = exportAll_().sheets;
+delete SEED[SHEETS.USERS];        // ไม่ต้องมีข้อมูลบัญชีติดไปกับหน้าตัวอย่าง
 
 /* ---- 2. รวมโค้ด ---- */
 const read = p => fs.readFileSync(p, 'utf8');
@@ -31,7 +40,7 @@ const serverJs = GS
   .map(f => '\n/* ===== ' + f + ' ===== */\n' + read(path.join(SRC, f)))
   .join('\n');
 
-const uiJs = ['App.html','Views.html','Forms.html']
+const uiJs = ['App.html','Auth.html','Views.html','Settings.html','Forms.html']
   .map(f => '\n/* ===== ui/' + f + ' ===== */\n' + stripScript(read(path.join(SRC, 'ui', f))))
   .join('\n');
 
@@ -58,6 +67,7 @@ ${css}
       <div><h1 id="pageTitle">ภาพรวม</h1><div class="sub" id="pageSub"></div></div>
       <div class="top-right">
         <span id="saveState"></span>
+        <button class="btn icon" id="themeBtn" title="สลับธีม" onclick="cycleTheme()">🌗</button>
         <input class="inp w-auto" id="searchBox" placeholder="🔎 ค้นหา…" style="width:150px"
                oninput="onSearch(this.value)" autocomplete="off">
         <select class="sel w-auto" id="yearSel" onchange="setYear(this.value)"></select>
@@ -69,7 +79,7 @@ ${css}
     </main>
   </div>
 </div>
-<div id="modalRoot"></div><div id="toastRoot"></div>
+<div id="authRoot"></div><div id="modalRoot"></div><div id="toastRoot"></div>
 
 <script id="tpl" type="text/plain">{{TEMPLATE}}<\/script>
 <script>window.__SEED__ = {{DATA}};<\/script>

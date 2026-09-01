@@ -2235,8 +2235,9 @@ ROUTES.settings = {
       settingsAccountCard(d) +
       settingsThemeCard() +
       (d.settings.canEdit ? settingsGroupsHtml(d.settings) : settingsReadOnlyNote()) +
-      (d.users ? settingsUsersCard(d.users) : '') +
-      (d.users ? settingsShareCard(d.links) : '');
+      // เฉพาะผู้ดูแลที่เห็นสองส่วนนี้ — ตัวการ์ดเป็นคนตัดสินใจเองว่าจะแสดงอะไร
+      // เพราะหน้าตัวอย่างแบบไฟล์เดียวไม่มีบัญชีผู้ใช้ให้แสดง แต่ยังอยากบอกผู้ใช้ว่ามีอะไรบ้าง
+      (isAdminNow() ? settingsUsersCard(d.users) + settingsShareCard(d.links) : '');
   }
 };
 
@@ -2359,7 +2360,12 @@ function saveSettingsForm(){
 
 /* ---- จัดการผู้ใช้ (ผู้ดูแลเท่านั้น) ---- */
 
+function isAdminNow(){
+  return !!(S.boot && S.boot.isAdmin);
+}
+
 function settingsUsersCard(users){
+  if (!users) return '';
   return card('👥 ผู้ใช้ในระบบ (' + users.length + ')',
     '<p class="fs13 muted">แจกชื่อผู้ใช้และรหัสผ่านให้คนอื่นเข้ามาดูหรือช่วยแก้ข้อมูลได้ ' +
     'ตั้งสิทธิ์แยกรายคน และระงับได้ทุกเมื่อ</p>' +

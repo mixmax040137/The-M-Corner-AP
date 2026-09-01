@@ -294,6 +294,24 @@ window.saveViaHost = function(filename, content, mime){
     });
 };
 
+/* ---------- หน้าตัวอย่างไม่มีบัญชีผู้ใช้ จึงข้ามด่านล็อกอินไปเลย ---------- */
+authGate = function(){
+  AUTH.me = {
+    role: 'ผู้ดูแล', canEdit: true, isAdmin: true, signedIn: true,
+    username: '', name: 'หน้าตัวอย่าง', via: 'หน้าตัวอย่าง', label: 'ผู้ดูแล'
+  };
+  bootNow();
+};
+
+// ทุกคำสั่งในหน้านี้ถือว่าเป็นผู้ดูแล เพราะข้อมูลอยู่ในเครื่องผู้ใช้เองอยู่แล้ว
+resolveActor_ = function(){
+  return { role: ROLE.ADMIN, username: '', name: 'หน้าตัวอย่าง', via: 'หน้าตัวอย่าง' };
+};
+
+// ไม่มีเซิร์ฟเวอร์ให้เก็บบัญชี จึงตัดส่วนจัดการผู้ใช้กับลิงก์แชร์ออกจากหน้าตั้งค่า
+listUsers_ = function(){ return null; };
+listDevices_ = function(){ return []; };
+
 /* ---------- ไม่ต้อง poll เพราะข้อมูลอยู่ในหน้าเดียวกัน ---------- */
 function startPolling(){
   var dot = document.getElementById('liveDot');
@@ -306,6 +324,16 @@ function navFootHtml(){
          '<br>ดาวน์โหลดสำรองที่หน้า "รายงาน"' +
          '<br><span style="opacity:.7">v' + APP.VERSION + '</span>';
 }
+
+/* ---------- บอกให้ชัดว่าอะไรมีเฉพาะเวอร์ชันบน Google ---------- */
+settingsUsersCard = function(){
+  return card('👥 บัญชีผู้ใช้และการแชร์',
+    '<div class="empty"><div class="big">🔐</div>' +
+    'การล็อกอิน · PIN 6 หลัก · แจกบัญชีให้คนอื่น · และการอ่านข้อความจากรูป<br>' +
+    'มีเฉพาะเวอร์ชันที่ติดตั้งบน Google Apps Script<br>' +
+    '<span class="fs12">หน้านี้เป็นตัวอย่างแบบไฟล์เดียว ข้อมูลเก็บอยู่ในหน้าเว็บนี้เอง</span></div>');
+};
+settingsShareCard = function(){ return ''; };
 
 /* ---------- เริ่มระบบ ---------- */
 (function start(){

@@ -1,0 +1,395 @@
+<script>
+/* =========================================================
+   Auth.html — หน้าล็อกอิน · PIN 6 หลัก · เปลี่ยนรหัสผ่าน
+
+   ที่เก็บของฝั่งเบราว์เซอร์ 2 ชั้น เพราะเว็บแอปของ Apps Script
+   ทำงานใน iframe ที่ชื่อโดเมนเปลี่ยนทุกครั้งที่เปิด
+   localStorage จึงหายได้ ต้องมีทางสำรอง
+     · รหัสอ้างอิงการเข้าใช้งาน (อายุสั้น) — เก็บใน localStorage อย่างเดียว
+       หายก็แค่ใส่ PIN ใหม่
+     · รหัสอุปกรณ์ (คู่กับ PIN) — เก็บทั้ง localStorage และใน URL ของหน้าแม่
+       ผ่าน google.script.history เพื่อให้ยังอยู่หลังปิดเปิดเครื่อง
+   ========================================================= */
+
+var AUTH = {
+  session: '',
+  device: '',
+  me: null,
+  pin: '',
+  screen: ''
+};
+
+var LS_SESSION = 'mcorner.session';
+var LS_DEVICE  = 'mcorner.device';
+
+/* ---------------- ที่เก็บฝั่งเบราว์เซอร์ ---------------- */
+
+function lsGet(k){
+  try { return window.localStorage.getItem(k) || ''; } catch (e) { return ''; }
+}
+function lsSet(k, v){
+  try { v ? window.localStorage.setItem(k, v) : window.localStorage.removeItem(k); }
+  catch (e) { /* โหมดส่วนตัวหรือปิดคุกกี้ไว้ — ใช้ทางสำรอง */ }
+}
+
+/** เขียนรหัสอุปกรณ์ลง URL ของหน้าแม่ ให้รอดข้ามการเปิดใหม่ */
+function deviceToUrl(token){
+  try {
+    if (!window.google || !google.script || !google.script.history) return;
+    var params = {};
+    if (accessKey()) params.key = accessKey();
+    if (token) params.d = token;
+    google.script.history.replaceState({}, params, location.hash);
+  } catch (e) { /* ไม่ใช่เว็บแอป (เช่นเปิดใน dialog) — ข้ามไป */ }
+}
+
+function saveDevice(token){
+  AUTH.device = token || '';
+  lsSet(LS_DEVICE, AUTH.device);
+  deviceToUrl(AUTH.device);
+}
+
+function saveSession(token){
+  AUTH.session = token || '';
+  lsSet(LS_SESSION, AUTH.session);
+}
+
+/** อ่านค่าที่เก็บไว้ทั้งหมด (ต้องรอ URL ของหน้าแม่ จึงเป็นแบบ callback) */
+function loadStored(done){
+  AUTH.session = lsGet(LS_SESSION);
+  AUTH.device  = lsGet(LS_DEVICE);
+
+  if (window.google && google.script && google.script.url) {
+    try {
+      google.script.url.getLocation(function(loc){
+        var p = (loc && loc.parameter) || {};
+        if (p.d && !AUTH.device) { AUTH.device = String(p.d); lsSet(LS_DEVICE, AUTH.device); }
+        if (p.key && !accessKey()) RESOLVED_KEY = String(p.key);
+        done();
+      });
+      return;
+    } catch (e) { /* ใช้ทางปกติ */ }
+  }
+  done();
+}
+
+/* ---------------- ตัวคุมลำดับหน้าจอ ---------------- */
+
+/** เรียกตอนเปิดหน้าเว็บ — ตัดสินว่าจะให้เห็นอะไรก่อน */
+function authGate(){
+  loadStored(function(){
+    callApi('auth.me').then(function(me){
+      AUTH.me = me;
+      if (me.signedIn) return enterApp(me);
+      if (AUTH.device) return showPin();
+      showLogin();
+    }).catch(function(e){
+      showLogin(e.message || e);
+    });
+  });
+}
+
+function enterApp(me){
+  AUTH.me = me;
+  hideAuth();
+  bootNow();
+  // เพิ่งล็อกอินด้วยรหัสผ่านและยังไม่เคยตั้ง PIN บนเครื่องนี้ — ชวนตั้งสักครั้ง
+  if (!AUTH.device && me.username && !lsGet('mcorner.pinAsked')) {
+    setTimeout(offerPin, 900);
+  }
+}
+
+function hideAuth(){
+  var r = document.getElementById('authRoot');
+  if (r) r.innerHTML = '';
+  document.body.classList.remove('locked');
+}
+
+function showAuth(html){
+  document.body.classList.add('locked');
+  document.getElementById('authRoot').innerHTML =
+    '<div class="auth-wrap"><div class="auth-card">' +
+      '<div class="auth-brand">🏢 <b>' + esc((S.boot && S.boot.app && S.boot.app.name) || 'The M Corner AP') + '</b></div>' +
+      html +
+    '</div></div>';
+}
+
+/* ---------------- หน้าล็อกอินด้วยรหัสผ่าน ---------------- */
+
+function showLogin(err){
+  AUTH.screen = 'login';
+  showAuth(
+    '<h2 class="auth-h">เข้าสู่ระบบ</h2>' +
+    '<p class="auth-sub">ใส่ชื่อผู้ใช้และรหัสผ่านที่ได้รับ</p>' +
+    (err ? '<div class="auth-err">' + esc(err) + '</div>' : '<div class="auth-err" id="authErr" hidden></div>') +
+    '<div class="auth-f"><label for="lgUser">ชื่อผู้ใช้</label>' +
+      '<input class="inp" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false"></div>' +
+    '<div class="auth-f"><label for="lgPass">รหัสผ่าน</label>' +
+      '<input class="inp" id="lgPass" type="password" autocomplete="current-password"></div>' +
+    '<button class="btn pri auth-go" id="lgGo">เข้าสู่ระบบ</button>' +
+    (AUTH.device ? '<button class="btn auth-alt" onclick="showPin()">← กลับไปใช้ PIN</button>' : '') +
+    '<p class="auth-foot">ลืมรหัสผ่าน? ให้ผู้ดูแลตั้งรหัสใหม่ให้จากเมนูในชีต</p>'
+  );
+
+  var go = document.getElementById('lgGo');
+  var user = document.getElementById('lgUser');
+  var pass = document.getElementById('lgPass');
+
+  function submit(){
+    var u = user.value.trim(), p = pass.value;
+    if (!u || !p) return authError('กรุณากรอกทั้งชื่อผู้ใช้และรหัสผ่าน');
+    go.disabled = true;
+    go.innerHTML = '<span class="spin"></span> กำลังตรวจสอบ…';
+    callApi('auth.login', { username: u, password: p }).then(function(r){
+      saveSession(r.session);
+      if (r.mustChange) return showChangePassword(true);
+      return callApi('auth.me').then(enterApp);
+    }).catch(function(e){
+      go.disabled = false;
+      go.textContent = 'เข้าสู่ระบบ';
+      pass.value = '';
+      authError(e.message || e);
+    });
+  }
+
+  go.onclick = submit;
+  [user, pass].forEach(function(el){
+    el.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') submit(); });
+  });
+  user.focus();
+}
+
+function authError(msg){
+  var el = document.getElementById('authErr');
+  if (el) { el.textContent = msg; el.hidden = false; }
+  else showLogin(msg);
+}
+
+/* ---------------- หน้า PIN 6 หลัก ---------------- */
+
+function showPin(){
+  AUTH.screen = 'pin';
+  AUTH.pin = '';
+  showAuth(
+    '<h2 class="auth-h">ใส่ PIN</h2>' +
+    '<p class="auth-sub">ปลดล็อกด้วยรหัส 6 หลักของเครื่องนี้</p>' +
+    '<div class="auth-err" id="authErr" hidden></div>' +
+    '<div class="pin-dots" id="pinDots">' + pinDotsHtml('') + '</div>' +
+    '<div class="pin-pad">' +
+      [1,2,3,4,5,6,7,8,9].map(function(n){
+        return '<button class="pin-k" onclick="pinPush(\'' + n + '\')">' + n + '</button>';
+      }).join('') +
+      '<button class="pin-k ghost" onclick="showLogin()" title="ใช้รหัสผ่านแทน">🔑</button>' +
+      '<button class="pin-k" onclick="pinPush(\'0\')">0</button>' +
+      '<button class="pin-k ghost" onclick="pinBack()" title="ลบ">⌫</button>' +
+    '</div>' +
+    '<button class="btn auth-alt" onclick="forgetThisDevice()">ลืม PIN — เข้าด้วยรหัสผ่าน</button>'
+  );
+
+  // คีย์บอร์ดจริงก็ใช้ได้ ไม่ต้องจิ้มปุ่มบนจอ
+  document.onkeydown = function(ev){
+    if (AUTH.screen !== 'pin') return;
+    if (/^\d$/.test(ev.key)) pinPush(ev.key);
+    else if (ev.key === 'Backspace') pinBack();
+  };
+}
+
+function pinDotsHtml(pin){
+  var html = '';
+  for (var i = 0; i < 6; i++) html += '<i class="' + (i < pin.length ? 'on' : '') + '"></i>';
+  return html;
+}
+
+function pinPush(d){
+  if (AUTH.pin.length >= 6) return;
+  AUTH.pin += d;
+  document.getElementById('pinDots').innerHTML = pinDotsHtml(AUTH.pin);
+  if (AUTH.pin.length === 6) setTimeout(pinSubmit, 120);
+}
+
+function pinBack(){
+  AUTH.pin = AUTH.pin.slice(0, -1);
+  var d = document.getElementById('pinDots');
+  if (d) d.innerHTML = pinDotsHtml(AUTH.pin);
+}
+
+function pinSubmit(){
+  var pin = AUTH.pin;
+  AUTH.pin = '';
+  var dots = document.getElementById('pinDots');
+  if (dots) dots.classList.add('busy');
+
+  callApi('auth.unlock', { device: AUTH.device, pin: pin }).then(function(r){
+    saveSession(r.session);
+    document.onkeydown = null;
+    return callApi('auth.me').then(enterApp);
+  }).catch(function(e){
+    var msg = String(e.message || e);
+    if (dots) { dots.classList.remove('busy'); dots.classList.add('shake'); dots.innerHTML = pinDotsHtml(''); }
+    setTimeout(function(){ if (dots) dots.classList.remove('shake'); }, 500);
+    authError(msg);
+    // PIN ถูกยกเลิกไปแล้ว (ผิดครบโควตา / หมดอายุ) — ต้องกลับไปใช้รหัสผ่าน
+    if (/ล็อกอินด้วยรหัสผ่าน/.test(msg)) {
+      saveDevice('');
+      setTimeout(function(){ showLogin(msg); }, 1400);
+    }
+  });
+}
+
+function forgetThisDevice(){
+  var token = AUTH.device;
+  saveDevice('');
+  lsSet('mcorner.pinAsked', '');
+  document.onkeydown = null;
+  if (token) callApi('auth.forgetDevice', { device: token }).catch(function(){ /* หมดอายุไปแล้วก็ช่างมัน */ });
+  showLogin();
+}
+
+/* ---------------- ตั้ง PIN ---------------- */
+
+/** ชวนตั้ง PIN หลังล็อกอินครั้งแรกบนเครื่องนี้ */
+function offerPin(){
+  lsSet('mcorner.pinAsked', '1');
+  openModal('ตั้ง PIN สำหรับเครื่องนี้',
+    '<p>ตั้งรหัส 6 หลักไว้ จะได้ไม่ต้องพิมพ์รหัสผ่านทุกครั้งที่เปิด</p>' +
+    '<p class="muted fs13">PIN ผูกกับเครื่องนี้เครื่องเดียว เครื่องอื่นใช้ไม่ได้ · ยกเลิกเมื่อไหร่ก็ได้ในหน้าตั้งค่า</p>',
+    '<button class="btn" onclick="closeModal()">ไว้ก่อน</button>' +
+    '<button class="btn pri" onclick="closeModal();formSetPin()">ตั้ง PIN เลย</button>');
+}
+
+function formSetPin(){
+  openModal('ตั้ง PIN 6 หลัก',
+    '<div class="fgrid">' +
+      '<div class="f full"><label for="pin1">PIN ใหม่</label>' +
+        '<input class="inp" id="pin1" type="password" inputmode="numeric" maxlength="6" ' +
+        'autocomplete="new-password" placeholder="••••••"></div>' +
+      '<div class="f full"><label for="pin2">ใส่ PIN อีกครั้ง</label>' +
+        '<input class="inp" id="pin2" type="password" inputmode="numeric" maxlength="6" ' +
+        'autocomplete="new-password" placeholder="••••••"></div>' +
+      '<div class="f full"><label for="pinDev">ชื่อเครื่อง (ไว้ดูย้อนหลัง)</label>' +
+        '<input class="inp" id="pinDev" value="' + esc(guessDeviceName()) + '"></div>' +
+    '</div>' +
+    '<p class="muted fs13 mt8">หลีกเลี่ยงเลขที่เดาง่าย เช่น 111111 หรือ 123456</p>',
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn pri" id="pinGo">บันทึก PIN</button>');
+
+  document.getElementById('pinGo').onclick = function(){
+    var a = document.getElementById('pin1').value;
+    var b = document.getElementById('pin2').value;
+    if (!/^\d{6}$/.test(a)) return toast('PIN ต้องเป็นตัวเลข 6 หลัก', 'err');
+    if (a !== b) return toast('PIN สองช่องไม่ตรงกัน', 'err');
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
+    callApi('auth.setPin', { pin: a, device: document.getElementById('pinDev').value }).then(function(r){
+      saveDevice(r.device);
+      closeModal();
+      toast('ตั้ง PIN เรียบร้อย — ครั้งหน้าใส่แค่ 6 หลัก', 'ok');
+    }).catch(function(e){
+      btn.disabled = false;
+      btn.textContent = 'บันทึก PIN';
+      toast(e.message || e, 'err');
+    });
+  };
+}
+
+function guessDeviceName(){
+  var ua = navigator.userAgent || '';
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/iPad/.test(ua)) return 'iPad';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Macintosh/.test(ua)) return 'Mac';
+  if (/Windows/.test(ua)) return 'Windows';
+  return 'อุปกรณ์ของฉัน';
+}
+
+/* ---------------- เปลี่ยนรหัสผ่าน ---------------- */
+
+/** @param {boolean} forced true = ระบบบังคับเปลี่ยนตอนล็อกอินครั้งแรก */
+function showChangePassword(forced){
+  if (!forced) return formChangePassword();
+  AUTH.screen = 'change';
+  showAuth(
+    '<h2 class="auth-h">ตั้งรหัสผ่านของคุณเอง</h2>' +
+    '<p class="auth-sub">รหัสที่ได้มาเป็นรหัสชั่วคราว เปลี่ยนก่อนใช้งานหนึ่งครั้ง</p>' +
+    '<div class="auth-err" id="authErr" hidden></div>' +
+    '<div class="auth-f"><label for="cpOld">รหัสผ่านเดิม</label>' +
+      '<input class="inp" id="cpOld" type="password" autocomplete="current-password"></div>' +
+    '<div class="auth-f"><label for="cpNew">รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)</label>' +
+      '<input class="inp" id="cpNew" type="password" autocomplete="new-password"></div>' +
+    '<div class="auth-f"><label for="cpNew2">ใส่รหัสผ่านใหม่อีกครั้ง</label>' +
+      '<input class="inp" id="cpNew2" type="password" autocomplete="new-password"></div>' +
+    '<button class="btn pri auth-go" id="cpGo">บันทึกรหัสผ่านใหม่</button>'
+  );
+
+  document.getElementById('cpGo').onclick = function(){
+    var o = document.getElementById('cpOld').value;
+    var n = document.getElementById('cpNew').value;
+    var n2 = document.getElementById('cpNew2').value;
+    if (n.length < 8) return authError('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
+    if (n !== n2) return authError('รหัสผ่านใหม่สองช่องไม่ตรงกัน');
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
+    callApi('auth.changePassword', { oldPassword: o, newPassword: n }).then(function(){
+      return callApi('auth.me').then(enterApp);
+    }).then(function(){
+      toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');
+    }).catch(function(e){
+      btn.disabled = false;
+      btn.textContent = 'บันทึกรหัสผ่านใหม่';
+      authError(e.message || e);
+    });
+  };
+  document.getElementById('cpOld').focus();
+}
+
+function formChangePassword(){
+  openModal('เปลี่ยนรหัสผ่าน',
+    '<div class="fgrid">' +
+      '<div class="f full"><label for="mcOld">รหัสผ่านเดิม</label><input class="inp" id="mcOld" type="password"></div>' +
+      '<div class="f full"><label for="mcNew">รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)</label><input class="inp" id="mcNew" type="password"></div>' +
+      '<div class="f full"><label for="mcNew2">ใส่รหัสผ่านใหม่อีกครั้ง</label><input class="inp" id="mcNew2" type="password"></div>' +
+    '</div>',
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn pri" id="mcGo">บันทึก</button>');
+
+  document.getElementById('mcGo').onclick = function(){
+    var n = document.getElementById('mcNew').value;
+    if (n.length < 8) return toast('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร', 'err');
+    if (n !== document.getElementById('mcNew2').value) return toast('รหัสผ่านใหม่สองช่องไม่ตรงกัน', 'err');
+    var btn = this;
+    btn.disabled = true;
+    callApi('auth.changePassword', {
+      oldPassword: document.getElementById('mcOld').value, newPassword: n
+    }).then(function(){
+      closeModal();
+      toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');
+    }).catch(function(e){
+      btn.disabled = false;
+      toast(e.message || e, 'err');
+    });
+  };
+}
+
+/* ---------------- ออกจากระบบ ---------------- */
+
+function doLogout(keepPin){
+  var s = AUTH.session;
+  saveSession('');
+  if (!keepPin) { var d = AUTH.device; saveDevice(''); if (d) callApi('auth.forgetDevice', { device: d }).catch(function(){}); }
+  if (s) callApi('auth.logout', { _session: s }).catch(function(){ /* หมดอายุแล้วก็ถือว่าออกแล้ว */ });
+  closeModal();
+  AUTH.me = null;
+  if (AUTH.device) showPin(); else showLogin();
+}
+
+function confirmLogout(){
+  openModal('ออกจากระบบ',
+    '<p>ต้องการออกจากระบบใช่ไหม</p>' +
+    (AUTH.device ? '<p class="muted fs13">PIN บนเครื่องนี้จะยังอยู่ ครั้งหน้าเข้าด้วย PIN ได้เลย</p>' : ''),
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    (AUTH.device ? '<button class="btn dgr" onclick="doLogout(false)">ออกและลบ PIN</button>' : '') +
+    '<button class="btn pri" onclick="doLogout(true)">ออกจากระบบ</button>');
+}
+</script>

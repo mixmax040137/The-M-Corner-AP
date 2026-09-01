@@ -4,9 +4,6 @@
 
 function doGet(e) {
   var key = safeKey_((e && e.parameter && e.parameter.key) || '');
-  var role = resolveRole_(key);
-
-  if (role === ROLE.NONE) return denyPage_();
 
   // อัปเดตโค้ดแล้วเปิดเว็บเลยโดยไม่ได้รัน START_HERE ก็ต้องย้ายคอลัมน์ให้ทัน
   // ไม่งั้นโค้ดใหม่จะอ่านชีตโครงเก่าแล้วข้อมูลเลื่อนคอลัมน์
@@ -15,12 +12,17 @@ function doGet(e) {
 
   rememberExecUrl_();   // ตอนนี้โค้ดทำงานอยู่ใน /exec จริง จึงจดที่อยู่ไว้ใช้ตอนแสดงลิงก์
 
+  // หน้าเว็บเปิดได้เสมอ แต่จะเห็นแค่หน้าล็อกอินจนกว่าจะยืนยันตัวตนผ่าน
+  // ตัวกันสิทธิ์จริงอยู่ในฟังก์ชัน api() ฝั่งเซิร์ฟเวอร์ ไม่ได้อยู่ที่หน้านี้
+  var actor = resolveActor_({ _key: key });
+
   var t = HtmlService.createTemplateFromFile('ui/Index');
   t.appName = APP.NAME;
   t.subtitle = APP.SUBTITLE;
   t.version = APP.VERSION;
-  t.accessKey = key;   // กรองแล้ว ปลอดภัยที่จะฝังลงหน้าโดยตรง
-  t.role = role;
+  t.accessKey = key;          // กรองแล้ว ปลอดภัยที่จะฝังลงหน้าโดยตรง
+  t.role = actor.role;
+  t.theme = safeTheme_(getSetting_('theme', 'ตามเครื่อง'));
 
   return t.evaluate()
     .setTitle(APP.NAME)
@@ -42,7 +44,13 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-/** หน้าที่แสดงเมื่อเปิดลิงก์โดยไม่มีกุญแจที่ถูกต้อง */
+/** ธีมที่ฝังลงหน้าได้อย่างปลอดภัย (ค่าอื่นถือว่าตามเครื่อง) */
+function safeTheme_(v) {
+  var s = String(v || '').trim();
+  return (s === 'สว่าง' || s === 'มืด') ? s : 'ตามเครื่อง';
+}
+
+/** หน้าที่แสดงเมื่อระบบยังติดตั้งไม่เสร็จ หรือเปิดลิงก์ผิด */
 function denyPage_() {
   var html =
     '<!doctype html><html lang="th"><head><meta charset="utf-8">' +

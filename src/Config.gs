@@ -45,6 +45,8 @@ var SHEETS = {
   BUILDING_REPAIRS: 'BuildingRepairs',// ซ่อมแซมตึกโดยรวม
   ASSETS: 'RoomAssets',               // ทรัพย์สินประจำห้อง
   FINANCE: 'Finance',                 // รายรับ-รายจ่ายประจำเดือนของหอ
+  USERS: 'Users',                     // บัญชีผู้ใช้และรหัสผ่าน
+  SESSIONS: 'Sessions',               // การเข้าใช้งานที่ยังไม่หมดอายุ + อุปกรณ์ที่ตั้ง PIN ไว้
   SETTINGS: 'Settings',               // ค่าตั้งต้น / ข้อมูลอาคาร
   LOG: 'ActivityLog'                  // ประวัติการแก้ไข
 };
@@ -216,6 +218,37 @@ SCHEMA[SHEETS.FINANCE] = [
   { key: 'updatedAt', label: 'แก้ไขล่าสุด',    type: 'date' }
 ];
 
+/** บทบาทผู้ใช้ เรียงจากสิทธิ์มากไปน้อย */
+var ROLES = ['ผู้ดูแล', 'แก้ไขได้', 'ดูอย่างเดียว'];
+
+SCHEMA[SHEETS.USERS] = [
+  { key: 'username',  label: 'ชื่อผู้ใช้',      type: 'text' },
+  { key: 'name',      label: 'ชื่อที่แสดง',     type: 'text' },
+  { key: 'role',      label: 'บทบาท',          type: 'select', options: ROLES },
+  { key: 'passHash',  label: 'รหัสผ่าน (เข้ารหัส)', type: 'text' },
+  { key: 'passSalt',  label: 'ค่าสุ่มรหัสผ่าน',  type: 'text' },
+  { key: 'status',    label: 'สถานะ',          type: 'select', options: ['ใช้งาน', 'ระงับ'] },
+  { key: 'mustChange', label: 'ต้องเปลี่ยนรหัสผ่าน', type: 'bool' },
+  { key: 'failCount', label: 'ใส่รหัสผิดติดกัน', type: 'number' },
+  { key: 'lockUntil', label: 'ล็อกถึงเวลา',     type: 'text' },
+  { key: 'lastLogin', label: 'เข้าใช้ล่าสุด',    type: 'text' },
+  { key: 'note',      label: 'หมายเหตุ',       type: 'multiline' },
+  { key: 'updatedAt', label: 'แก้ไขล่าสุด',     type: 'date' }
+];
+
+SCHEMA[SHEETS.SESSIONS] = [
+  { key: 'token',     label: 'รหัสอ้างอิง',     type: 'text' },
+  { key: 'username',  label: 'ชื่อผู้ใช้',      type: 'text' },
+  { key: 'kind',      label: 'ประเภท',         type: 'select', options: ['เข้าใช้งาน', 'อุปกรณ์'] },
+  { key: 'pinHash',   label: 'PIN (เข้ารหัส)',  type: 'text' },
+  { key: 'pinSalt',   label: 'ค่าสุ่ม PIN',     type: 'text' },
+  { key: 'failCount', label: 'ใส่ PIN ผิดติดกัน', type: 'number' },
+  { key: 'device',    label: 'อุปกรณ์',        type: 'text' },
+  { key: 'expiresAt', label: 'หมดอายุ',        type: 'text' },
+  { key: 'createdAt', label: 'สร้างเมื่อ',      type: 'text' },
+  { key: 'lastSeen',  label: 'ใช้งานล่าสุด',    type: 'text' }
+];
+
 SCHEMA[SHEETS.SETTINGS] = [
   { key: 'key',   label: 'คีย์',      type: 'text' },
   { key: 'label', label: 'รายการ',    type: 'text' },
@@ -241,7 +274,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 3;
+var SCHEMA_VERSION = 4;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -261,5 +294,25 @@ var DEFAULT_SETTINGS = [
   { key: 'admin_emails',    label: 'อีเมลผู้ดูแลเพิ่มเติม',     value: '', note: 'คั่นด้วยเครื่องหมายจุลภาค เว้นว่างได้' },
   { key: 'webapp_url',      label: 'Web app URL (ลงท้าย /exec)', value: '', note: 'ระบบจำให้เองตอนเปิดเว็บครั้งแรก · หรือวางเองจาก Deploy > Manage deployments' },
   { key: 'backup_keep',     label: 'เก็บไฟล์สำรองย้อนหลัง (ชุด)', value: '30', note: '' },
-  { key: 'refresh_seconds', label: 'รีเฟรชข้อมูลอัตโนมัติทุก (วินาที)', value: '25', note: 'ใส่ 0 เพื่อปิด' }
+  { key: 'refresh_seconds', label: 'รีเฟรชข้อมูลอัตโนมัติทุก (วินาที)', value: '25', note: 'ใส่ 0 เพื่อปิด' },
+  { key: 'share_link_enabled', label: 'เปิดลิงก์แชร์แบบไม่ต้องล็อกอิน', value: 'ปิด', note: 'เปิด = ใครมีลิงก์แชร์ก็ดูได้เลย · ปิด = ต้องล็อกอินทุกคน' },
+  { key: 'session_hours',   label: 'อยู่ในระบบได้นาน (ชั่วโมง)', value: '12', note: 'ครบแล้วต้องล็อกอินหรือใส่ PIN ใหม่' },
+  { key: 'device_days',     label: 'จำอุปกรณ์ที่ตั้ง PIN ไว้ (วัน)', value: '90', note: '' },
+  { key: 'login_max_fail',  label: 'ใส่รหัสผิดได้กี่ครั้งก่อนล็อก', value: '5', note: '' },
+  { key: 'login_lock_minutes', label: 'ล็อกนานกี่นาทีเมื่อผิดครบ', value: '15', note: '' },
+  { key: 'ocr_enabled',     label: 'เปิดใช้การอ่านข้อความจากรูป', value: 'เปิด', note: 'แนบรูปแล้วระบบเดาข้อความ/ตัวเลขให้ แก้ไขเองได้เสมอ' },
+  { key: 'ocr_language',    label: 'ภาษาที่ใช้อ่านข้อความจากรูป', value: 'th', note: 'th = ไทย · en = อังกฤษ' },
+  { key: 'ocr_autofill',    label: 'เมื่ออ่านรูปเสร็จให้ทำอะไร', value: 'ถามก่อนเติม', note: 'ถามก่อนเติม = ปลอดภัยที่สุด · เติมให้เลย = เร็วที่สุด' },
+  { key: 'theme',           label: 'ธีมสีหน้าจอ',              value: 'ตามเครื่อง', note: 'ตามเครื่อง = สลับสว่าง/มืดตามระบบของอุปกรณ์' },
+  { key: 'accent',          label: 'สีเน้นของระบบ',            value: 'ฟ้าคราม', note: '' },
+  { key: 'number_format',   label: 'รูปแบบตัวเลขเงิน',          value: '1,234.56', note: '' },
+  { key: 'date_format',     label: 'รูปแบบปีที่แสดง',           value: 'พ.ศ. (2569)', note: 'มีผลกับการแสดงผลเท่านั้น ข้อมูลในชีตยังเก็บเป็น ค.ศ. เสมอ' },
+  { key: 'start_page',      label: 'หน้าแรกเมื่อเปิดระบบ',       value: 'แดชบอร์ด', note: '' },
+  { key: 'due_soon_days',   label: 'เตือนก่อนถึงกำหนดชำระ (วัน)', value: '5', note: '' },
+  { key: 'notify_email',    label: 'อีเมลรับสรุปแจ้งเตือน',      value: '', note: 'เว้นว่าง = ส่งเข้าอีเมลเจ้าของชีต' },
+  { key: 'notify_weekday',  label: 'ส่งสรุปทุกวัน',             value: 'จันทร์', note: '' },
+  { key: 'currency',        label: 'สกุลเงิน',                 value: 'บาท', note: '' },
+  { key: 'default_due_day', label: 'วันครบกำหนดชำระประจำเดือน',  value: '20', note: 'ใช้เป็นค่าตั้งต้นตอนเพิ่มก้อนหนี้ใหม่' },
+  { key: 'late_fee',        label: 'ค่าปรับชำระล่าช้า (บาท)',    value: '0', note: 'ใส่ 0 ถ้าไม่มี' },
+  { key: 'backup_hour',     label: 'สำรองข้อมูลอัตโนมัติตอนกี่โมง', value: '2', note: '0–23 · ค่าเริ่มต้นคือตีสอง' }
 ];

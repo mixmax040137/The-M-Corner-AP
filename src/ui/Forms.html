@@ -3,7 +3,7 @@
    Forms.html — ฟอร์มเพิ่ม/แก้ไข และการลบ
    ========================================================= */
 
-var FORM = { specs: [], keep: {}, bucket: 'misc' };
+var FORM = { specs: [], keep: {}, bucket: 'misc', ocr: null };
 
 /* ---------------- form engine ---------------- */
 
@@ -34,7 +34,8 @@ function fieldsHtml(specs, rec){
         '<label class="file-drop" for="' + id + '">📎 แตะเพื่อเลือกไฟล์ (เลือกได้หลายไฟล์ · ไม่เกิน 12 MB ต่อไฟล์)' +
         '<input type="file" id="' + id + '" multiple accept="image/*,application/pdf" style="display:none" ' +
         'onchange="previewPicked(this,\'' + id + '\')"></label>' +
-        '<div id="' + id + '_preview" class="thumbs mt8"></div>';
+        '<div id="' + id + '_preview" class="thumbs mt8"></div>' +
+        '<div id="' + id + '_ocr"></div>';
 
     } else if (f.type === 'computed') {
       inner = '<div class="inp" id="' + id + '" style="background:var(--surface-2);font-weight:600;' +
@@ -100,6 +101,19 @@ function previewPicked(input, id){
   box.innerHTML = files.map(function(f){
     return '<span class="b info">' + esc(f.name.slice(0,26)) + ' · ' + Math.round(f.size/1024) + ' KB</span>';
   }).join(' ');
+
+  var slot = document.getElementById(id + '_ocr');
+  if (!slot) return;
+  slot.innerHTML = '';
+  if (!ocrUsable() || !firstReadable(files)) return;
+
+  var mode = (S.boot.settings && S.boot.settings.ocrAutofill) || 'ถามก่อนเติม';
+  if (mode === 'ไม่เติม') return;
+  if (mode === 'เติมให้เลย') return runOcr(id, true);
+
+  slot.innerHTML =
+    '<button type="button" class="btn sm mt8" onclick="runOcr(\'' + id + '\')">' +
+    '🔎 อ่านข้อความจากรูปนี้ แล้วช่วยกรอกให้</button>';
 }
 
 /** อ่านค่าจากฟอร์ม + อัปโหลดไฟล์ใหม่ แล้วคืน object พร้อมบันทึก */
@@ -130,6 +144,7 @@ function readForm(specs, bucket){
 /** โครงฟอร์มมาตรฐาน: เปิด modal, จัดการปุ่มบันทึก, รีโหลดหน้า */
 function openForm(opts){
   var rec = opts.record || {};
+  FORM.ocr = opts.ocr || null;
   openModal(opts.title,
     fieldsHtml(opts.fields, rec),
     '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
@@ -167,6 +182,148 @@ function openForm(opts){
       toast(e.message || e, 'err');
     });
   };
+}
+
+/* ============================================================
+   อ่านข้อความจากรูป (OCR) แล้วช่วยกรอกฟอร์ม
+
+   ทุกค่าที่ได้เป็นแค่ข้อเสนอ ผู้ใช้กดเติมเองทีละช่องหรือเติมทั้งหมดก็ได้
+   และแก้ไขต่อได้เสมอ เพราะตัวอ่านพลาดได้ โดยเฉพาะลายมือกับรูปเอียง
+   ============================================================ */
+
+var OCR_MAX = 8 * 1024 * 1024;   // รูปใหญ่กว่านี้ส่งไปอ่านแล้วมักหมดเวลา
+
+function ocrUsable(){
+  return !!(FORM.ocr && S.boot && S.boot.settings && S.boot.settings.ocrEnabled);
+}
+
+/** รูปแรกที่พออ่านได้ (ข้ามไฟล์ใหญ่เกินและไฟล์ที่ไม่ใช่รูป/PDF) */
+function firstReadable(files){
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    if (f.size <= OCR_MAX && /^image\/|pdf$/.test(f.type || '')) return f;
+  }
+  return null;
+}
+
+/**
+ * @param {string} id  id ของช่องแนบไฟล์ เช่น f_slips
+ * @param {boolean} auto true = เติมช่องที่ยังว่างให้เลยโดยไม่ต้องกด
+ */
+function runOcr(id, auto){
+  var input = document.getElementById(id);
+  var slot = document.getElementById(id + '_ocr');
+  if (!input || !slot) return;
+
+  var file = firstReadable(Array.prototype.slice.call(input.files || []));
+  if (!file) { slot.innerHTML = '<div class="hint mt8">ไม่มีรูปที่อ่านได้ (รองรับรูปภาพและ PDF ไม่เกิน 8 MB)</div>'; return; }
+
+  slot.innerHTML = '<div class="ocr-box"><div class="hd"><span class="spin"></span> กำลังอ่านข้อความจาก ' +
+                   esc(file.name.slice(0, 28)) + '…</div></div>';
+
+  readAsDataUrl(file).then(function(p){
+    return callApi('ocr.read', { dataUrl: p.dataUrl, mimeType: p.mimeType });
+  }).then(function(r){
+    slot.innerHTML = ocrBoxHtml(id, r);
+    OCR_LAST[id] = r;
+    if (auto) {
+      var n = ocrApplyAll(id, true);
+      toast(n ? 'อ่านรูปแล้ว เติมให้ ' + n + ' ช่อง — ตรวจดูก่อนบันทึกนะ' : 'อ่านรูปแล้ว แต่ยังจับค่าที่ใช้ได้ไม่ได้', n ? 'ok' : '');
+    }
+  }).catch(function(e){
+    slot.innerHTML = '<div class="ocr-box"><div class="hd">⚠️ อ่านรูปไม่สำเร็จ</div>' +
+      '<div class="hint">' + esc(e.message || e) + '</div>' +
+      '<button type="button" class="btn sm mt8" onclick="runOcr(\'' + id + '\')">ลองอีกครั้ง</button></div>';
+  });
+}
+
+var OCR_LAST = {};
+
+/** ค่าที่อ่านได้ คู่กับช่องในฟอร์มที่จะเอาไปใส่ */
+function ocrPairs(r){
+  var m = FORM.ocr || {};
+  var g = r.guess || {};
+  var out = [];
+  if (m.date   && g.date)   out.push({ field: m.date,   label: 'วันที่',     value: g.date,   show: thDate(g.date) });
+  if (m.amount && g.amount) out.push({ field: m.amount, label: 'จำนวนเงิน',  value: g.amount, show: baht(g.amount) });
+  if (m.vendor && g.vendor) out.push({ field: m.vendor, label: 'ร้าน/ผู้ขาย', value: g.vendor, show: g.vendor });
+  if (m.title  && g.title)  out.push({ field: m.title,  label: 'ชื่อรายการ',  value: g.title,  show: g.title });
+  if (m.note   && g.ref)    out.push({ field: m.note,   label: 'เลขอ้างอิง',  value: 'อ้างอิง ' + g.ref, show: g.ref });
+  // ใบเสร็จหลายรายการ — รวมเป็นข้อความหลายบรรทัดให้เลือกใส่ทีเดียว
+  if (m.title && g.items && g.items.length > 1) {
+    var lines = g.items.map(function(it, i){ return (i+1) + '.' + it.name + ' ' + money(it.price, 2) + ' ฿'; }).join('\n');
+    out.push({ field: m.title, label: 'ทุกรายการ (' + g.items.length + ')', value: lines, show: g.items.length + ' รายการในใบเสร็จ', multi: true });
+  }
+  return out;
+}
+
+function ocrBoxHtml(id, r){
+  var pairs = ocrPairs(r);
+  if (!pairs.length) {
+    return '<div class="ocr-box"><div class="hd">🔎 อ่านข้อความได้ แต่ยังจับค่าที่ใช้ได้ไม่ได้' +
+      '<span class="sp"><button type="button" class="btn sm" onclick="ocrToggleRaw(\'' + id + '\')">ดูข้อความที่อ่านได้</button></span></div>' +
+      '<div class="ocr-raw" id="' + id + '_raw" hidden>' + esc(r.text || '(ว่าง)') + '</div></div>';
+  }
+  return '<div class="ocr-box">' +
+    '<div class="hd">🔎 อ่านจากรูปได้แบบนี้ — กดเติมช่องที่ต้องการ' +
+      '<span class="sp">' +
+        '<button type="button" class="btn sm pri" onclick="ocrApplyAll(\'' + id + '\')">เติมทั้งหมด</button>' +
+        '<button type="button" class="btn sm" onclick="ocrToggleRaw(\'' + id + '\')">ข้อความเต็ม</button>' +
+      '</span></div>' +
+    '<div class="ocr-hits">' + pairs.map(function(p, i){
+      return '<div class="ocr-hit">' +
+        '<span class="k">' + esc(p.label) + '</span>' +
+        '<span class="v" title="' + esc(String(p.value)) + '">' + esc(p.show) + '</span>' +
+        '<button type="button" class="btn sm" onclick="ocrApplyOne(\'' + id + '\',' + i + ')">เติม</button>' +
+      '</div>';
+    }).join('') + '</div>' +
+    '<div class="ocr-raw" id="' + id + '_raw" hidden>' + esc(r.text || '(ว่าง)') + '</div>' +
+    '<div class="hint mt8">ตรวจความถูกต้องก่อนบันทึกเสมอ — แก้ในช่องได้ตามปกติ</div>' +
+  '</div>';
+}
+
+function ocrToggleRaw(id){
+  var el = document.getElementById(id + '_raw');
+  if (el) el.hidden = !el.hidden;
+}
+
+/** ใส่ค่าลงช่อง แล้วไฮไลต์ให้เห็นว่าช่องไหนถูกเติม */
+function ocrFill(fieldKey, value){
+  var el = document.getElementById('f_' + fieldKey);
+  if (!el) return false;
+  el.value = value;
+  el.classList.add('ocr-filled');
+  setTimeout(function(){ el.classList.remove('ocr-filled'); }, 1600);
+  recalcSums();
+  return true;
+}
+
+function ocrApplyOne(id, idx){
+  var r = OCR_LAST[id];
+  if (!r) return;
+  var p = ocrPairs(r)[idx];
+  if (p && ocrFill(p.field, p.value)) toast('เติม' + p.label + 'แล้ว', 'ok');
+}
+
+/**
+ * @param {boolean} onlyEmpty true = เติมเฉพาะช่องที่ยังว่าง (ใช้ตอนเติมอัตโนมัติ
+ *                            จะได้ไม่ทับสิ่งที่ผู้ใช้พิมพ์ไปแล้ว)
+ * @return {number} จำนวนช่องที่เติมจริง
+ */
+function ocrApplyAll(id, onlyEmpty){
+  var r = OCR_LAST[id];
+  if (!r) return 0;
+  var done = {};
+  var n = 0;
+  ocrPairs(r).forEach(function(p){
+    if (done[p.field]) return;                       // ช่องเดียวกันเติมครั้งเดียว เอาตัวแรก
+    var el = document.getElementById('f_' + p.field);
+    if (!el) return;
+    if (onlyEmpty && String(el.value || '').trim() !== '') return;
+    if (ocrFill(p.field, p.value)) { done[p.field] = true; n++; }
+  });
+  if (!onlyEmpty) toast(n ? 'เติมให้ ' + n + ' ช่องแล้ว — ตรวจดูก่อนบันทึก' : 'ช่องที่จะเติมไม่อยู่ในฟอร์มนี้', n ? 'ok' : 'err');
+  return n;
 }
 
 function roomOptions(){ return S.boot ? S.boot.rooms : []; }
@@ -219,6 +376,7 @@ function formDebtPayment(rec, ledger){
     title: rec && rec.id ? 'แก้ไขรายการชำระ' : 'บันทึกการโอนใช้หนี้',
     record: rec || { payDate: today(), channel: 'โอน QR' },
     action: 'debt.savePayment', base: { ledger: ledger }, bucket: 'debt',
+    ocr: { date:'payDate', amount:'principal', note:'note' },
     onDelete: delDebtPayment,
     fields: [
       { key:'payDate', label:'วันที่ชำระ', type:'date', required:true },
@@ -255,6 +413,7 @@ function formPurchase(rec){
     title: rec && rec.id ? 'แก้ไขรายการซื้อ' : 'เพิ่มรายการซื้อของ',
     record: rec || { buyDate: today() },
     action: 'purchase.save', bucket: 'purchases', wide: true,
+    ocr: { date:'buyDate', amount:'price', vendor:'vendor', title:'item' },
     onDelete: delPurchase,
     fields: [
       { key:'item',    label:'รายการสินค้า', type:'textarea', required:true, full:true, ph:'ชื่อสินค้า / รุ่น / รายละเอียด' },
@@ -290,6 +449,7 @@ function formAc(rec){
     title: rec && rec.id ? 'แก้ไขรายการล้างแอร์' : 'บันทึกการล้างแอร์',
     record: rec || { bookDate: today() },
     action: 'ac.save', bucket: 'ac',
+    ocr: { date:'serviceDate', amount:'cost', vendor:'technician' },
     onDelete: delAc,
     fields: [
       { key:'room',        label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
@@ -372,6 +532,7 @@ function formRepair(rec){
     title: rec && rec.id ? 'แก้ไขงานซ่อม' : 'แจ้งซ่อม / บันทึกงานซ่อม',
     record: rec || { reportDate: today(), priority: 'ปกติ' },
     action: 'repair.save', bucket: 'roomRepair', wide: true,
+    ocr: { date:'repairDate', amount:'cost', vendor:'technician', title:'items' },
     onDelete: delRepair,
     fields: [
       { key:'room',       label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
@@ -407,6 +568,7 @@ function formBuilding(rec){
     title: rec && rec.id ? 'แก้ไขงานซ่อมตึก' : 'เพิ่มงานซ่อมแซมตึกโดยรวม',
     record: rec || { bookDate: today() },
     action: 'building.save', bucket: 'building', wide: true,
+    ocr: { date:'endDate', amount:'cost', vendor:'contractor', title:'title' },
     onDelete: delBuilding,
     fields: [
       { key:'zone',      label:'ส่วนของอาคาร', type:'select', options:opt('buildingZones'), required:true },

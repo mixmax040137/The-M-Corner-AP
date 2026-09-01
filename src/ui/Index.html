@@ -33,6 +33,7 @@
       </div>
       <div class="top-right">
         <span id="liveDot"></span>
+        <button class="btn icon" id="themeBtn" title="สลับธีม" onclick="cycleTheme()">🌗</button>
         <input class="inp w-auto" id="searchBox" placeholder="🔎 ค้นหาทั้งระบบ…" style="width:180px"
                oninput="onSearch(this.value)" autocomplete="off">
         <select class="sel w-auto" id="yearSel" onchange="setYear(this.value)"></select>
@@ -45,22 +46,27 @@
   </div>
 </div>
 
+<div id="authRoot"></div>
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
 <script>
-  /* ค่าทั้งสองถูกกรองให้เหลือแค่ A-Z a-z 0-9 _ - มาแล้วจากฝั่งเซิร์ฟเวอร์ (safeKey_)
-     จึงหลุดออกจากเครื่องหมายคำพูดไม่ได้
+  /* ค่าทั้งสามถูกกรองมาจากฝั่งเซิร์ฟเวอร์แล้ว จึงหลุดออกจากเครื่องหมายคำพูดไม่ได้
+       accessKey  ผ่าน safeKey_    เหลือแค่ A-Z a-z 0-9 _ -
+       role       มาจากรายการคงที่ ROLE
+       theme      ผ่าน safeTheme_  เหลือแค่ 3 ค่าที่กำหนดไว้
 
-     ต้องพิมพ์แบบดิบ (force-printing) เท่านั้น ห้ามใช้แบบ standard-printing
+     ทั้งสามต้องพิมพ์แบบดิบ (force-printing) เท่านั้น ห้ามใช้แบบ standard-printing
      เพราะแบบหลังจะ escape เครื่องหมายคำพูดเป็น &quot; ซึ่งในแท็ก script
-     เบราว์เซอร์ไม่ถอดกลับ ทำให้ทั้งบล็อกนี้พังทั้งก้อนและกุญแจไม่ถึงหน้าเว็บ */
+     เบราว์เซอร์ไม่ถอดกลับ ทำให้ทั้งบล็อกนี้พังทั้งก้อนและค่าไม่ถึงหน้าเว็บ */
   var ACCESS_KEY = "<?!= accessKey ?>";
   var USER_ROLE  = "<?!= role ?>";
-  var CAN_EDIT   = USER_ROLE === 'admin';
+  var INIT_THEME = "<?!= theme ?>";
 </script>
 <?!= include('ui/App'); ?>
+<?!= include('ui/Auth'); ?>
 <?!= include('ui/Views'); ?>
+<?!= include('ui/Settings'); ?>
 <?!= include('ui/Forms'); ?>
 <script>boot();</script>
 </body>

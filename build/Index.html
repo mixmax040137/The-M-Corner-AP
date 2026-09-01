@@ -328,6 +328,107 @@ table.t tbody tr:hover{background:var(--surface-2)}
   .ov{padding:0}
   .modal{border-radius:0;min-height:100vh;max-width:none}
 }
+/* ============ หน้าล็อกอิน / PIN ============ */
+body.locked{overflow:hidden}
+body.locked .app{filter:blur(3px);pointer-events:none;user-select:none}
+.auth-wrap{
+  position:fixed;inset:0;z-index:60;display:grid;place-items:center;
+  padding:24px;background:var(--bg);overflow-y:auto;
+}
+.auth-card{
+  width:100%;max-width:360px;background:var(--surface);border:1px solid var(--line);
+  border-radius:16px;box-shadow:var(--sh-lg);padding:26px 24px 22px;
+}
+.auth-brand{font-size:15px;color:var(--muted);margin-bottom:18px;text-align:center}
+.auth-brand b{color:var(--ink);font-family:var(--font-display)}
+.auth-h{margin:0 0 4px;font-size:20px;font-weight:600;font-family:var(--font-display);text-align:center}
+.auth-sub{margin:0 0 18px;font-size:13px;color:var(--muted);text-align:center;line-height:1.6}
+.auth-f{margin-bottom:13px}
+.auth-f label{display:block;font-size:12.5px;color:var(--ink-2);margin-bottom:5px;font-weight:500}
+.auth-f .inp{width:100%;padding:10px 12px;font-size:15px}
+.auth-go{width:100%;justify-content:center;padding:11px;font-size:14.5px;margin-top:6px}
+.auth-alt{width:100%;justify-content:center;margin-top:9px;font-size:13px}
+.auth-err{
+  background:var(--danger-soft);color:var(--danger);border-radius:var(--r-sm);
+  padding:9px 12px;font-size:12.5px;margin-bottom:14px;line-height:1.55;
+}
+.auth-foot{font-size:11.5px;color:var(--faint);text-align:center;margin:16px 0 0;line-height:1.6}
+
+/* จุด 6 จุดแทน PIN ที่กดไปแล้ว */
+.pin-dots{display:flex;gap:13px;justify-content:center;margin:6px 0 22px}
+.pin-dots i{
+  width:13px;height:13px;border-radius:99px;background:var(--line);
+  border:1px solid var(--line);transition:transform .12s,background .12s;
+}
+.pin-dots i.on{background:var(--brand);border-color:var(--brand);transform:scale(1.16)}
+.pin-dots.busy{opacity:.5}
+.pin-dots.shake{animation:shake .42s}
+@keyframes shake{
+  0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)}
+  40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)}
+}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+.pin-k{
+  aspect-ratio:1/1;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+  border-radius:14px;font-size:21px;font-weight:500;cursor:pointer;
+  font-family:var(--font-display);font-variant-numeric:tabular-nums;
+  transition:background .1s,transform .06s;
+}
+.pin-k:hover{background:var(--brand-soft);border-color:var(--brand)}
+.pin-k:active{transform:scale(.94)}
+.pin-k.ghost{background:transparent;border-color:transparent;font-size:17px;color:var(--muted)}
+.pin-k.ghost:hover{background:var(--surface-2);border-color:var(--line)}
+
+/* ============ ตัวเลือกธีม ============ */
+.theme-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.theme-opt{
+  display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;
+  padding:15px 10px;border:1.5px solid var(--line);border-radius:var(--r);
+  background:var(--surface-2);cursor:pointer;color:var(--ink);font:inherit;
+  transition:border-color .12s,background .12s;
+}
+.theme-opt:hover{border-color:var(--brand)}
+.theme-opt.on{border-color:var(--brand);background:var(--brand-soft)}
+.theme-opt .ic{font-size:24px;line-height:1.2}
+.theme-opt b{font-size:13.5px}
+.theme-opt .hint{font-size:11px;color:var(--muted);line-height:1.45}
+.warn-text{color:var(--warn)}
+
+/* ============ ผลการอ่านข้อความจากรูป ============ */
+/* ไฮไลต์สั้น ๆ ให้เห็นว่าช่องไหนเพิ่งถูกเติมจากรูป */
+.ocr-filled{
+  border-color:var(--brand)!important;
+  box-shadow:0 0 0 3px var(--brand-soft)!important;
+  animation:ocrPop .4s;
+}
+@keyframes ocrPop{ 0%{background:var(--brand-soft)} 100%{background:var(--surface)} }
+
+.ocr-box{
+  border:1px dashed var(--brand);background:var(--brand-soft);
+  border-radius:var(--r-sm);padding:12px;margin-top:10px;
+}
+.ocr-box .hd{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--brand);margin-bottom:9px}
+.ocr-box .hd .sp{margin-left:auto;display:flex;gap:6px}
+.ocr-hits{display:flex;flex-direction:column;gap:6px}
+.ocr-hit{
+  display:flex;align-items:center;gap:9px;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 10px;font-size:13px;
+}
+.ocr-hit .k{color:var(--muted);font-size:11.5px;min-width:78px}
+.ocr-hit .v{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ocr-raw{
+  max-height:150px;overflow:auto;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:9px 11px;font-size:12px;line-height:1.65;
+  white-space:pre-wrap;color:var(--ink-2);margin-top:9px;
+}
+
+@media (max-width:520px){
+  .auth-card{max-width:100%;padding:22px 18px 18px}
+  .theme-pick{grid-template-columns:1fr}
+  .theme-opt{flex-direction:row;text-align:left;gap:11px}
+  .theme-opt .hint{display:none}
+}
+
 @media print{
   .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
   .app{display:block} body{background:#fff}
@@ -358,6 +459,7 @@ table.t tbody tr:hover{background:var(--surface-2)}
       </div>
       <div class="top-right">
         <span id="liveDot"></span>
+        <button class="btn icon" id="themeBtn" title="สลับธีม" onclick="cycleTheme()">🌗</button>
         <input class="inp w-auto" id="searchBox" placeholder="🔎 ค้นหาทั้งระบบ…" style="width:180px"
                oninput="onSearch(this.value)" autocomplete="off">
         <select class="sel w-auto" id="yearSel" onchange="setYear(this.value)"></select>
@@ -370,19 +472,22 @@ table.t tbody tr:hover{background:var(--surface-2)}
   </div>
 </div>
 
+<div id="authRoot"></div>
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
 <script>
-  /* ค่าทั้งสองถูกกรองให้เหลือแค่ A-Z a-z 0-9 _ - มาแล้วจากฝั่งเซิร์ฟเวอร์ (safeKey_)
-     จึงหลุดออกจากเครื่องหมายคำพูดไม่ได้
+  /* ค่าทั้งสามถูกกรองมาจากฝั่งเซิร์ฟเวอร์แล้ว จึงหลุดออกจากเครื่องหมายคำพูดไม่ได้
+       accessKey  ผ่าน safeKey_    เหลือแค่ A-Z a-z 0-9 _ -
+       role       มาจากรายการคงที่ ROLE
+       theme      ผ่าน safeTheme_  เหลือแค่ 3 ค่าที่กำหนดไว้
 
-     ต้องพิมพ์แบบดิบ (force-printing) เท่านั้น ห้ามใช้แบบ standard-printing
+     ทั้งสามต้องพิมพ์แบบดิบ (force-printing) เท่านั้น ห้ามใช้แบบ standard-printing
      เพราะแบบหลังจะ escape เครื่องหมายคำพูดเป็น &quot; ซึ่งในแท็ก script
-     เบราว์เซอร์ไม่ถอดกลับ ทำให้ทั้งบล็อกนี้พังทั้งก้อนและกุญแจไม่ถึงหน้าเว็บ */
+     เบราว์เซอร์ไม่ถอดกลับ ทำให้ทั้งบล็อกนี้พังทั้งก้อนและค่าไม่ถึงหน้าเว็บ */
   var ACCESS_KEY = "<?!= accessKey ?>";
   var USER_ROLE  = "<?!= role ?>";
-  var CAN_EDIT   = USER_ROLE === 'admin';
+  var INIT_THEME = "<?!= theme ?>";
 </script>
 <script>
 /* =========================================================
@@ -410,7 +515,8 @@ var PAGES = [
   { id:'repairs',   ic:'🔧', label:'ซ่อมแซมตามห้อง',      sub:'งานแจ้งซ่อมแยกตามห้อง' },
   { id:'building',  ic:'🏢', label:'ซ่อมแซมตึกโดยรวม',    sub:'งานส่วนกลางของอาคาร' },
   { id:'rooms',     ic:'🚪', label:'ห้องพัก',             sub:'ทะเบียนห้องและประวัติรายห้อง',       sec:'ข้อมูล' },
-  { id:'reports',   ic:'📈', label:'รายงาน & สำรองข้อมูล', sub:'ค่าใช้จ่ายรายห้อง · ปฏิทินงาน · ส่งออกข้อมูล' }
+  { id:'reports',   ic:'📈', label:'รายงาน & สำรองข้อมูล', sub:'ค่าใช้จ่ายรายห้อง · ปฏิทินงาน · ส่งออกข้อมูล' },
+  { id:'settings',  ic:'⚙️', label:'ตั้งค่า',              sub:'บัญชี · ธีม · ผู้ใช้ · ลิงก์เข้าใช้งาน',   sec:'ระบบ' }
 ];
 
 /* ---------------- API ---------------- */
@@ -434,33 +540,40 @@ function callApi(action, payload){
   var body = {};
   Object.keys(payload || {}).forEach(function(k){ body[k] = payload[k]; });
   body._key = accessKey();
+  // ผู้เรียกส่ง _session มาเองได้ (ตอนออกจากระบบต้องใช้ตัวเก่า)
+  if (body._session === undefined) body._session = (typeof AUTH !== 'undefined' ? AUTH.session : '') || '';
   payload = body;
   return new Promise(function(resolve, reject){
     google.script.run
       .withSuccessHandler(function(res){
         if (!res) return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์'));
-        if (res.ok) resolve(res.data); else reject(new Error(res.error));
+        if (res.ok) return resolve(res.data);
+        // หมดอายุระหว่างใช้งาน — พากลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความค้างไว้เฉย ๆ
+        if (res.needLogin && typeof onSessionLost === 'function') onSessionLost();
+        reject(new Error(res.error));
       })
       .withFailureHandler(function(err){ reject(err); })
       .api(action, payload || {});
   });
 }
 
+/** เรียกเมื่อเซิร์ฟเวอร์บอกว่ายังไม่ได้ล็อกอิน (หมดอายุ / ถูกให้ออกจากระบบ) */
+var sessionLostAt = 0;
+function onSessionLost(){
+  if (Date.now() - sessionLostAt < 3000) return;   // หลายคำสั่งพร้อมกันก็เด้งครั้งเดียวพอ
+  sessionLostAt = Date.now();
+  saveSession('');
+  closeModal();
+  if (AUTH.device) showPin(); else showLogin('หมดเวลาใช้งาน กรุณาเข้าสู่ระบบอีกครั้ง');
+}
+
 /* ---------------- boot & routing ---------------- */
 
 function boot(){
-  // ถ้าตัวแปรกุญแจไม่มาถึงหน้าเว็บ (เช่น template เรนเดอร์ผิด) ลองอ่านจาก URL ของหน้าแม่ก่อน
-  if (!accessKey() && window.google && google.script && google.script.url) {
-    try {
-      google.script.url.getLocation(function(loc){
-        var k = loc && loc.parameter && loc.parameter.key;
-        RESOLVED_KEY = k ? String(k) : '';
-        bootNow();
-      });
-      return;
-    } catch (e) { /* ใช้ทางปกติ */ }
-  }
-  bootNow();
+  // ทาธีมก่อนอย่างอื่น จะได้ไม่เห็นหน้าจอกระพริบขาวตอนเปิด
+  applyTheme(lsGet(LS_THEME) || (typeof INIT_THEME === 'string' ? INIT_THEME : 'ตามเครื่อง'));
+  // authGate จะอ่านกุญแจจาก URL ของหน้าแม่ให้ด้วย ถ้าตัวแปรไม่มาถึงหน้าเว็บ
+  authGate();
 }
 
 function bootNow(){
@@ -470,24 +583,40 @@ function bootNow(){
     document.getElementById('navFoot').innerHTML = navFootHtml(b);
     S.version = b.version || 0;
     if (!b.canEdit) document.body.classList.add('readonly');
-    var hash = (location.hash || '').replace('#','');
-    go(PAGES.some(function(p){return p.id===hash;}) ? hash : 'dashboard');
+    // ธีมของเครื่องนี้ชนะเสมอ ถ้ายังไม่เคยตั้งค่อยใช้ของระบบ
+    applyTheme(currentTheme());
+    go(startPage(b));
     startPolling(b.settings && b.settings.refreshSeconds);
   }).catch(function(e){
     document.getElementById('view').innerHTML =
       '<div class="card"><div class="card-b"><h3>เชื่อมต่อระบบไม่สำเร็จ</h3>' +
       '<p class="muted">' + esc(e.message||e) + '</p>' +
-      '<p class="fs13">ตรวจสอบว่า: เปิดชีตแล้วรัน <b>เมนู 🏢 The M Corner AP → ติดตั้งระบบ</b> เรียบร้อยแล้ว ' +
-      'และอีเมลที่ใช้อยู่มีสิทธิ์เข้าใช้งาน</p></div></div>';
+      '<p class="fs13">ตรวจสอบว่า: เปิดชีตแล้วรัน <b>เมนู 🏢 The M Corner AP → 🚀 ติดตั้งทั้งหมดในคลิกเดียว</b> ' +
+      'เรียบร้อยแล้ว</p></div></div>';
   });
+}
+
+/** หน้าแรกที่จะเปิด — ตามที่ตั้งไว้ แต่ถ้ามี #hash ในลิงก์ให้ hash ชนะ */
+function startPage(b){
+  var hash = (location.hash || '').replace('#','');
+  if (PAGES.some(function(p){ return p.id === hash; })) return hash;
+  var map = {
+    'แดชบอร์ด':'dashboard', 'รายการสรุปรวม':'debtMain', 'หนี้สิน':'debtSub',
+    'รายการซื้อของ':'purchases', 'ซ่อมแซมตามห้อง':'repairs'
+  };
+  return map[b.settings && b.settings.startPage] || 'dashboard';
 }
 
 /** ข้อความมุมล่างซ้าย — เวอร์ชันเว็บแอปจะเขียนทับฟังก์ชันนี้ */
 function navFootHtml(b){
-  var role = (b.user && b.user.label) ? b.user.label : '';
-  return '<b style="color:#c7d0e0">' + esc(role) + '</b>' +
-    (b.user && b.user.email && b.user.email !== 'ผู้ใช้ผ่านลิงก์' ? '<br>' + esc(b.user.email) : '') +
-    (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '');
+  var u = b.user || {};
+  return '<b style="color:#c7d0e0">' + esc(u.name || u.label || '') + '</b>' +
+    (u.username ? ' <span style="opacity:.7">@' + esc(u.username) + '</span>' : '') +
+    '<br><span style="opacity:.8">' + esc(u.role && u.role !== 'none' ? u.role : u.via || '') + '</span>' +
+    (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '') +
+    (u.signedIn && u.username
+      ? '<br><a href="javascript:void(0)" onclick="confirmLogout()">ออกจากระบบ</a>'
+      : '');
 }
 
 function renderNav(){
@@ -561,7 +690,7 @@ function syncYearOptions(years){
 /* ---------------- โหมดดูอย่างเดียว ----------------
    ฝั่งเซิร์ฟเวอร์กันไว้แล้วในฟังก์ชัน api() ตรงนี้แค่ซ่อนปุ่มที่กดไปก็ทำไม่ได้
    เพื่อไม่ให้ผู้ที่เปิดด้วยลิงก์แชร์สับสน */
-var EDIT_ENTRYPOINTS = /\b(formDebt|formDebtPayment|formPurchase|formAc|formBulkAc|formRepair|formBuilding|formRoom|formFinance|delDebt|delDebtPayment|delPurchase|delAc|delRepair|delBuilding|delFinance|doImportJson|doRotateShare|doBackupNow)\s*\(/;
+var EDIT_ENTRYPOINTS = /\b(formDebt|formDebtPayment|formPurchase|formAc|formBulkAc|formRepair|formBuilding|formRoom|formFinance|formUser|delDebt|delDebtPayment|delPurchase|delAc|delRepair|delBuilding|delFinance|delUser|doImportJson|doRotateShare|doBackupNow|saveSettingsForm)\s*\(/;
 
 function applyReadOnly(root){
   if (canEdit()) return;
@@ -787,6 +916,401 @@ function readAsDataUrl(file){
     r.onerror = function(){ reject(new Error('อ่านไฟล์ไม่สำเร็จ: ' + file.name)); };
     r.readAsDataURL(file);
   });
+}
+</script>
+<script>
+/* =========================================================
+   Auth.html — หน้าล็อกอิน · PIN 6 หลัก · เปลี่ยนรหัสผ่าน
+
+   ที่เก็บของฝั่งเบราว์เซอร์ 2 ชั้น เพราะเว็บแอปของ Apps Script
+   ทำงานใน iframe ที่ชื่อโดเมนเปลี่ยนทุกครั้งที่เปิด
+   localStorage จึงหายได้ ต้องมีทางสำรอง
+     · รหัสอ้างอิงการเข้าใช้งาน (อายุสั้น) — เก็บใน localStorage อย่างเดียว
+       หายก็แค่ใส่ PIN ใหม่
+     · รหัสอุปกรณ์ (คู่กับ PIN) — เก็บทั้ง localStorage และใน URL ของหน้าแม่
+       ผ่าน google.script.history เพื่อให้ยังอยู่หลังปิดเปิดเครื่อง
+   ========================================================= */
+
+var AUTH = {
+  session: '',
+  device: '',
+  me: null,
+  pin: '',
+  screen: ''
+};
+
+var LS_SESSION = 'mcorner.session';
+var LS_DEVICE  = 'mcorner.device';
+
+/* ---------------- ที่เก็บฝั่งเบราว์เซอร์ ---------------- */
+
+function lsGet(k){
+  try { return window.localStorage.getItem(k) || ''; } catch (e) { return ''; }
+}
+function lsSet(k, v){
+  try { v ? window.localStorage.setItem(k, v) : window.localStorage.removeItem(k); }
+  catch (e) { /* โหมดส่วนตัวหรือปิดคุกกี้ไว้ — ใช้ทางสำรอง */ }
+}
+
+/** เขียนรหัสอุปกรณ์ลง URL ของหน้าแม่ ให้รอดข้ามการเปิดใหม่ */
+function deviceToUrl(token){
+  try {
+    if (!window.google || !google.script || !google.script.history) return;
+    var params = {};
+    if (accessKey()) params.key = accessKey();
+    if (token) params.d = token;
+    google.script.history.replaceState({}, params, location.hash);
+  } catch (e) { /* ไม่ใช่เว็บแอป (เช่นเปิดใน dialog) — ข้ามไป */ }
+}
+
+function saveDevice(token){
+  AUTH.device = token || '';
+  lsSet(LS_DEVICE, AUTH.device);
+  deviceToUrl(AUTH.device);
+}
+
+function saveSession(token){
+  AUTH.session = token || '';
+  lsSet(LS_SESSION, AUTH.session);
+}
+
+/** อ่านค่าที่เก็บไว้ทั้งหมด (ต้องรอ URL ของหน้าแม่ จึงเป็นแบบ callback) */
+function loadStored(done){
+  AUTH.session = lsGet(LS_SESSION);
+  AUTH.device  = lsGet(LS_DEVICE);
+
+  if (window.google && google.script && google.script.url) {
+    try {
+      google.script.url.getLocation(function(loc){
+        var p = (loc && loc.parameter) || {};
+        if (p.d && !AUTH.device) { AUTH.device = String(p.d); lsSet(LS_DEVICE, AUTH.device); }
+        if (p.key && !accessKey()) RESOLVED_KEY = String(p.key);
+        done();
+      });
+      return;
+    } catch (e) { /* ใช้ทางปกติ */ }
+  }
+  done();
+}
+
+/* ---------------- ตัวคุมลำดับหน้าจอ ---------------- */
+
+/** เรียกตอนเปิดหน้าเว็บ — ตัดสินว่าจะให้เห็นอะไรก่อน */
+function authGate(){
+  loadStored(function(){
+    callApi('auth.me').then(function(me){
+      AUTH.me = me;
+      if (me.signedIn) return enterApp(me);
+      if (AUTH.device) return showPin();
+      showLogin();
+    }).catch(function(e){
+      showLogin(e.message || e);
+    });
+  });
+}
+
+function enterApp(me){
+  AUTH.me = me;
+  hideAuth();
+  bootNow();
+  // เพิ่งล็อกอินด้วยรหัสผ่านและยังไม่เคยตั้ง PIN บนเครื่องนี้ — ชวนตั้งสักครั้ง
+  if (!AUTH.device && me.username && !lsGet('mcorner.pinAsked')) {
+    setTimeout(offerPin, 900);
+  }
+}
+
+function hideAuth(){
+  var r = document.getElementById('authRoot');
+  if (r) r.innerHTML = '';
+  document.body.classList.remove('locked');
+}
+
+function showAuth(html){
+  document.body.classList.add('locked');
+  document.getElementById('authRoot').innerHTML =
+    '<div class="auth-wrap"><div class="auth-card">' +
+      '<div class="auth-brand">🏢 <b>' + esc((S.boot && S.boot.app && S.boot.app.name) || 'The M Corner AP') + '</b></div>' +
+      html +
+    '</div></div>';
+}
+
+/* ---------------- หน้าล็อกอินด้วยรหัสผ่าน ---------------- */
+
+function showLogin(err){
+  AUTH.screen = 'login';
+  showAuth(
+    '<h2 class="auth-h">เข้าสู่ระบบ</h2>' +
+    '<p class="auth-sub">ใส่ชื่อผู้ใช้และรหัสผ่านที่ได้รับ</p>' +
+    (err ? '<div class="auth-err">' + esc(err) + '</div>' : '<div class="auth-err" id="authErr" hidden></div>') +
+    '<div class="auth-f"><label for="lgUser">ชื่อผู้ใช้</label>' +
+      '<input class="inp" id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false"></div>' +
+    '<div class="auth-f"><label for="lgPass">รหัสผ่าน</label>' +
+      '<input class="inp" id="lgPass" type="password" autocomplete="current-password"></div>' +
+    '<button class="btn pri auth-go" id="lgGo">เข้าสู่ระบบ</button>' +
+    (AUTH.device ? '<button class="btn auth-alt" onclick="showPin()">← กลับไปใช้ PIN</button>' : '') +
+    '<p class="auth-foot">ลืมรหัสผ่าน? ให้ผู้ดูแลตั้งรหัสใหม่ให้จากเมนูในชีต</p>'
+  );
+
+  var go = document.getElementById('lgGo');
+  var user = document.getElementById('lgUser');
+  var pass = document.getElementById('lgPass');
+
+  function submit(){
+    var u = user.value.trim(), p = pass.value;
+    if (!u || !p) return authError('กรุณากรอกทั้งชื่อผู้ใช้และรหัสผ่าน');
+    go.disabled = true;
+    go.innerHTML = '<span class="spin"></span> กำลังตรวจสอบ…';
+    callApi('auth.login', { username: u, password: p }).then(function(r){
+      saveSession(r.session);
+      if (r.mustChange) return showChangePassword(true);
+      return callApi('auth.me').then(enterApp);
+    }).catch(function(e){
+      go.disabled = false;
+      go.textContent = 'เข้าสู่ระบบ';
+      pass.value = '';
+      authError(e.message || e);
+    });
+  }
+
+  go.onclick = submit;
+  [user, pass].forEach(function(el){
+    el.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') submit(); });
+  });
+  user.focus();
+}
+
+function authError(msg){
+  var el = document.getElementById('authErr');
+  if (el) { el.textContent = msg; el.hidden = false; }
+  else showLogin(msg);
+}
+
+/* ---------------- หน้า PIN 6 หลัก ---------------- */
+
+function showPin(){
+  AUTH.screen = 'pin';
+  AUTH.pin = '';
+  showAuth(
+    '<h2 class="auth-h">ใส่ PIN</h2>' +
+    '<p class="auth-sub">ปลดล็อกด้วยรหัส 6 หลักของเครื่องนี้</p>' +
+    '<div class="auth-err" id="authErr" hidden></div>' +
+    '<div class="pin-dots" id="pinDots">' + pinDotsHtml('') + '</div>' +
+    '<div class="pin-pad">' +
+      [1,2,3,4,5,6,7,8,9].map(function(n){
+        return '<button class="pin-k" onclick="pinPush(\'' + n + '\')">' + n + '</button>';
+      }).join('') +
+      '<button class="pin-k ghost" onclick="showLogin()" title="ใช้รหัสผ่านแทน">🔑</button>' +
+      '<button class="pin-k" onclick="pinPush(\'0\')">0</button>' +
+      '<button class="pin-k ghost" onclick="pinBack()" title="ลบ">⌫</button>' +
+    '</div>' +
+    '<button class="btn auth-alt" onclick="forgetThisDevice()">ลืม PIN — เข้าด้วยรหัสผ่าน</button>'
+  );
+
+  // คีย์บอร์ดจริงก็ใช้ได้ ไม่ต้องจิ้มปุ่มบนจอ
+  document.onkeydown = function(ev){
+    if (AUTH.screen !== 'pin') return;
+    if (/^\d$/.test(ev.key)) pinPush(ev.key);
+    else if (ev.key === 'Backspace') pinBack();
+  };
+}
+
+function pinDotsHtml(pin){
+  var html = '';
+  for (var i = 0; i < 6; i++) html += '<i class="' + (i < pin.length ? 'on' : '') + '"></i>';
+  return html;
+}
+
+function pinPush(d){
+  if (AUTH.pin.length >= 6) return;
+  AUTH.pin += d;
+  document.getElementById('pinDots').innerHTML = pinDotsHtml(AUTH.pin);
+  if (AUTH.pin.length === 6) setTimeout(pinSubmit, 120);
+}
+
+function pinBack(){
+  AUTH.pin = AUTH.pin.slice(0, -1);
+  var d = document.getElementById('pinDots');
+  if (d) d.innerHTML = pinDotsHtml(AUTH.pin);
+}
+
+function pinSubmit(){
+  var pin = AUTH.pin;
+  AUTH.pin = '';
+  var dots = document.getElementById('pinDots');
+  if (dots) dots.classList.add('busy');
+
+  callApi('auth.unlock', { device: AUTH.device, pin: pin }).then(function(r){
+    saveSession(r.session);
+    document.onkeydown = null;
+    return callApi('auth.me').then(enterApp);
+  }).catch(function(e){
+    var msg = String(e.message || e);
+    if (dots) { dots.classList.remove('busy'); dots.classList.add('shake'); dots.innerHTML = pinDotsHtml(''); }
+    setTimeout(function(){ if (dots) dots.classList.remove('shake'); }, 500);
+    authError(msg);
+    // PIN ถูกยกเลิกไปแล้ว (ผิดครบโควตา / หมดอายุ) — ต้องกลับไปใช้รหัสผ่าน
+    if (/ล็อกอินด้วยรหัสผ่าน/.test(msg)) {
+      saveDevice('');
+      setTimeout(function(){ showLogin(msg); }, 1400);
+    }
+  });
+}
+
+function forgetThisDevice(){
+  var token = AUTH.device;
+  saveDevice('');
+  lsSet('mcorner.pinAsked', '');
+  document.onkeydown = null;
+  if (token) callApi('auth.forgetDevice', { device: token }).catch(function(){ /* หมดอายุไปแล้วก็ช่างมัน */ });
+  showLogin();
+}
+
+/* ---------------- ตั้ง PIN ---------------- */
+
+/** ชวนตั้ง PIN หลังล็อกอินครั้งแรกบนเครื่องนี้ */
+function offerPin(){
+  lsSet('mcorner.pinAsked', '1');
+  openModal('ตั้ง PIN สำหรับเครื่องนี้',
+    '<p>ตั้งรหัส 6 หลักไว้ จะได้ไม่ต้องพิมพ์รหัสผ่านทุกครั้งที่เปิด</p>' +
+    '<p class="muted fs13">PIN ผูกกับเครื่องนี้เครื่องเดียว เครื่องอื่นใช้ไม่ได้ · ยกเลิกเมื่อไหร่ก็ได้ในหน้าตั้งค่า</p>',
+    '<button class="btn" onclick="closeModal()">ไว้ก่อน</button>' +
+    '<button class="btn pri" onclick="closeModal();formSetPin()">ตั้ง PIN เลย</button>');
+}
+
+function formSetPin(){
+  openModal('ตั้ง PIN 6 หลัก',
+    '<div class="fgrid">' +
+      '<div class="f full"><label for="pin1">PIN ใหม่</label>' +
+        '<input class="inp" id="pin1" type="password" inputmode="numeric" maxlength="6" ' +
+        'autocomplete="new-password" placeholder="••••••"></div>' +
+      '<div class="f full"><label for="pin2">ใส่ PIN อีกครั้ง</label>' +
+        '<input class="inp" id="pin2" type="password" inputmode="numeric" maxlength="6" ' +
+        'autocomplete="new-password" placeholder="••••••"></div>' +
+      '<div class="f full"><label for="pinDev">ชื่อเครื่อง (ไว้ดูย้อนหลัง)</label>' +
+        '<input class="inp" id="pinDev" value="' + esc(guessDeviceName()) + '"></div>' +
+    '</div>' +
+    '<p class="muted fs13 mt8">หลีกเลี่ยงเลขที่เดาง่าย เช่น 111111 หรือ 123456</p>',
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn pri" id="pinGo">บันทึก PIN</button>');
+
+  document.getElementById('pinGo').onclick = function(){
+    var a = document.getElementById('pin1').value;
+    var b = document.getElementById('pin2').value;
+    if (!/^\d{6}$/.test(a)) return toast('PIN ต้องเป็นตัวเลข 6 หลัก', 'err');
+    if (a !== b) return toast('PIN สองช่องไม่ตรงกัน', 'err');
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
+    callApi('auth.setPin', { pin: a, device: document.getElementById('pinDev').value }).then(function(r){
+      saveDevice(r.device);
+      closeModal();
+      toast('ตั้ง PIN เรียบร้อย — ครั้งหน้าใส่แค่ 6 หลัก', 'ok');
+    }).catch(function(e){
+      btn.disabled = false;
+      btn.textContent = 'บันทึก PIN';
+      toast(e.message || e, 'err');
+    });
+  };
+}
+
+function guessDeviceName(){
+  var ua = navigator.userAgent || '';
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/iPad/.test(ua)) return 'iPad';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Macintosh/.test(ua)) return 'Mac';
+  if (/Windows/.test(ua)) return 'Windows';
+  return 'อุปกรณ์ของฉัน';
+}
+
+/* ---------------- เปลี่ยนรหัสผ่าน ---------------- */
+
+/** @param {boolean} forced true = ระบบบังคับเปลี่ยนตอนล็อกอินครั้งแรก */
+function showChangePassword(forced){
+  if (!forced) return formChangePassword();
+  AUTH.screen = 'change';
+  showAuth(
+    '<h2 class="auth-h">ตั้งรหัสผ่านของคุณเอง</h2>' +
+    '<p class="auth-sub">รหัสที่ได้มาเป็นรหัสชั่วคราว เปลี่ยนก่อนใช้งานหนึ่งครั้ง</p>' +
+    '<div class="auth-err" id="authErr" hidden></div>' +
+    '<div class="auth-f"><label for="cpOld">รหัสผ่านเดิม</label>' +
+      '<input class="inp" id="cpOld" type="password" autocomplete="current-password"></div>' +
+    '<div class="auth-f"><label for="cpNew">รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)</label>' +
+      '<input class="inp" id="cpNew" type="password" autocomplete="new-password"></div>' +
+    '<div class="auth-f"><label for="cpNew2">ใส่รหัสผ่านใหม่อีกครั้ง</label>' +
+      '<input class="inp" id="cpNew2" type="password" autocomplete="new-password"></div>' +
+    '<button class="btn pri auth-go" id="cpGo">บันทึกรหัสผ่านใหม่</button>'
+  );
+
+  document.getElementById('cpGo').onclick = function(){
+    var o = document.getElementById('cpOld').value;
+    var n = document.getElementById('cpNew').value;
+    var n2 = document.getElementById('cpNew2').value;
+    if (n.length < 8) return authError('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
+    if (n !== n2) return authError('รหัสผ่านใหม่สองช่องไม่ตรงกัน');
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
+    callApi('auth.changePassword', { oldPassword: o, newPassword: n }).then(function(){
+      return callApi('auth.me').then(enterApp);
+    }).then(function(){
+      toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');
+    }).catch(function(e){
+      btn.disabled = false;
+      btn.textContent = 'บันทึกรหัสผ่านใหม่';
+      authError(e.message || e);
+    });
+  };
+  document.getElementById('cpOld').focus();
+}
+
+function formChangePassword(){
+  openModal('เปลี่ยนรหัสผ่าน',
+    '<div class="fgrid">' +
+      '<div class="f full"><label for="mcOld">รหัสผ่านเดิม</label><input class="inp" id="mcOld" type="password"></div>' +
+      '<div class="f full"><label for="mcNew">รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)</label><input class="inp" id="mcNew" type="password"></div>' +
+      '<div class="f full"><label for="mcNew2">ใส่รหัสผ่านใหม่อีกครั้ง</label><input class="inp" id="mcNew2" type="password"></div>' +
+    '</div>',
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    '<button class="btn pri" id="mcGo">บันทึก</button>');
+
+  document.getElementById('mcGo').onclick = function(){
+    var n = document.getElementById('mcNew').value;
+    if (n.length < 8) return toast('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร', 'err');
+    if (n !== document.getElementById('mcNew2').value) return toast('รหัสผ่านใหม่สองช่องไม่ตรงกัน', 'err');
+    var btn = this;
+    btn.disabled = true;
+    callApi('auth.changePassword', {
+      oldPassword: document.getElementById('mcOld').value, newPassword: n
+    }).then(function(){
+      closeModal();
+      toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');
+    }).catch(function(e){
+      btn.disabled = false;
+      toast(e.message || e, 'err');
+    });
+  };
+}
+
+/* ---------------- ออกจากระบบ ---------------- */
+
+function doLogout(keepPin){
+  var s = AUTH.session;
+  saveSession('');
+  if (!keepPin) { var d = AUTH.device; saveDevice(''); if (d) callApi('auth.forgetDevice', { device: d }).catch(function(){}); }
+  if (s) callApi('auth.logout', { _session: s }).catch(function(){ /* หมดอายุแล้วก็ถือว่าออกแล้ว */ });
+  closeModal();
+  AUTH.me = null;
+  if (AUTH.device) showPin(); else showLogin();
+}
+
+function confirmLogout(){
+  openModal('ออกจากระบบ',
+    '<p>ต้องการออกจากระบบใช่ไหม</p>' +
+    (AUTH.device ? '<p class="muted fs13">PIN บนเครื่องนี้จะยังอยู่ ครั้งหน้าเข้าด้วย PIN ได้เลย</p>' : ''),
+    '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
+    (AUTH.device ? '<button class="btn dgr" onclick="doLogout(false)">ออกและลบ PIN</button>' : '') +
+    '<button class="btn pri" onclick="doLogout(true)">ออกจากระบบ</button>');
 }
 </script>
 <script>
@@ -1642,10 +2166,323 @@ function attr(obj){
 </script>
 <script>
 /* =========================================================
+   Settings.html — หน้าตั้งค่า · ธีม · บัญชีผู้ใช้ · อุปกรณ์
+   ========================================================= */
+
+/* ---------------- ธีมสว่าง / มืด ---------------- */
+
+var LS_THEME = 'mcorner.theme';
+var THEMES = [
+  { id: 'ตามเครื่อง', ic: '🌗', hint: 'สลับตามการตั้งค่าของอุปกรณ์' },
+  { id: 'สว่าง',      ic: '☀️', hint: 'พื้นขาว อ่านง่ายกลางแดด' },
+  { id: 'มืด',        ic: '🌙', hint: 'พื้นเข้ม สบายตาตอนกลางคืน' }
+];
+
+/**
+ * ทาธีมลงหน้าเว็บทันที
+ * ตัวแปรสีทั้งหมดนิยามไว้ 3 ชั้นใน Style.html แล้ว ตรงนี้แค่ติดป้ายบอกว่าใช้ชั้นไหน
+ */
+function applyTheme(name){
+  var root = document.documentElement;
+  if (name === 'สว่าง') root.setAttribute('data-theme', 'light');
+  else if (name === 'มืด') root.setAttribute('data-theme', 'dark');
+  else root.removeAttribute('data-theme');       // ตามเครื่อง = ปล่อยให้ prefers-color-scheme ตัดสิน
+  var btn = document.getElementById('themeBtn');
+  if (btn) {
+    var t = THEMES.filter(function(x){ return x.id === name; })[0] || THEMES[0];
+    btn.textContent = t.ic;
+    btn.title = 'ธีม: ' + t.id + ' (กดเพื่อสลับ)';
+  }
+}
+
+function currentTheme(){
+  return lsGet(LS_THEME) || (S.boot && S.boot.settings && S.boot.settings.theme) || 'ตามเครื่อง';
+}
+
+/** ตั้งธีมและจำไว้ — ผู้ดูแลจะถูกบันทึกเป็นค่าตั้งต้นของระบบด้วย */
+function setTheme(name, quiet){
+  lsSet(LS_THEME, name);
+  applyTheme(name);
+  if (S.boot && S.boot.isAdmin) {
+    callApi('settings.save', { values: { theme: name } }).catch(function(){ /* เก็บในเครื่องก็พอ */ });
+  }
+  if (!quiet) toast('เปลี่ยนเป็นธีม' + (name === 'ตามเครื่อง' ? 'ตามเครื่อง' : name), 'ok');
+  if (S.page === 'settings') load();
+}
+
+/** ปุ่มบนแถบหัว — วนสว่าง → มืด → ตามเครื่อง */
+function cycleTheme(){
+  var order = ['สว่าง', 'มืด', 'ตามเครื่อง'];
+  var i = order.indexOf(currentTheme());
+  setTheme(order[(i + 1) % order.length]);
+}
+
+/* ---------------- หน้าตั้งค่า ---------------- */
+
+ROUTES.settings = {
+  load: function(){
+    return Promise.all([
+      callApi('settings.list', {}),
+      callApi('auth.devices', {}).catch(function(){ return []; }),
+      (S.boot && S.boot.isAdmin) ? callApi('user.list', {}).catch(function(){ return []; }) : Promise.resolve(null),
+      (S.boot && S.boot.isAdmin) ? callApi('share.links', {}).catch(function(){ return {}; }) : Promise.resolve({})
+    ]).then(function(r){
+      return { settings: r[0], devices: r[1] || [], users: r[2], links: r[3] || {}, years: [] };
+    });
+  },
+  render: function(d){
+    return '' +
+      settingsAccountCard(d) +
+      settingsThemeCard() +
+      (d.settings.canEdit ? settingsGroupsHtml(d.settings) : settingsReadOnlyNote()) +
+      (d.users ? settingsUsersCard(d.users) : '') +
+      (d.users ? settingsShareCard(d.links) : '');
+  }
+};
+
+/* ---- บัญชีของฉัน ---- */
+
+function settingsAccountCard(d){
+  var me = AUTH.me || {};
+  var devices = d.devices || [];
+  return card('👤 บัญชีของฉัน',
+    '<div class="grid g2 mb12">' +
+      kpi('เข้าใช้งานในชื่อ', esc(me.name || me.username || '–'), esc(me.username ? '@' + me.username : (me.via || ''))) +
+      kpi('สิทธิ์การใช้งาน', esc(me.role || '–'),
+          me.canEdit ? 'เพิ่ม แก้ไข และลบข้อมูลได้' : 'เปิดดูได้อย่างเดียว') +
+    '</div>' +
+    '<div class="row">' +
+      (me.username ? '<button class="btn" onclick="formChangePassword()">🔑 เปลี่ยนรหัสผ่าน</button>' : '') +
+      (me.username ? '<button class="btn" onclick="formSetPin()">🔢 ' +
+        (AUTH.device ? 'ตั้ง PIN ใหม่บนเครื่องนี้' : 'ตั้ง PIN สำหรับเครื่องนี้') + '</button>' : '') +
+      (AUTH.device ? '<button class="btn dgr" onclick="forgetThisDevice()">ลบ PIN เครื่องนี้</button>' : '') +
+      '<button class="btn" onclick="confirmLogout()">🚪 ออกจากระบบ</button>' +
+    '</div>' +
+    (devices.length
+      ? '<div class="hr"></div><div class="fs12 muted mb8">อุปกรณ์ที่ตั้ง PIN ไว้ (' + devices.length + ')</div>' +
+        '<div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
+        '<th>อุปกรณ์</th><th>ตั้งเมื่อ</th><th>ใช้ล่าสุด</th></tr></thead><tbody>' +
+        devices.map(function(x){
+          return '<tr><td>' + esc(x.device) + '</td>' +
+            '<td class="fs12">' + thDateShort(String(x.createdAt).slice(0,10)) + '</td>' +
+            '<td class="fs12">' + thDateShort(String(x.lastSeen).slice(0,10)) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<div class="row mt12"><button class="btn dgr sm" onclick="doForgetAllDevices()">ยกเลิก PIN ทุกเครื่อง</button></div>'
+      : ''));
+}
+
+function doForgetAllDevices(){
+  confirmAction('ยกเลิก PIN บนทุกเครื่องใช่ไหม — ทุกเครื่องจะต้องล็อกอินด้วยรหัสผ่านใหม่', function(){
+    callApi('auth.forgetAllDevices', {}).then(function(n){
+      saveDevice('');
+      toast('ยกเลิก PIN แล้ว ' + n + ' เครื่อง', 'ok');
+      load();
+    }).catch(function(e){ toast(e.message || e, 'err'); });
+  });
+}
+
+/* ---- ธีม ---- */
+
+function settingsThemeCard(){
+  var cur = currentTheme();
+  return card('🎨 ธีมสีหน้าจอ',
+    '<div class="theme-pick">' + THEMES.map(function(t){
+      return '<button class="theme-opt' + (t.id === cur ? ' on' : '') + '" onclick="setTheme(\'' + t.id + '\')">' +
+        '<span class="ic">' + t.ic + '</span>' +
+        '<b>' + esc(t.id) + '</b>' +
+        '<span class="hint">' + esc(t.hint) + '</span>' +
+      '</button>';
+    }).join('') + '</div>' +
+    '<p class="fs12 muted mt12">ธีมจำแยกรายเครื่อง เปลี่ยนที่นี่หรือกดปุ่มรูปพระอาทิตย์/พระจันทร์มุมขวาบนก็ได้' +
+    (S.boot && S.boot.isAdmin ? ' · ค่าที่ผู้ดูแลเลือกจะเป็นค่าตั้งต้นให้เครื่องที่ยังไม่เคยตั้ง' : '') + '</p>');
+}
+
+/* ---- กลุ่มค่าตั้งค่า ---- */
+
+function settingsReadOnlyNote(){
+  return card('⚙️ การตั้งค่าระบบ',
+    '<div class="empty"><div class="big">🔒</div>เฉพาะผู้ดูแลเท่านั้นที่แก้การตั้งค่าระบบได้</div>');
+}
+
+function settingsGroupsHtml(s){
+  return s.groups.map(function(g){
+    return card(g.icon + ' ' + g.group,
+      '<div class="fgrid">' + g.items.map(settingFieldHtml).join('') + '</div>');
+  }).join('') +
+  card('💾 บันทึกการตั้งค่า',
+    '<p class="fs13 muted">' + esc(s.secretNote) + '</p>' +
+    '<div class="row mt12">' +
+      '<button class="btn pri" onclick="saveSettingsForm()">บันทึกทั้งหมด</button>' +
+      '<button class="btn" onclick="load()">ยกเลิกการแก้ไข</button>' +
+    '</div>');
+}
+
+function settingFieldHtml(it){
+  var id = 's_' + it.key;
+  var inner;
+  if (it.readOnly) {
+    inner = '<div class="inp" style="background:var(--surface-2);cursor:default">' + esc(it.value) + '</div>';
+  } else if (it.type === 'select') {
+    inner = '<select class="sel" id="' + id + '">' + (it.options || []).map(function(o){
+      return '<option value="' + esc(o) + '"' + (o === it.value ? ' selected' : '') + '>' + esc(o) + '</option>';
+    }).join('') + '</select>';
+  } else if (it.type === 'multiline') {
+    inner = '<textarea class="ta" id="' + id + '">' + esc(it.value) + '</textarea>';
+  } else if (it.type === 'number') {
+    inner = '<input type="number" class="inp" id="' + id + '" value="' + esc(it.value) + '" inputmode="decimal">';
+  } else {
+    inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(it.value) + '">';
+  }
+  return '<div class="f' + (it.type === 'multiline' ? ' full' : '') + '">' +
+    '<label for="' + id + '">' + esc(it.label) + '</label>' + inner +
+    (it.note ? '<div class="hint">' + esc(it.note) + '</div>' : '') + '</div>';
+}
+
+function saveSettingsForm(){
+  var vals = {};
+  var data = S.cache.settings;
+  if (!data) return;
+  data.settings.groups.forEach(function(g){
+    g.items.forEach(function(it){
+      if (it.readOnly) return;
+      var el = document.getElementById('s_' + it.key);
+      if (el) vals[it.key] = el.value;
+    });
+  });
+  callApi('settings.save', { values: vals }).then(function(r){
+    if (vals.theme) { lsSet(LS_THEME, vals.theme); applyTheme(vals.theme); }
+    toast(r.saved ? 'บันทึกแล้ว ' + r.saved + ' รายการ' : 'ไม่มีอะไรเปลี่ยนแปลง', 'ok');
+    // ค่าบางตัว (รอบรีเฟรช ชื่ออาคาร) มีผลกับทั้งหน้า จึงโหลดใหม่ทั้งชุด
+    return callApi('app.bootstrap').then(function(b){ S.boot = b; load(); });
+  }).catch(function(e){ toast(e.message || e, 'err'); });
+}
+
+/* ---- จัดการผู้ใช้ (ผู้ดูแลเท่านั้น) ---- */
+
+function settingsUsersCard(users){
+  return card('👥 ผู้ใช้ในระบบ (' + users.length + ')',
+    '<p class="fs13 muted">แจกชื่อผู้ใช้และรหัสผ่านให้คนอื่นเข้ามาดูหรือช่วยแก้ข้อมูลได้ ' +
+    'ตั้งสิทธิ์แยกรายคน และระงับได้ทุกเมื่อ</p>' +
+    '<div class="tw mt12"><table class="t"><thead><tr>' +
+      '<th>ชื่อผู้ใช้</th><th>ชื่อที่แสดง</th><th>สิทธิ์</th><th>สถานะ</th><th>เข้าล่าสุด</th>' +
+      '<th class="num">อุปกรณ์</th><th></th></tr></thead><tbody>' +
+    users.map(function(u){
+      var meNow = (AUTH.me && AUTH.me.username) === u.username;
+      return '<tr>' +
+        '<td><b>' + esc(u.username) + '</b>' + (meNow ? ' <span class="b info">คุณ</span>' : '') + '</td>' +
+        '<td>' + esc(u.name || '–') + '</td>' +
+        '<td>' + roleBadge(u.role) + '</td>' +
+        '<td>' + statusBadge(u.status) + (u.locked ? ' <span class="b dgr">ถูกล็อกชั่วคราว</span>' : '') + '</td>' +
+        '<td class="fs12">' + (u.lastLogin ? thDateShort(String(u.lastLogin).slice(0,10)) : '–') + '</td>' +
+        '<td class="num">' + (u.devices || 0) + '</td>' +
+        '<td class="t-actions">' +
+          '<button class="btn sm" onclick="formUser(' + attr(u) + ')">แก้ไข</button>' +
+          (meNow ? '' : '<button class="btn sm dgr" onclick="delUser(\'' + esc(u.username) + '\')">ลบ</button>') +
+        '</td></tr>';
+    }).join('') + '</tbody></table></div>',
+    '<button class="btn pri sm" onclick="formUser()">+ เพิ่มผู้ใช้</button>');
+}
+
+function roleBadge(role){
+  var cls = role === 'ผู้ดูแล' ? 'ok' : (role === 'แก้ไขได้' ? 'info' : 'mute');
+  return '<span class="b ' + cls + '">' + esc(role) + '</span>';
+}
+
+/** ฝัง object ลงใน onclick อย่างปลอดภัย */
+function attr(obj){
+  // ต้องแปลง & ก่อนตัวอื่น ไม่งั้น &quot; ที่เพิ่งสร้างจะโดนแปลงซ้ำ
+  return JSON.stringify(JSON.stringify(obj))
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function formUser(json){
+  var u = json ? (typeof json === 'string' ? JSON.parse(json) : json) : {};
+  var isNew = !u.username;
+
+  openForm({
+    title: isNew ? 'เพิ่มผู้ใช้ใหม่' : 'แก้ไขผู้ใช้ ' + u.username,
+    action: 'user.save',
+    record: Object.assign({ id: isNew ? '' : u.username, role: 'ดูอย่างเดียว', status: 'ใช้งาน' }, u),
+    fields: [
+      { key:'username', label:'ชื่อผู้ใช้ (ภาษาอังกฤษ)', required:isNew, ph:'เช่น somchai',
+        hint: isNew ? 'a-z 0-9 . _ - ยาว 3–24 ตัว · เปลี่ยนภายหลังไม่ได้' : 'เปลี่ยนชื่อผู้ใช้ไม่ได้' },
+      { key:'name', label:'ชื่อที่แสดง', required:true, ph:'เช่น สมชาย' },
+      { key:'role', label:'สิทธิ์การใช้งาน', type:'select', blank:false, required:true,
+        options:['ดูอย่างเดียว','แก้ไขได้','ผู้ดูแล'],
+        hint:'ดูอย่างเดียว = เปิดดูได้ทุกหน้า · แก้ไขได้ = เพิ่ม/แก้/ลบข้อมูล · ผู้ดูแล = จัดการผู้ใช้และการตั้งค่าได้ด้วย' },
+      { key:'password', label: isNew ? 'รหัสผ่านเริ่มต้น' : 'ตั้งรหัสผ่านใหม่ (เว้นว่าง = ไม่เปลี่ยน)',
+        required:isNew, ph:'อย่างน้อย 8 ตัวอักษร',
+        hint:'จดไว้ส่งให้เจ้าตัว — ระบบเก็บแบบเข้ารหัส เปิดดูย้อนหลังไม่ได้' },
+      { key:'mustChange', label:'ให้เปลี่ยนรหัสผ่านตอนเข้าครั้งแรก', type:'select', blank:false,
+        options:[{value:'true',label:'ใช่ (แนะนำ)'},{value:'false',label:'ไม่ต้อง'}] },
+      { key:'status', label:'สถานะ', type:'select', blank:false, options:['ใช้งาน','ระงับ'],
+        hint:'ระงับ = เข้าระบบไม่ได้ทันที แต่ยังเก็บบัญชีไว้' },
+      { key:'note', label:'หมายเหตุ', type:'textarea', full:true }
+    ],
+    wide: true
+  });
+
+  // ชื่อผู้ใช้เปลี่ยนไม่ได้ ล็อกช่องไว้เลยจะได้ไม่เข้าใจผิด
+  if (!isNew) {
+    var el = document.getElementById('f_username');
+    if (el) { el.readOnly = true; el.style.background = 'var(--surface-2)'; }
+  }
+}
+
+function delUser(username){
+  confirmAction('ลบผู้ใช้ "' + username + '" ใช่ไหม — เข้าระบบไม่ได้อีกทันที', function(){
+    callApi('user.delete', { username: username }).then(function(){
+      toast('ลบผู้ใช้แล้ว', 'ok');
+      load();
+    }).catch(function(e){ toast(e.message || e, 'err'); });
+  });
+}
+
+/* ---- ลิงก์เข้าใช้งาน ---- */
+
+function settingsShareCard(links){
+  if (!links || !links.appUrl) {
+    return card('🔗 ลิงก์เข้าใช้งาน',
+      '<div class="empty">ยังหาลิงก์จริงไม่เจอ — เปิดเว็บแอปจากลิงก์ที่ลงท้าย /exec สักครั้ง แล้วระบบจะจำให้เอง</div>');
+  }
+  return card('🔗 ลิงก์เข้าใช้งาน',
+    '<div class="f mb12"><label>ลิงก์หลัก — ส่งให้ทุกคนได้ (เข้าด้วยชื่อผู้ใช้และรหัสผ่าน)</label>' +
+      '<input class="inp" id="appUrl" readonly value="' + esc(links.appUrl) + '" onclick="this.select()"></div>' +
+    '<div class="row mb12">' +
+      '<button class="btn pri" onclick="copyField(\'appUrl\')">📋 คัดลอกลิงก์หลัก</button>' +
+    '</div>' +
+    '<div class="hr"></div>' +
+    '<div class="f mb12"><label>👀 ลิงก์ดูอย่างเดียวแบบไม่ต้องล็อกอิน</label>' +
+      '<input class="inp" id="shareUrl" readonly value="' + esc(links.viewUrl) + '" onclick="this.select()"></div>' +
+    '<p class="fs12 ' + (links.shareEnabled ? 'muted' : 'warn-text') + '">' +
+      (links.shareEnabled
+        ? 'เปิดอยู่ — ใครก็ตามที่มีลิงก์นี้เปิดดูข้อมูลได้โดยไม่ต้องล็อกอิน'
+        : '⚠️ ปิดอยู่ — ลิงก์นี้ยังใช้ไม่ได้ เปิดสวิตช์ได้ที่หัวข้อ "ความปลอดภัยและการเข้าใช้งาน" ด้านบน') +
+    '</p>' +
+    '<div class="row mt12">' +
+      '<button class="btn" onclick="copyField(\'shareUrl\')">📋 คัดลอกลิงก์แชร์</button>' +
+      '<button class="btn dgr" onclick="doRotateShare()">🔁 ออกลิงก์แชร์ใหม่</button>' +
+    '</div>' +
+    '<div class="hr"></div>' +
+    '<p class="fs12 muted">🆘 ลิงก์กู้ระบบ (ใช้ตอนลืมรหัสผ่านจนเข้าไม่ได้ — ห้ามส่งต่อ)<br>' +
+    '<code class="fs12">' + esc(links.adminUrl) + '</code></p>');
+}
+
+function copyField(id){
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.select();
+  try { document.execCommand('copy'); toast('คัดลอกแล้ว', 'ok'); }
+  catch (e) { toast('กดค้างที่ช่องแล้วเลือก คัดลอก', 'err'); }
+}
+</script>
+<script>
+/* =========================================================
    Forms.html — ฟอร์มเพิ่ม/แก้ไข และการลบ
    ========================================================= */
 
-var FORM = { specs: [], keep: {}, bucket: 'misc' };
+var FORM = { specs: [], keep: {}, bucket: 'misc', ocr: null };
 
 /* ---------------- form engine ---------------- */
 
@@ -1676,7 +2513,8 @@ function fieldsHtml(specs, rec){
         '<label class="file-drop" for="' + id + '">📎 แตะเพื่อเลือกไฟล์ (เลือกได้หลายไฟล์ · ไม่เกิน 12 MB ต่อไฟล์)' +
         '<input type="file" id="' + id + '" multiple accept="image/*,application/pdf" style="display:none" ' +
         'onchange="previewPicked(this,\'' + id + '\')"></label>' +
-        '<div id="' + id + '_preview" class="thumbs mt8"></div>';
+        '<div id="' + id + '_preview" class="thumbs mt8"></div>' +
+        '<div id="' + id + '_ocr"></div>';
 
     } else if (f.type === 'computed') {
       inner = '<div class="inp" id="' + id + '" style="background:var(--surface-2);font-weight:600;' +
@@ -1742,6 +2580,19 @@ function previewPicked(input, id){
   box.innerHTML = files.map(function(f){
     return '<span class="b info">' + esc(f.name.slice(0,26)) + ' · ' + Math.round(f.size/1024) + ' KB</span>';
   }).join(' ');
+
+  var slot = document.getElementById(id + '_ocr');
+  if (!slot) return;
+  slot.innerHTML = '';
+  if (!ocrUsable() || !firstReadable(files)) return;
+
+  var mode = (S.boot.settings && S.boot.settings.ocrAutofill) || 'ถามก่อนเติม';
+  if (mode === 'ไม่เติม') return;
+  if (mode === 'เติมให้เลย') return runOcr(id, true);
+
+  slot.innerHTML =
+    '<button type="button" class="btn sm mt8" onclick="runOcr(\'' + id + '\')">' +
+    '🔎 อ่านข้อความจากรูปนี้ แล้วช่วยกรอกให้</button>';
 }
 
 /** อ่านค่าจากฟอร์ม + อัปโหลดไฟล์ใหม่ แล้วคืน object พร้อมบันทึก */
@@ -1772,6 +2623,7 @@ function readForm(specs, bucket){
 /** โครงฟอร์มมาตรฐาน: เปิด modal, จัดการปุ่มบันทึก, รีโหลดหน้า */
 function openForm(opts){
   var rec = opts.record || {};
+  FORM.ocr = opts.ocr || null;
   openModal(opts.title,
     fieldsHtml(opts.fields, rec),
     '<button class="btn" onclick="closeModal()">ยกเลิก</button>' +
@@ -1809,6 +2661,148 @@ function openForm(opts){
       toast(e.message || e, 'err');
     });
   };
+}
+
+/* ============================================================
+   อ่านข้อความจากรูป (OCR) แล้วช่วยกรอกฟอร์ม
+
+   ทุกค่าที่ได้เป็นแค่ข้อเสนอ ผู้ใช้กดเติมเองทีละช่องหรือเติมทั้งหมดก็ได้
+   และแก้ไขต่อได้เสมอ เพราะตัวอ่านพลาดได้ โดยเฉพาะลายมือกับรูปเอียง
+   ============================================================ */
+
+var OCR_MAX = 8 * 1024 * 1024;   // รูปใหญ่กว่านี้ส่งไปอ่านแล้วมักหมดเวลา
+
+function ocrUsable(){
+  return !!(FORM.ocr && S.boot && S.boot.settings && S.boot.settings.ocrEnabled);
+}
+
+/** รูปแรกที่พออ่านได้ (ข้ามไฟล์ใหญ่เกินและไฟล์ที่ไม่ใช่รูป/PDF) */
+function firstReadable(files){
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    if (f.size <= OCR_MAX && /^image\/|pdf$/.test(f.type || '')) return f;
+  }
+  return null;
+}
+
+/**
+ * @param {string} id  id ของช่องแนบไฟล์ เช่น f_slips
+ * @param {boolean} auto true = เติมช่องที่ยังว่างให้เลยโดยไม่ต้องกด
+ */
+function runOcr(id, auto){
+  var input = document.getElementById(id);
+  var slot = document.getElementById(id + '_ocr');
+  if (!input || !slot) return;
+
+  var file = firstReadable(Array.prototype.slice.call(input.files || []));
+  if (!file) { slot.innerHTML = '<div class="hint mt8">ไม่มีรูปที่อ่านได้ (รองรับรูปภาพและ PDF ไม่เกิน 8 MB)</div>'; return; }
+
+  slot.innerHTML = '<div class="ocr-box"><div class="hd"><span class="spin"></span> กำลังอ่านข้อความจาก ' +
+                   esc(file.name.slice(0, 28)) + '…</div></div>';
+
+  readAsDataUrl(file).then(function(p){
+    return callApi('ocr.read', { dataUrl: p.dataUrl, mimeType: p.mimeType });
+  }).then(function(r){
+    slot.innerHTML = ocrBoxHtml(id, r);
+    OCR_LAST[id] = r;
+    if (auto) {
+      var n = ocrApplyAll(id, true);
+      toast(n ? 'อ่านรูปแล้ว เติมให้ ' + n + ' ช่อง — ตรวจดูก่อนบันทึกนะ' : 'อ่านรูปแล้ว แต่ยังจับค่าที่ใช้ได้ไม่ได้', n ? 'ok' : '');
+    }
+  }).catch(function(e){
+    slot.innerHTML = '<div class="ocr-box"><div class="hd">⚠️ อ่านรูปไม่สำเร็จ</div>' +
+      '<div class="hint">' + esc(e.message || e) + '</div>' +
+      '<button type="button" class="btn sm mt8" onclick="runOcr(\'' + id + '\')">ลองอีกครั้ง</button></div>';
+  });
+}
+
+var OCR_LAST = {};
+
+/** ค่าที่อ่านได้ คู่กับช่องในฟอร์มที่จะเอาไปใส่ */
+function ocrPairs(r){
+  var m = FORM.ocr || {};
+  var g = r.guess || {};
+  var out = [];
+  if (m.date   && g.date)   out.push({ field: m.date,   label: 'วันที่',     value: g.date,   show: thDate(g.date) });
+  if (m.amount && g.amount) out.push({ field: m.amount, label: 'จำนวนเงิน',  value: g.amount, show: baht(g.amount) });
+  if (m.vendor && g.vendor) out.push({ field: m.vendor, label: 'ร้าน/ผู้ขาย', value: g.vendor, show: g.vendor });
+  if (m.title  && g.title)  out.push({ field: m.title,  label: 'ชื่อรายการ',  value: g.title,  show: g.title });
+  if (m.note   && g.ref)    out.push({ field: m.note,   label: 'เลขอ้างอิง',  value: 'อ้างอิง ' + g.ref, show: g.ref });
+  // ใบเสร็จหลายรายการ — รวมเป็นข้อความหลายบรรทัดให้เลือกใส่ทีเดียว
+  if (m.title && g.items && g.items.length > 1) {
+    var lines = g.items.map(function(it, i){ return (i+1) + '.' + it.name + ' ' + money(it.price, 2) + ' ฿'; }).join('\n');
+    out.push({ field: m.title, label: 'ทุกรายการ (' + g.items.length + ')', value: lines, show: g.items.length + ' รายการในใบเสร็จ', multi: true });
+  }
+  return out;
+}
+
+function ocrBoxHtml(id, r){
+  var pairs = ocrPairs(r);
+  if (!pairs.length) {
+    return '<div class="ocr-box"><div class="hd">🔎 อ่านข้อความได้ แต่ยังจับค่าที่ใช้ได้ไม่ได้' +
+      '<span class="sp"><button type="button" class="btn sm" onclick="ocrToggleRaw(\'' + id + '\')">ดูข้อความที่อ่านได้</button></span></div>' +
+      '<div class="ocr-raw" id="' + id + '_raw" hidden>' + esc(r.text || '(ว่าง)') + '</div></div>';
+  }
+  return '<div class="ocr-box">' +
+    '<div class="hd">🔎 อ่านจากรูปได้แบบนี้ — กดเติมช่องที่ต้องการ' +
+      '<span class="sp">' +
+        '<button type="button" class="btn sm pri" onclick="ocrApplyAll(\'' + id + '\')">เติมทั้งหมด</button>' +
+        '<button type="button" class="btn sm" onclick="ocrToggleRaw(\'' + id + '\')">ข้อความเต็ม</button>' +
+      '</span></div>' +
+    '<div class="ocr-hits">' + pairs.map(function(p, i){
+      return '<div class="ocr-hit">' +
+        '<span class="k">' + esc(p.label) + '</span>' +
+        '<span class="v" title="' + esc(String(p.value)) + '">' + esc(p.show) + '</span>' +
+        '<button type="button" class="btn sm" onclick="ocrApplyOne(\'' + id + '\',' + i + ')">เติม</button>' +
+      '</div>';
+    }).join('') + '</div>' +
+    '<div class="ocr-raw" id="' + id + '_raw" hidden>' + esc(r.text || '(ว่าง)') + '</div>' +
+    '<div class="hint mt8">ตรวจความถูกต้องก่อนบันทึกเสมอ — แก้ในช่องได้ตามปกติ</div>' +
+  '</div>';
+}
+
+function ocrToggleRaw(id){
+  var el = document.getElementById(id + '_raw');
+  if (el) el.hidden = !el.hidden;
+}
+
+/** ใส่ค่าลงช่อง แล้วไฮไลต์ให้เห็นว่าช่องไหนถูกเติม */
+function ocrFill(fieldKey, value){
+  var el = document.getElementById('f_' + fieldKey);
+  if (!el) return false;
+  el.value = value;
+  el.classList.add('ocr-filled');
+  setTimeout(function(){ el.classList.remove('ocr-filled'); }, 1600);
+  recalcSums();
+  return true;
+}
+
+function ocrApplyOne(id, idx){
+  var r = OCR_LAST[id];
+  if (!r) return;
+  var p = ocrPairs(r)[idx];
+  if (p && ocrFill(p.field, p.value)) toast('เติม' + p.label + 'แล้ว', 'ok');
+}
+
+/**
+ * @param {boolean} onlyEmpty true = เติมเฉพาะช่องที่ยังว่าง (ใช้ตอนเติมอัตโนมัติ
+ *                            จะได้ไม่ทับสิ่งที่ผู้ใช้พิมพ์ไปแล้ว)
+ * @return {number} จำนวนช่องที่เติมจริง
+ */
+function ocrApplyAll(id, onlyEmpty){
+  var r = OCR_LAST[id];
+  if (!r) return 0;
+  var done = {};
+  var n = 0;
+  ocrPairs(r).forEach(function(p){
+    if (done[p.field]) return;                       // ช่องเดียวกันเติมครั้งเดียว เอาตัวแรก
+    var el = document.getElementById('f_' + p.field);
+    if (!el) return;
+    if (onlyEmpty && String(el.value || '').trim() !== '') return;
+    if (ocrFill(p.field, p.value)) { done[p.field] = true; n++; }
+  });
+  if (!onlyEmpty) toast(n ? 'เติมให้ ' + n + ' ช่องแล้ว — ตรวจดูก่อนบันทึก' : 'ช่องที่จะเติมไม่อยู่ในฟอร์มนี้', n ? 'ok' : 'err');
+  return n;
 }
 
 function roomOptions(){ return S.boot ? S.boot.rooms : []; }
@@ -1861,6 +2855,7 @@ function formDebtPayment(rec, ledger){
     title: rec && rec.id ? 'แก้ไขรายการชำระ' : 'บันทึกการโอนใช้หนี้',
     record: rec || { payDate: today(), channel: 'โอน QR' },
     action: 'debt.savePayment', base: { ledger: ledger }, bucket: 'debt',
+    ocr: { date:'payDate', amount:'principal', note:'note' },
     onDelete: delDebtPayment,
     fields: [
       { key:'payDate', label:'วันที่ชำระ', type:'date', required:true },
@@ -1897,6 +2892,7 @@ function formPurchase(rec){
     title: rec && rec.id ? 'แก้ไขรายการซื้อ' : 'เพิ่มรายการซื้อของ',
     record: rec || { buyDate: today() },
     action: 'purchase.save', bucket: 'purchases', wide: true,
+    ocr: { date:'buyDate', amount:'price', vendor:'vendor', title:'item' },
     onDelete: delPurchase,
     fields: [
       { key:'item',    label:'รายการสินค้า', type:'textarea', required:true, full:true, ph:'ชื่อสินค้า / รุ่น / รายละเอียด' },
@@ -1932,6 +2928,7 @@ function formAc(rec){
     title: rec && rec.id ? 'แก้ไขรายการล้างแอร์' : 'บันทึกการล้างแอร์',
     record: rec || { bookDate: today() },
     action: 'ac.save', bucket: 'ac',
+    ocr: { date:'serviceDate', amount:'cost', vendor:'technician' },
     onDelete: delAc,
     fields: [
       { key:'room',        label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
@@ -2014,6 +3011,7 @@ function formRepair(rec){
     title: rec && rec.id ? 'แก้ไขงานซ่อม' : 'แจ้งซ่อม / บันทึกงานซ่อม',
     record: rec || { reportDate: today(), priority: 'ปกติ' },
     action: 'repair.save', bucket: 'roomRepair', wide: true,
+    ocr: { date:'repairDate', amount:'cost', vendor:'technician', title:'items' },
     onDelete: delRepair,
     fields: [
       { key:'room',       label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
@@ -2049,6 +3047,7 @@ function formBuilding(rec){
     title: rec && rec.id ? 'แก้ไขงานซ่อมตึก' : 'เพิ่มงานซ่อมแซมตึกโดยรวม',
     record: rec || { bookDate: today() },
     action: 'building.save', bucket: 'building', wide: true,
+    ocr: { date:'endDate', amount:'cost', vendor:'contractor', title:'title' },
     onDelete: delBuilding,
     fields: [
       { key:'zone',      label:'ส่วนของอาคาร', type:'select', options:opt('buildingZones'), required:true },

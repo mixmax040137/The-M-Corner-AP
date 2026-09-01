@@ -10,7 +10,8 @@ const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 
-const GS_ORDER = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Migrate.gs',
+const GS_ORDER = ['Config.gs','Util.gs','Setup.gs','Users.gs','Auth.gs','Settings.gs','Drive.gs','Ocr.gs',
+                  'Seed.gs','Finance.gs','Migrate.gs',
                   'Backup.gs','Debt.gs','Purchase.gs','Maintenance.gs','Building.gs',
                   'Dashboard.gs','Api.gs','Notify.gs','Web.gs'];
 
@@ -36,7 +37,8 @@ GS_ORDER.forEach(f => {
 
 /* ---------- Index.html ---------- */
 let html = read(path.join(SRC, 'ui', 'Index.html'));
-[['Style','ui/Style.html'], ['App','ui/App.html'], ['Views','ui/Views.html'], ['Forms','ui/Forms.html']]
+[['Style','ui/Style.html'], ['App','ui/App.html'], ['Auth','ui/Auth.html'],
+ ['Views','ui/Views.html'], ['Settings','ui/Settings.html'], ['Forms','ui/Forms.html']]
   .forEach(([name, rel]) => {
     const tag = new RegExp(`<\\?!=\\s*include\\('ui/${name}'\\);?\\s*\\?>`);
     if (!tag.test(html)) throw new Error('ไม่พบจุดแทรก ui/' + name + ' ใน Index.html');

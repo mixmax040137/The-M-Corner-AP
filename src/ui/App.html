@@ -24,7 +24,8 @@ var PAGES = [
   { id:'repairs',   ic:'🔧', label:'ซ่อมแซมตามห้อง',      sub:'งานแจ้งซ่อมแยกตามห้อง' },
   { id:'building',  ic:'🏢', label:'ซ่อมแซมตึกโดยรวม',    sub:'งานส่วนกลางของอาคาร' },
   { id:'rooms',     ic:'🚪', label:'ห้องพัก',             sub:'ทะเบียนห้องและประวัติรายห้อง',       sec:'ข้อมูล' },
-  { id:'reports',   ic:'📈', label:'รายงาน & สำรองข้อมูล', sub:'ค่าใช้จ่ายรายห้อง · ปฏิทินงาน · ส่งออกข้อมูล' }
+  { id:'reports',   ic:'📈', label:'รายงาน & สำรองข้อมูล', sub:'ค่าใช้จ่ายรายห้อง · ปฏิทินงาน · ส่งออกข้อมูล' },
+  { id:'settings',  ic:'⚙️', label:'ตั้งค่า',              sub:'บัญชี · ธีม · ผู้ใช้ · ลิงก์เข้าใช้งาน',   sec:'ระบบ' }
 ];
 
 /* ---------------- API ---------------- */
@@ -48,33 +49,40 @@ function callApi(action, payload){
   var body = {};
   Object.keys(payload || {}).forEach(function(k){ body[k] = payload[k]; });
   body._key = accessKey();
+  // ผู้เรียกส่ง _session มาเองได้ (ตอนออกจากระบบต้องใช้ตัวเก่า)
+  if (body._session === undefined) body._session = (typeof AUTH !== 'undefined' ? AUTH.session : '') || '';
   payload = body;
   return new Promise(function(resolve, reject){
     google.script.run
       .withSuccessHandler(function(res){
         if (!res) return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์'));
-        if (res.ok) resolve(res.data); else reject(new Error(res.error));
+        if (res.ok) return resolve(res.data);
+        // หมดอายุระหว่างใช้งาน — พากลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความค้างไว้เฉย ๆ
+        if (res.needLogin && typeof onSessionLost === 'function') onSessionLost();
+        reject(new Error(res.error));
       })
       .withFailureHandler(function(err){ reject(err); })
       .api(action, payload || {});
   });
 }
 
+/** เรียกเมื่อเซิร์ฟเวอร์บอกว่ายังไม่ได้ล็อกอิน (หมดอายุ / ถูกให้ออกจากระบบ) */
+var sessionLostAt = 0;
+function onSessionLost(){
+  if (Date.now() - sessionLostAt < 3000) return;   // หลายคำสั่งพร้อมกันก็เด้งครั้งเดียวพอ
+  sessionLostAt = Date.now();
+  saveSession('');
+  closeModal();
+  if (AUTH.device) showPin(); else showLogin('หมดเวลาใช้งาน กรุณาเข้าสู่ระบบอีกครั้ง');
+}
+
 /* ---------------- boot & routing ---------------- */
 
 function boot(){
-  // ถ้าตัวแปรกุญแจไม่มาถึงหน้าเว็บ (เช่น template เรนเดอร์ผิด) ลองอ่านจาก URL ของหน้าแม่ก่อน
-  if (!accessKey() && window.google && google.script && google.script.url) {
-    try {
-      google.script.url.getLocation(function(loc){
-        var k = loc && loc.parameter && loc.parameter.key;
-        RESOLVED_KEY = k ? String(k) : '';
-        bootNow();
-      });
-      return;
-    } catch (e) { /* ใช้ทางปกติ */ }
-  }
-  bootNow();
+  // ทาธีมก่อนอย่างอื่น จะได้ไม่เห็นหน้าจอกระพริบขาวตอนเปิด
+  applyTheme(lsGet(LS_THEME) || (typeof INIT_THEME === 'string' ? INIT_THEME : 'ตามเครื่อง'));
+  // authGate จะอ่านกุญแจจาก URL ของหน้าแม่ให้ด้วย ถ้าตัวแปรไม่มาถึงหน้าเว็บ
+  authGate();
 }
 
 function bootNow(){
@@ -84,24 +92,40 @@ function bootNow(){
     document.getElementById('navFoot').innerHTML = navFootHtml(b);
     S.version = b.version || 0;
     if (!b.canEdit) document.body.classList.add('readonly');
-    var hash = (location.hash || '').replace('#','');
-    go(PAGES.some(function(p){return p.id===hash;}) ? hash : 'dashboard');
+    // ธีมของเครื่องนี้ชนะเสมอ ถ้ายังไม่เคยตั้งค่อยใช้ของระบบ
+    applyTheme(currentTheme());
+    go(startPage(b));
     startPolling(b.settings && b.settings.refreshSeconds);
   }).catch(function(e){
     document.getElementById('view').innerHTML =
       '<div class="card"><div class="card-b"><h3>เชื่อมต่อระบบไม่สำเร็จ</h3>' +
       '<p class="muted">' + esc(e.message||e) + '</p>' +
-      '<p class="fs13">ตรวจสอบว่า: เปิดชีตแล้วรัน <b>เมนู 🏢 The M Corner AP → ติดตั้งระบบ</b> เรียบร้อยแล้ว ' +
-      'และอีเมลที่ใช้อยู่มีสิทธิ์เข้าใช้งาน</p></div></div>';
+      '<p class="fs13">ตรวจสอบว่า: เปิดชีตแล้วรัน <b>เมนู 🏢 The M Corner AP → 🚀 ติดตั้งทั้งหมดในคลิกเดียว</b> ' +
+      'เรียบร้อยแล้ว</p></div></div>';
   });
+}
+
+/** หน้าแรกที่จะเปิด — ตามที่ตั้งไว้ แต่ถ้ามี #hash ในลิงก์ให้ hash ชนะ */
+function startPage(b){
+  var hash = (location.hash || '').replace('#','');
+  if (PAGES.some(function(p){ return p.id === hash; })) return hash;
+  var map = {
+    'แดชบอร์ด':'dashboard', 'รายการสรุปรวม':'debtMain', 'หนี้สิน':'debtSub',
+    'รายการซื้อของ':'purchases', 'ซ่อมแซมตามห้อง':'repairs'
+  };
+  return map[b.settings && b.settings.startPage] || 'dashboard';
 }
 
 /** ข้อความมุมล่างซ้าย — เวอร์ชันเว็บแอปจะเขียนทับฟังก์ชันนี้ */
 function navFootHtml(b){
-  var role = (b.user && b.user.label) ? b.user.label : '';
-  return '<b style="color:#c7d0e0">' + esc(role) + '</b>' +
-    (b.user && b.user.email && b.user.email !== 'ผู้ใช้ผ่านลิงก์' ? '<br>' + esc(b.user.email) : '') +
-    (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '');
+  var u = b.user || {};
+  return '<b style="color:#c7d0e0">' + esc(u.name || u.label || '') + '</b>' +
+    (u.username ? ' <span style="opacity:.7">@' + esc(u.username) + '</span>' : '') +
+    '<br><span style="opacity:.8">' + esc(u.role && u.role !== 'none' ? u.role : u.via || '') + '</span>' +
+    (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '') +
+    (u.signedIn && u.username
+      ? '<br><a href="javascript:void(0)" onclick="confirmLogout()">ออกจากระบบ</a>'
+      : '');
 }
 
 function renderNav(){
@@ -175,7 +199,7 @@ function syncYearOptions(years){
 /* ---------------- โหมดดูอย่างเดียว ----------------
    ฝั่งเซิร์ฟเวอร์กันไว้แล้วในฟังก์ชัน api() ตรงนี้แค่ซ่อนปุ่มที่กดไปก็ทำไม่ได้
    เพื่อไม่ให้ผู้ที่เปิดด้วยลิงก์แชร์สับสน */
-var EDIT_ENTRYPOINTS = /\b(formDebt|formDebtPayment|formPurchase|formAc|formBulkAc|formRepair|formBuilding|formRoom|formFinance|delDebt|delDebtPayment|delPurchase|delAc|delRepair|delBuilding|delFinance|doImportJson|doRotateShare|doBackupNow)\s*\(/;
+var EDIT_ENTRYPOINTS = /\b(formDebt|formDebtPayment|formPurchase|formAc|formBulkAc|formRepair|formBuilding|formRoom|formFinance|formUser|delDebt|delDebtPayment|delPurchase|delAc|delRepair|delBuilding|delFinance|delUser|doImportJson|doRotateShare|doBackupNow|saveSettingsForm)\s*\(/;
 
 function applyReadOnly(root){
   if (canEdit()) return;

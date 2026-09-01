@@ -14,6 +14,7 @@ function runMigrations_() {
   var done = [];
   if (from < 2) done.push(migrateV2SplitPayment_());
   if (from < 3) done.push(migrateV3DebtParent_());
+  if (from < 4) done.push(migrateV4Users_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -304,4 +305,19 @@ function repairPaymentsSheet_() {
   rewriteSheet_(name, fixed);
   applyFormatting_(name);
   return 'รายการชำระ: เลื่อนคอลัมน์กลับที่เดิม ' + fixed.length + ' รายการ · กู้เป็นดอกเบี้ย ' + toInterest + ' รายการ';
+}
+
+/**
+ * รุ่น 4 — เพิ่มระบบบัญชีผู้ใช้
+ *
+ * สร้างชีต Users กับ Sessions ถ้ายังไม่มี แล้วตั้งผู้ดูแลคนแรกให้
+ * ไม่แตะข้อมูลเดิมเลย เป็นการเพิ่มชีตใหม่ล้วน ๆ
+ */
+function migrateV4Users_() {
+  ensureSheet_(SHEETS.USERS);
+  ensureSheet_(SHEETS.SESSIONS);
+  seedSettings_();                       // เติมค่าตั้งค่าใหม่ที่เพิ่มมาพร้อมรุ่นนี้
+  // บัญชีผู้ดูแลคนแรกสร้างใน setupSystem() ไม่ใช่ที่นี่
+  // เพราะต้องมีให้ครบทุกครั้งที่ติดตั้ง ไม่ใช่เฉพาะตอนย้ายรุ่น
+  return 'สร้างชีตผู้ใช้และชีตการเข้าใช้งาน';
 }

@@ -3,11 +3,25 @@
  * ใช้ย้ายข้อมูลระหว่างเวอร์ชันเว็บกับ Google Sheet ได้สองทาง
  */
 
-/** ส่งออกทุกชีตเป็นก้อน JSON เดียว */
+/**
+ * ชีตที่ห้ามอยู่ในไฟล์สำรองเด็ดขาด
+ *
+ * Sessions เก็บ "รหัสอ้างอิงที่ใช้งานได้จริง" ของทุกคนที่ล็อกอินค้างไว้
+ * ใครได้ไฟล์นี้ไปก็สวมสิทธิ์คนนั้นได้ทันที และเป็นข้อมูลชั่วคราวที่ไม่ต้องกู้คืนอยู่แล้ว
+ * (รหัสผ่านในชีต Users เก็บแบบเข้ารหัส จึงสำรองได้ แต่ไฟล์สำรองเปิดให้เฉพาะผู้ดูแล)
+ */
+var EXPORT_SKIP_SHEETS = [SHEETS.SESSIONS];
+
+function exportable_(name) {
+  return EXPORT_SKIP_SHEETS.indexOf(name) < 0;
+}
+
+/** ส่งออกทุกชีตเป็นก้อน JSON เดียว — เฉพาะผู้ดูแล (ดู ADMIN_ONLY_ACTIONS) */
 function exportAll_() {
   var out = { app: APP.NAME, version: APP.VERSION, exportedAt: nowStamp_(), sheets: {} };
   Object.keys(SHEETS).forEach(function (k) {
     var name = SHEETS[k];
+    if (!exportable_(name)) return;
     out.sheets[name] = readRows_(name).map(function (r) {
       var c = {};
       Object.keys(r).forEach(function (key) { if (key !== '_row') c[key] = r[key]; });
@@ -23,6 +37,7 @@ function exportAll_() {
 function exportCsv_(sheetName) {
   var cols = SCHEMA[sheetName];
   if (!cols) throw new Error('ไม่รู้จักชีต: ' + sheetName);
+  if (!exportable_(sheetName)) throw new Error('ชีตนี้ส่งออกไม่ได้เพราะมีข้อมูลการเข้าใช้งานอยู่');
   var rows = readRows_(sheetName);
   var lines = [cols.map(function (c) { return csvCell_(c.label); }).join(',')];
   rows.forEach(function (r) {
@@ -52,6 +67,7 @@ function importAll_(payload) {
   var stat = {};
   Object.keys(data.sheets).forEach(function (name) {
     if (!SCHEMA[name]) return;
+    if (!exportable_(name)) return;      // ไม่ยอมให้ยัดรหัสอ้างอิงปลอมเข้ามาทางไฟล์สำรอง
     var incoming = data.sheets[name] || [];
     if (mode === 'replace') {
       clearSheet_(name);

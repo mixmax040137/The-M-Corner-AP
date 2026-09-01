@@ -74,11 +74,19 @@ global.PropertiesService = {
     deleteProperty: k => { delete store.props[k]; }
   })
 };
+const crypto = require('crypto');
 global.Utilities = {
   formatDate: fmt,
   formatString: (f, ...a) => { let i = 0; return f.replace(/%s/g, () => a[i++]); },
   base64Decode: s => Buffer.from(s, 'base64'),
   base64Encode: b => Buffer.from(b).toString('base64'),
+  DigestAlgorithm: { SHA_256: 'sha256' },
+  Charset: { UTF_8: 'utf8' },
+  // Apps Script คืน byte แบบมีเครื่องหมาย (-128..127) ต้องเลียนแบบให้เหมือน
+  computeDigest: (algo, text) =>
+    Array.from(crypto.createHash(algo).update(String(text), 'utf8').digest())
+         .map(b => (b > 127 ? b - 256 : b)),
+  getUuid: () => crypto.randomUUID(),
   newBlob: (b, m, n) => ({
     b, m, n,
     getDataAsString: (cs) => Buffer.from(b).toString(cs ? String(cs).toLowerCase().replace('-', '') : 'utf8'),
@@ -126,9 +134,11 @@ global.DriveApp = {
   getFolderById: () => mkFolder('root'),
   getFoldersByName: () => ({ hasNext: () => true, next: () => mkFolder('root') }),
   createFolder: n => mkFolder(n),
-  getFileById: () => ({
+  getFileById: (id) => store.files.get(id) || ({
     getLastUpdated: () => store.lastUpdated || new Date('2026-08-31T06:00:00Z'),
-    getId: () => 'MOCK_SS'
+    getId: () => 'MOCK_SS',
+    setTrashed: () => true,
+    getBlob: () => Utilities.newBlob(Buffer.from(''), 'image/jpeg', 'mock.jpg')
   })
 };
 global.Session = {
@@ -146,16 +156,36 @@ global.ScriptApp = {
   getProjectTriggers: () => [], deleteTrigger: () => {},
   newTrigger: () => chain(),
   WeekDay: { MONDAY: 1 },
-  getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/MOCK/exec' })
+  getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/MOCK/exec' }),
+  getOAuthToken: () => 'mock-oauth-token'
 };
-global.UrlFetchApp = { fetch: () => ({ getResponseCode: () => 200 }) };
+store.fetches = [];
+global.UrlFetchApp = {
+  fetch: (url, opts) => {
+    store.fetches.push({ url, opts });
+    // ปลอมการอัปโหลดเพื่อ OCR ของ Drive: ครั้งแรกคืน metadata ครั้งถัดไปคืนข้อความ
+    if (String(url).indexOf('upload/drive') >= 0) {
+      return {
+        getResponseCode: () => 200,
+        getContentText: () => JSON.stringify({
+          id: 'OCRTMP', exportLinks: { 'text/plain': 'https://mock/export' }
+        })
+      };
+    }
+    return { getResponseCode: () => 200, getContentText: () => store.ocrText || '' };
+  }
+};
 const htmlOut = (content) => ({
   getContent: () => content,
   setTitle() { return this; }, setFaviconUrl() { return this; },
   addMetaTag() { return this; }, setXFrameOptionsMode() { return this; }
 });
 global.HtmlService = {
-  createTemplateFromFile: () => ({ evaluate: () => htmlOut('<template>') }),
+  // เก็บค่าที่ถูกใส่ลง template ไว้ใน store เพื่อให้เทสต์ตรวจได้ว่า doGet ส่งอะไรไปหน้าเว็บ
+  createTemplateFromFile: (name) => {
+    const t = { evaluate: () => { store.lastTemplate = Object.assign({ _file: name }, t); return htmlOut('<template>'); } };
+    return t;
+  },
   createHtmlOutputFromFile: () => htmlOut(''),
   createHtmlOutput: (c) => htmlOut(c),
   XFrameOptionsMode: { ALLOWALL: 1 }

@@ -318,6 +318,107 @@ table.t tbody tr:hover{background:var(--surface-2)}
   .ov{padding:0}
   .modal{border-radius:0;min-height:100vh;max-width:none}
 }
+/* ============ หน้าล็อกอิน / PIN ============ */
+body.locked{overflow:hidden}
+body.locked .app{filter:blur(3px);pointer-events:none;user-select:none}
+.auth-wrap{
+  position:fixed;inset:0;z-index:60;display:grid;place-items:center;
+  padding:24px;background:var(--bg);overflow-y:auto;
+}
+.auth-card{
+  width:100%;max-width:360px;background:var(--surface);border:1px solid var(--line);
+  border-radius:16px;box-shadow:var(--sh-lg);padding:26px 24px 22px;
+}
+.auth-brand{font-size:15px;color:var(--muted);margin-bottom:18px;text-align:center}
+.auth-brand b{color:var(--ink);font-family:var(--font-display)}
+.auth-h{margin:0 0 4px;font-size:20px;font-weight:600;font-family:var(--font-display);text-align:center}
+.auth-sub{margin:0 0 18px;font-size:13px;color:var(--muted);text-align:center;line-height:1.6}
+.auth-f{margin-bottom:13px}
+.auth-f label{display:block;font-size:12.5px;color:var(--ink-2);margin-bottom:5px;font-weight:500}
+.auth-f .inp{width:100%;padding:10px 12px;font-size:15px}
+.auth-go{width:100%;justify-content:center;padding:11px;font-size:14.5px;margin-top:6px}
+.auth-alt{width:100%;justify-content:center;margin-top:9px;font-size:13px}
+.auth-err{
+  background:var(--danger-soft);color:var(--danger);border-radius:var(--r-sm);
+  padding:9px 12px;font-size:12.5px;margin-bottom:14px;line-height:1.55;
+}
+.auth-foot{font-size:11.5px;color:var(--faint);text-align:center;margin:16px 0 0;line-height:1.6}
+
+/* จุด 6 จุดแทน PIN ที่กดไปแล้ว */
+.pin-dots{display:flex;gap:13px;justify-content:center;margin:6px 0 22px}
+.pin-dots i{
+  width:13px;height:13px;border-radius:99px;background:var(--line);
+  border:1px solid var(--line);transition:transform .12s,background .12s;
+}
+.pin-dots i.on{background:var(--brand);border-color:var(--brand);transform:scale(1.16)}
+.pin-dots.busy{opacity:.5}
+.pin-dots.shake{animation:shake .42s}
+@keyframes shake{
+  0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)}
+  40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)}
+}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+.pin-k{
+  aspect-ratio:1/1;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+  border-radius:14px;font-size:21px;font-weight:500;cursor:pointer;
+  font-family:var(--font-display);font-variant-numeric:tabular-nums;
+  transition:background .1s,transform .06s;
+}
+.pin-k:hover{background:var(--brand-soft);border-color:var(--brand)}
+.pin-k:active{transform:scale(.94)}
+.pin-k.ghost{background:transparent;border-color:transparent;font-size:17px;color:var(--muted)}
+.pin-k.ghost:hover{background:var(--surface-2);border-color:var(--line)}
+
+/* ============ ตัวเลือกธีม ============ */
+.theme-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.theme-opt{
+  display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;
+  padding:15px 10px;border:1.5px solid var(--line);border-radius:var(--r);
+  background:var(--surface-2);cursor:pointer;color:var(--ink);font:inherit;
+  transition:border-color .12s,background .12s;
+}
+.theme-opt:hover{border-color:var(--brand)}
+.theme-opt.on{border-color:var(--brand);background:var(--brand-soft)}
+.theme-opt .ic{font-size:24px;line-height:1.2}
+.theme-opt b{font-size:13.5px}
+.theme-opt .hint{font-size:11px;color:var(--muted);line-height:1.45}
+.warn-text{color:var(--warn)}
+
+/* ============ ผลการอ่านข้อความจากรูป ============ */
+/* ไฮไลต์สั้น ๆ ให้เห็นว่าช่องไหนเพิ่งถูกเติมจากรูป */
+.ocr-filled{
+  border-color:var(--brand)!important;
+  box-shadow:0 0 0 3px var(--brand-soft)!important;
+  animation:ocrPop .4s;
+}
+@keyframes ocrPop{ 0%{background:var(--brand-soft)} 100%{background:var(--surface)} }
+
+.ocr-box{
+  border:1px dashed var(--brand);background:var(--brand-soft);
+  border-radius:var(--r-sm);padding:12px;margin-top:10px;
+}
+.ocr-box .hd{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--brand);margin-bottom:9px}
+.ocr-box .hd .sp{margin-left:auto;display:flex;gap:6px}
+.ocr-hits{display:flex;flex-direction:column;gap:6px}
+.ocr-hit{
+  display:flex;align-items:center;gap:9px;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 10px;font-size:13px;
+}
+.ocr-hit .k{color:var(--muted);font-size:11.5px;min-width:78px}
+.ocr-hit .v{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ocr-raw{
+  max-height:150px;overflow:auto;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:9px 11px;font-size:12px;line-height:1.65;
+  white-space:pre-wrap;color:var(--ink-2);margin-top:9px;
+}
+
+@media (max-width:520px){
+  .auth-card{max-width:100%;padding:22px 18px 18px}
+  .theme-pick{grid-template-columns:1fr}
+  .theme-opt{flex-direction:row;text-align:left;gap:11px}
+  .theme-opt .hint{display:none}
+}
+
 @media print{
   .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
   .app{display:block} body{background:#fff}

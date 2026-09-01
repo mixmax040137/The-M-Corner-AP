@@ -1,50 +1,103 @@
 /**
- * Auth.gs — สิทธิ์เข้าใช้งานแบบลิงก์
+ * Auth.gs — ใครเข้าได้ และทำอะไรได้บ้าง
  *
- * ระบบถูก deploy แบบ "ใครมีลิงก์ก็เปิดได้" (Anyone) เพื่อให้แชร์ให้คนอื่นดูได้
- * โดยไม่ต้องให้เขาเข้าถึง Google Sheet ของเรา สิทธิ์จึงคุมด้วย "กุญแจ" ในลิงก์แทน
+ * ทางเข้าระบบมี 3 ทาง เรียงตามลำดับที่ตรวจ
+ *   1. บัญชีผู้ใช้  — ล็อกอินด้วยรหัสผ่านหรือ PIN แล้วได้รหัสอ้างอิง (แนะนำให้ใช้ทางนี้)
+ *   2. ลิงก์แชร์    — เปิด/ปิดได้ในหน้าตั้งค่า ใครมีลิงก์ก็ดูได้อย่างเดียว ไม่ต้องล็อกอิน
+ *   3. กุญแจกู้ระบบ — ลิงก์ ?key=<admin_token> เก็บไว้เผื่อลืมรหัสผ่านจนเข้าไม่ได้
  *
- *   ลิงก์ผู้ดูแล  .../exec?key=<admin_token>   → เพิ่ม/แก้/ลบได้ทุกอย่าง
- *   ลิงก์แชร์     .../exec?key=<view_token>    → ดูอย่างเดียว แก้อะไรไม่ได้
- *   ไม่มีกุญแจ                                  → เข้าไม่ได้
- *
- * กุญแจสองชุดนี้สุ่มขึ้นตอนติดตั้ง เก็บอยู่ในชีต Settings
- * ถ้าลิงก์แชร์หลุด ให้กด "ออกกุญแจแชร์ใหม่" ลิงก์เดิมจะใช้ไม่ได้ทันที
- *
- * ⚠️ การกันสิทธิ์ทำที่ฝั่งเซิร์ฟเวอร์ (ฟังก์ชัน api) ไม่ใช่แค่ซ่อนปุ่มในหน้าเว็บ
+ * ⚠️ การกันสิทธิ์ทำที่ฝั่งเซิร์ฟเวอร์ในฟังก์ชัน api() ก่อนทำงานทุกครั้ง
+ *    ไม่ใช่แค่ซ่อนปุ่มในหน้าเว็บ
  */
 
-var ROLE = { ADMIN: 'admin', VIEWER: 'viewer', NONE: 'none' };
+var ROLE = { ADMIN: 'ผู้ดูแล', EDITOR: 'แก้ไขได้', VIEWER: 'ดูอย่างเดียว', NONE: 'none' };
 
-/** คำสั่งที่เปลี่ยนแปลงข้อมูล — ต้องเป็นผู้ดูแลเท่านั้น */
-var MUTATING_ACTIONS = /\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow)$/;
+/** คำสั่งที่เปิดให้เรียกได้โดยยังไม่ได้ล็อกอิน */
+var PUBLIC_ACTIONS = /^auth\.(login|unlock|me|ping)$/;
 
-function resolveRole_(key) {
-  key = String(key || '').trim();
-  if (key) {
-    if (key === getSetting_('admin_token', '')) return ROLE.ADMIN;
-    if (key === getSetting_('view_token', '')) return ROLE.VIEWER;
-  }
-  // เจ้าของชีต (หรืออีเมลที่อนุญาตไว้) เข้าได้เสมอ แม้ไม่มีกุญแจในลิงก์
-  var email = String(currentUserEmail_() || '').toLowerCase();
-  if (email && email !== 'unknown') {
-    if (email === String(ownerEmail_() || '').toLowerCase()) return ROLE.ADMIN;
-    var allow = String(getSetting_('admin_emails', '') || '')
-      .split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(String);
-    if (allow.indexOf(email) >= 0) return ROLE.ADMIN;
-  }
-  return ROLE.NONE;
+/**
+ * คำสั่งที่เปลี่ยนแปลงข้อมูลหรือใช้พื้นที่ของเจ้าของ — ต้องเป็นผู้ดูแลหรือแก้ไขได้
+ * รวม upload/trash ด้วย เพราะเป็นการเขียนและลบไฟล์ใน Google Drive ของเจ้าของ
+ * และ ocr.read ที่สร้างไฟล์ชั่วคราวใน Drive ทุกครั้งที่เรียก
+ */
+var MUTATING_ACTIONS = /^ocr\.read$|\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow|upload|trash)$/;
+
+/**
+ * คำสั่งที่เฉพาะผู้ดูแลเท่านั้น
+ * backup.* ทั้งหมดอยู่ในนี้เพราะไฟล์สำรองมีข้อมูลบัญชีผู้ใช้ติดไปด้วย
+ */
+var ADMIN_ONLY_ACTIONS = /^(user\.|share\.|settings\.save|backup\.|auth\.forgetAllDevices)/;
+
+/** ระดับสิทธิ์ ยิ่งมากยิ่งทำได้เยอะ */
+function roleRank_(role) {
+  if (role === ROLE.ADMIN) return 3;
+  if (role === ROLE.EDITOR) return 2;
+  if (role === ROLE.VIEWER) return 1;
+  return 0;
 }
 
-function requireRole_(action, key) {
-  var role = resolveRole_(key);
-  if (role === ROLE.NONE) {
-    throw new Error('ลิงก์นี้ไม่มีสิทธิ์เข้าใช้งาน — ขอลิงก์ที่ถูกต้องจากเจ้าของหอพัก');
+/**
+ * หาว่าคำสั่งนี้ถูกเรียกโดยใคร
+ * @return {{role:string, username:string, name:string, via:string}}
+ */
+function resolveActor_(payload) {
+  payload = payload || {};
+
+  var u = sessionUser_(payload._session);
+  if (u) return { role: u.role, username: u.username, name: u.name, via: 'บัญชีผู้ใช้' };
+
+  var key = String(payload._key || '').trim();
+  if (key) {
+    if (safeEqual_(key, getSetting_('admin_token', ''))) {
+      return { role: ROLE.ADMIN, username: '', name: 'กุญแจกู้ระบบ', via: 'กุญแจกู้ระบบ' };
+    }
+    if (shareLinkEnabled_() && safeEqual_(key, getSetting_('view_token', ''))) {
+      return { role: ROLE.VIEWER, username: '', name: 'ผู้ชมผ่านลิงก์แชร์', via: 'ลิงก์แชร์' };
+    }
   }
-  if (MUTATING_ACTIONS.test(action) && role !== ROLE.ADMIN) {
-    throw new Error('ลิงก์นี้เป็นแบบดูอย่างเดียว จึงแก้ไขข้อมูลไม่ได้');
+
+  // เจ้าของชีตเข้าได้เสมอ เผื่อกรณีเข้าไม่ได้จริง ๆ
+  var email = String(currentUserEmail_() || '').toLowerCase();
+  if (email && email === String(ownerEmail_() || '').toLowerCase()) {
+    return { role: ROLE.ADMIN, username: '', name: 'เจ้าของชีต', via: 'บัญชี Google เจ้าของชีต' };
   }
-  return role;
+
+  return { role: ROLE.NONE, username: '', name: '', via: '' };
+}
+
+function shareLinkEnabled_() {
+  return String(getSetting_('share_link_enabled', 'ปิด')).trim().indexOf('เปิด') === 0;
+}
+
+function requireRole_(action, payloadOrKey) {
+  var payload = (payloadOrKey && typeof payloadOrKey === 'object') ? payloadOrKey : { _key: payloadOrKey };
+  if (PUBLIC_ACTIONS.test(action)) return ROLE.NONE;
+
+  var actor = resolveActor_(payload);
+  if (actor.role === ROLE.NONE) throw new Error('กรุณาเข้าสู่ระบบก่อนใช้งาน');
+
+  if (ADMIN_ONLY_ACTIONS.test(action) && actor.role !== ROLE.ADMIN) {
+    throw new Error('เฉพาะผู้ดูแลเท่านั้นที่ทำรายการนี้ได้');
+  }
+  if (MUTATING_ACTIONS.test(action) && roleRank_(actor.role) < roleRank_(ROLE.EDITOR)) {
+    throw new Error('บัญชีนี้เปิดดูได้อย่างเดียว จึงแก้ไขข้อมูลไม่ได้');
+  }
+  return actor.role;
+}
+
+/** ใช้ในหน้าเว็บ เพื่อรู้ว่ากำลังเปิดด้วยสิทธิ์อะไร */
+function whoAmI(payload) {
+  var actor = resolveActor_(payload && typeof payload === 'object' ? payload : { _key: payload });
+  return {
+    role: actor.role,
+    canEdit: roleRank_(actor.role) >= roleRank_(ROLE.EDITOR),
+    isAdmin: actor.role === ROLE.ADMIN,
+    signedIn: actor.role !== ROLE.NONE,
+    username: actor.username,
+    name: actor.name || (actor.role === ROLE.NONE ? '' : actor.role),
+    via: actor.via,
+    label: actor.role === ROLE.NONE ? 'ยังไม่ได้เข้าสู่ระบบ' : actor.role
+  };
 }
 
 function currentUserEmail_() {
@@ -128,15 +181,4 @@ function isTestUrl_(url) {
 function shareUrl_(token) {
   var base = webAppUrl_();
   return base ? base + '?key=' + token : '(ยังไม่ได้ deploy)';
-}
-
-/** ใช้ในหน้าเว็บ เพื่อรู้ว่ากำลังเปิดด้วยสิทธิ์อะไร */
-function whoAmI(key) {
-  var role = resolveRole_(key);
-  return {
-    role: role,
-    canEdit: role === ROLE.ADMIN,
-    email: currentUserEmail_() || 'ผู้ใช้ผ่านลิงก์',
-    label: role === ROLE.ADMIN ? 'ผู้ดูแล' : (role === ROLE.VIEWER ? 'ดูอย่างเดียว' : 'ไม่มีสิทธิ์')
-  };
 }

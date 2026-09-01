@@ -8,13 +8,18 @@
 function api(action, payload) {
   payload = payload || {};
   try {
-    var role = requireRole_(action, payload._key);
+    var role = requireRole_(action, payload);
     var fn = API_ROUTES[action];
     if (!fn) throw new Error('ไม่รู้จักคำสั่ง: ' + action);
     return { ok: true, data: fn(payload, role) };
   } catch (e) {
     console.error(action + ' -> ' + e);
-    return { ok: false, error: String(e && e.message ? e.message : e) };
+    return {
+      ok: false,
+      error: String(e && e.message ? e.message : e),
+      // หน้าเว็บใช้ธงนี้เด้งกลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความเฉย ๆ
+      needLogin: /เข้าสู่ระบบก่อน/.test(String(e && e.message ? e.message : e))
+    };
   }
 }
 
@@ -24,8 +29,9 @@ var API_ROUTES = {
   'app.bootstrap': function (p, role) {
     return {
       app: { name: APP.NAME, subtitle: APP.SUBTITLE, version: APP.VERSION },
-      user: whoAmI(p._key),
-      canEdit: role === ROLE.ADMIN,
+      user: whoAmI(p),
+      canEdit: roleRank_(role) >= roleRank_(ROLE.EDITOR),
+      isAdmin: role === ROLE.ADMIN,
       floors: FLOORS,
       rooms: ROOMS,
       schema: {
@@ -49,7 +55,14 @@ var API_ROUTES = {
         warrantyAlertDays: Number(getSetting_('warranty_alert_days', 30)),
         overdueAlertDays: Number(getSetting_('overdue_alert_days', 7)),
         buildingName: getSetting_('building_name', APP.NAME),
-        refreshSeconds: Number(getSetting_('refresh_seconds', 25))
+        refreshSeconds: Number(getSetting_('refresh_seconds', 25)),
+        theme: getSetting_('theme', 'ตามเครื่อง'),
+        startPage: getSetting_('start_page', 'แดชบอร์ด'),
+        currency: getSetting_('currency', 'บาท'),
+        defaultDueDay: Number(getSetting_('default_due_day', 20)),
+        ocrEnabled: String(getSetting_('ocr_enabled', 'เปิด')).indexOf('เปิด') === 0,
+        ocrAutofill: getSetting_('ocr_autofill', 'ถามก่อนเติม'),
+        shareLinkEnabled: shareLinkEnabled_()
       },
       version: dataVersion_(),
       sheetUrl: role === ROLE.ADMIN ? getSpreadsheet_().getUrl() : ''
@@ -134,21 +147,64 @@ var API_ROUTES = {
 
   /* ---------- ลิงก์แชร์ ---------- */
   'share.links': function (p, role) {
-    if (role !== ROLE.ADMIN) return { base: '', adminUrl: '', viewUrl: '' };
-    var base = '';
-    try { base = ScriptApp.getService().getUrl() || ''; } catch (e) { }
+    if (role !== ROLE.ADMIN) return { base: '', appUrl: '', adminUrl: '', viewUrl: '', shareEnabled: false };
+    var base = webAppUrl_();
     return {
       base: base,
+      appUrl: base,
       adminUrl: base ? base + '?key=' + getSetting_('admin_token', '') : '',
-      viewUrl: base ? base + '?key=' + getSetting_('view_token', '') : ''
+      viewUrl: base ? base + '?key=' + getSetting_('view_token', '') : '',
+      shareEnabled: shareLinkEnabled_()
     };
   },
   'share.rotateToken': function () { return rotateViewToken_(); },
 
   /* ---------- สำรองข้อมูลลง Drive ---------- */
   'backup.backupNow': function () { return backupToDrive_(); },
-  'backup.history': function (p, role) { return role === ROLE.ADMIN ? listBackups_() : []; }
+  'backup.history': function (p, role) { return role === ROLE.ADMIN ? listBackups_() : []; },
+
+  /* ---------- เข้าสู่ระบบ ---------- */
+
+  // เปิดให้เรียกได้ก่อนล็อกอิน (ดู PUBLIC_ACTIONS ใน Auth.gs)
+  'auth.ping': function () { return { ok: true, app: APP.NAME }; },
+  'auth.me': function (p) { return whoAmI(p); },
+  'auth.login': function (p) { return login_(p.username, p.password); },
+  'auth.unlock': function (p) { return unlockWithPin_(p.device, p.pin); },
+
+  // ต้องล็อกอินอยู่แล้ว
+  'auth.logout': function (p) { return revokeSession_(p._session); },
+  'auth.setPin': function (p) { return setPin_(p._session, p.pin, p.device); },
+  'auth.forgetDevice': function (p) { return forgetDevice_(p.device); },
+  'auth.forgetAllDevices': function (p) { return forgetAllDevices_(p.username || actorUsername_(p)); },
+  'auth.changePassword': function (p) {
+    var me = actorUsername_(p);
+    if (!me) throw new Error('บัญชีนี้เข้าผ่านลิงก์ จึงไม่มีรหัสผ่านให้เปลี่ยน');
+    return changePassword_(me, p.oldPassword, p.newPassword);
+  },
+  'auth.devices': function (p) {
+    var me = actorUsername_(p);
+    return me ? listDevices_(me) : [];
+  },
+
+  /* ---------- จัดการผู้ใช้ (ผู้ดูแลเท่านั้น) ---------- */
+  'user.list': function () { return listUsers_(); },
+  'user.save': function (p, role) { return saveUser_(p.record, role); },
+  'user.delete': function (p, role) { return deleteUser_(p.username, role, actorUsername_(p)); },
+  'user.resetPin': function (p) { return forgetAllDevices_(p.username); },
+  'user.signOutAll': function (p) { return revokeAllSessions_(p.username); },
+
+  /* ---------- ตั้งค่า ---------- */
+  'settings.list': function (p, role) { return listSettings_(role); },
+  'settings.save': function (p) { return saveSettings_(p.values); },
+
+  /* ---------- อ่านข้อความจากรูป ---------- */
+  'ocr.read': function (p) { return ocrRead_(p); }
 };
+
+/** ชื่อผู้ใช้ของคนที่กำลังเรียก (ว่างถ้าเข้าผ่านลิงก์) */
+function actorUsername_(payload) {
+  return resolveActor_(payload).username || '';
+}
 
 /** ดึงตัวเลือก dropdown จาก SCHEMA เพื่อให้หน้าเว็บกับชีตใช้ชุดเดียวกันเสมอ */
 function fieldOptions_(sheetName, key) {

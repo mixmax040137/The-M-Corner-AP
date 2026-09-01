@@ -1,0 +1,313 @@
+<script>
+/* =========================================================
+   Settings.html — หน้าตั้งค่า · ธีม · บัญชีผู้ใช้ · อุปกรณ์
+   ========================================================= */
+
+/* ---------------- ธีมสว่าง / มืด ---------------- */
+
+var LS_THEME = 'mcorner.theme';
+var THEMES = [
+  { id: 'ตามเครื่อง', ic: '🌗', hint: 'สลับตามการตั้งค่าของอุปกรณ์' },
+  { id: 'สว่าง',      ic: '☀️', hint: 'พื้นขาว อ่านง่ายกลางแดด' },
+  { id: 'มืด',        ic: '🌙', hint: 'พื้นเข้ม สบายตาตอนกลางคืน' }
+];
+
+/**
+ * ทาธีมลงหน้าเว็บทันที
+ * ตัวแปรสีทั้งหมดนิยามไว้ 3 ชั้นใน Style.html แล้ว ตรงนี้แค่ติดป้ายบอกว่าใช้ชั้นไหน
+ */
+function applyTheme(name){
+  var root = document.documentElement;
+  if (name === 'สว่าง') root.setAttribute('data-theme', 'light');
+  else if (name === 'มืด') root.setAttribute('data-theme', 'dark');
+  else root.removeAttribute('data-theme');       // ตามเครื่อง = ปล่อยให้ prefers-color-scheme ตัดสิน
+  var btn = document.getElementById('themeBtn');
+  if (btn) {
+    var t = THEMES.filter(function(x){ return x.id === name; })[0] || THEMES[0];
+    btn.textContent = t.ic;
+    btn.title = 'ธีม: ' + t.id + ' (กดเพื่อสลับ)';
+  }
+}
+
+function currentTheme(){
+  return lsGet(LS_THEME) || (S.boot && S.boot.settings && S.boot.settings.theme) || 'ตามเครื่อง';
+}
+
+/** ตั้งธีมและจำไว้ — ผู้ดูแลจะถูกบันทึกเป็นค่าตั้งต้นของระบบด้วย */
+function setTheme(name, quiet){
+  lsSet(LS_THEME, name);
+  applyTheme(name);
+  if (S.boot && S.boot.isAdmin) {
+    callApi('settings.save', { values: { theme: name } }).catch(function(){ /* เก็บในเครื่องก็พอ */ });
+  }
+  if (!quiet) toast('เปลี่ยนเป็นธีม' + (name === 'ตามเครื่อง' ? 'ตามเครื่อง' : name), 'ok');
+  if (S.page === 'settings') load();
+}
+
+/** ปุ่มบนแถบหัว — วนสว่าง → มืด → ตามเครื่อง */
+function cycleTheme(){
+  var order = ['สว่าง', 'มืด', 'ตามเครื่อง'];
+  var i = order.indexOf(currentTheme());
+  setTheme(order[(i + 1) % order.length]);
+}
+
+/* ---------------- หน้าตั้งค่า ---------------- */
+
+ROUTES.settings = {
+  load: function(){
+    return Promise.all([
+      callApi('settings.list', {}),
+      callApi('auth.devices', {}).catch(function(){ return []; }),
+      (S.boot && S.boot.isAdmin) ? callApi('user.list', {}).catch(function(){ return []; }) : Promise.resolve(null),
+      (S.boot && S.boot.isAdmin) ? callApi('share.links', {}).catch(function(){ return {}; }) : Promise.resolve({})
+    ]).then(function(r){
+      return { settings: r[0], devices: r[1] || [], users: r[2], links: r[3] || {}, years: [] };
+    });
+  },
+  render: function(d){
+    return '' +
+      settingsAccountCard(d) +
+      settingsThemeCard() +
+      (d.settings.canEdit ? settingsGroupsHtml(d.settings) : settingsReadOnlyNote()) +
+      (d.users ? settingsUsersCard(d.users) : '') +
+      (d.users ? settingsShareCard(d.links) : '');
+  }
+};
+
+/* ---- บัญชีของฉัน ---- */
+
+function settingsAccountCard(d){
+  var me = AUTH.me || {};
+  var devices = d.devices || [];
+  return card('👤 บัญชีของฉัน',
+    '<div class="grid g2 mb12">' +
+      kpi('เข้าใช้งานในชื่อ', esc(me.name || me.username || '–'), esc(me.username ? '@' + me.username : (me.via || ''))) +
+      kpi('สิทธิ์การใช้งาน', esc(me.role || '–'),
+          me.canEdit ? 'เพิ่ม แก้ไข และลบข้อมูลได้' : 'เปิดดูได้อย่างเดียว') +
+    '</div>' +
+    '<div class="row">' +
+      (me.username ? '<button class="btn" onclick="formChangePassword()">🔑 เปลี่ยนรหัสผ่าน</button>' : '') +
+      (me.username ? '<button class="btn" onclick="formSetPin()">🔢 ' +
+        (AUTH.device ? 'ตั้ง PIN ใหม่บนเครื่องนี้' : 'ตั้ง PIN สำหรับเครื่องนี้') + '</button>' : '') +
+      (AUTH.device ? '<button class="btn dgr" onclick="forgetThisDevice()">ลบ PIN เครื่องนี้</button>' : '') +
+      '<button class="btn" onclick="confirmLogout()">🚪 ออกจากระบบ</button>' +
+    '</div>' +
+    (devices.length
+      ? '<div class="hr"></div><div class="fs12 muted mb8">อุปกรณ์ที่ตั้ง PIN ไว้ (' + devices.length + ')</div>' +
+        '<div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
+        '<th>อุปกรณ์</th><th>ตั้งเมื่อ</th><th>ใช้ล่าสุด</th></tr></thead><tbody>' +
+        devices.map(function(x){
+          return '<tr><td>' + esc(x.device) + '</td>' +
+            '<td class="fs12">' + thDateShort(String(x.createdAt).slice(0,10)) + '</td>' +
+            '<td class="fs12">' + thDateShort(String(x.lastSeen).slice(0,10)) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<div class="row mt12"><button class="btn dgr sm" onclick="doForgetAllDevices()">ยกเลิก PIN ทุกเครื่อง</button></div>'
+      : ''));
+}
+
+function doForgetAllDevices(){
+  confirmAction('ยกเลิก PIN บนทุกเครื่องใช่ไหม — ทุกเครื่องจะต้องล็อกอินด้วยรหัสผ่านใหม่', function(){
+    callApi('auth.forgetAllDevices', {}).then(function(n){
+      saveDevice('');
+      toast('ยกเลิก PIN แล้ว ' + n + ' เครื่อง', 'ok');
+      load();
+    }).catch(function(e){ toast(e.message || e, 'err'); });
+  });
+}
+
+/* ---- ธีม ---- */
+
+function settingsThemeCard(){
+  var cur = currentTheme();
+  return card('🎨 ธีมสีหน้าจอ',
+    '<div class="theme-pick">' + THEMES.map(function(t){
+      return '<button class="theme-opt' + (t.id === cur ? ' on' : '') + '" onclick="setTheme(\'' + t.id + '\')">' +
+        '<span class="ic">' + t.ic + '</span>' +
+        '<b>' + esc(t.id) + '</b>' +
+        '<span class="hint">' + esc(t.hint) + '</span>' +
+      '</button>';
+    }).join('') + '</div>' +
+    '<p class="fs12 muted mt12">ธีมจำแยกรายเครื่อง เปลี่ยนที่นี่หรือกดปุ่มรูปพระอาทิตย์/พระจันทร์มุมขวาบนก็ได้' +
+    (S.boot && S.boot.isAdmin ? ' · ค่าที่ผู้ดูแลเลือกจะเป็นค่าตั้งต้นให้เครื่องที่ยังไม่เคยตั้ง' : '') + '</p>');
+}
+
+/* ---- กลุ่มค่าตั้งค่า ---- */
+
+function settingsReadOnlyNote(){
+  return card('⚙️ การตั้งค่าระบบ',
+    '<div class="empty"><div class="big">🔒</div>เฉพาะผู้ดูแลเท่านั้นที่แก้การตั้งค่าระบบได้</div>');
+}
+
+function settingsGroupsHtml(s){
+  return s.groups.map(function(g){
+    return card(g.icon + ' ' + g.group,
+      '<div class="fgrid">' + g.items.map(settingFieldHtml).join('') + '</div>');
+  }).join('') +
+  card('💾 บันทึกการตั้งค่า',
+    '<p class="fs13 muted">' + esc(s.secretNote) + '</p>' +
+    '<div class="row mt12">' +
+      '<button class="btn pri" onclick="saveSettingsForm()">บันทึกทั้งหมด</button>' +
+      '<button class="btn" onclick="load()">ยกเลิกการแก้ไข</button>' +
+    '</div>');
+}
+
+function settingFieldHtml(it){
+  var id = 's_' + it.key;
+  var inner;
+  if (it.readOnly) {
+    inner = '<div class="inp" style="background:var(--surface-2);cursor:default">' + esc(it.value) + '</div>';
+  } else if (it.type === 'select') {
+    inner = '<select class="sel" id="' + id + '">' + (it.options || []).map(function(o){
+      return '<option value="' + esc(o) + '"' + (o === it.value ? ' selected' : '') + '>' + esc(o) + '</option>';
+    }).join('') + '</select>';
+  } else if (it.type === 'multiline') {
+    inner = '<textarea class="ta" id="' + id + '">' + esc(it.value) + '</textarea>';
+  } else if (it.type === 'number') {
+    inner = '<input type="number" class="inp" id="' + id + '" value="' + esc(it.value) + '" inputmode="decimal">';
+  } else {
+    inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(it.value) + '">';
+  }
+  return '<div class="f' + (it.type === 'multiline' ? ' full' : '') + '">' +
+    '<label for="' + id + '">' + esc(it.label) + '</label>' + inner +
+    (it.note ? '<div class="hint">' + esc(it.note) + '</div>' : '') + '</div>';
+}
+
+function saveSettingsForm(){
+  var vals = {};
+  var data = S.cache.settings;
+  if (!data) return;
+  data.settings.groups.forEach(function(g){
+    g.items.forEach(function(it){
+      if (it.readOnly) return;
+      var el = document.getElementById('s_' + it.key);
+      if (el) vals[it.key] = el.value;
+    });
+  });
+  callApi('settings.save', { values: vals }).then(function(r){
+    if (vals.theme) { lsSet(LS_THEME, vals.theme); applyTheme(vals.theme); }
+    toast(r.saved ? 'บันทึกแล้ว ' + r.saved + ' รายการ' : 'ไม่มีอะไรเปลี่ยนแปลง', 'ok');
+    // ค่าบางตัว (รอบรีเฟรช ชื่ออาคาร) มีผลกับทั้งหน้า จึงโหลดใหม่ทั้งชุด
+    return callApi('app.bootstrap').then(function(b){ S.boot = b; load(); });
+  }).catch(function(e){ toast(e.message || e, 'err'); });
+}
+
+/* ---- จัดการผู้ใช้ (ผู้ดูแลเท่านั้น) ---- */
+
+function settingsUsersCard(users){
+  return card('👥 ผู้ใช้ในระบบ (' + users.length + ')',
+    '<p class="fs13 muted">แจกชื่อผู้ใช้และรหัสผ่านให้คนอื่นเข้ามาดูหรือช่วยแก้ข้อมูลได้ ' +
+    'ตั้งสิทธิ์แยกรายคน และระงับได้ทุกเมื่อ</p>' +
+    '<div class="tw mt12"><table class="t"><thead><tr>' +
+      '<th>ชื่อผู้ใช้</th><th>ชื่อที่แสดง</th><th>สิทธิ์</th><th>สถานะ</th><th>เข้าล่าสุด</th>' +
+      '<th class="num">อุปกรณ์</th><th></th></tr></thead><tbody>' +
+    users.map(function(u){
+      var meNow = (AUTH.me && AUTH.me.username) === u.username;
+      return '<tr>' +
+        '<td><b>' + esc(u.username) + '</b>' + (meNow ? ' <span class="b info">คุณ</span>' : '') + '</td>' +
+        '<td>' + esc(u.name || '–') + '</td>' +
+        '<td>' + roleBadge(u.role) + '</td>' +
+        '<td>' + statusBadge(u.status) + (u.locked ? ' <span class="b dgr">ถูกล็อกชั่วคราว</span>' : '') + '</td>' +
+        '<td class="fs12">' + (u.lastLogin ? thDateShort(String(u.lastLogin).slice(0,10)) : '–') + '</td>' +
+        '<td class="num">' + (u.devices || 0) + '</td>' +
+        '<td class="t-actions">' +
+          '<button class="btn sm" onclick="formUser(' + attr(u) + ')">แก้ไข</button>' +
+          (meNow ? '' : '<button class="btn sm dgr" onclick="delUser(\'' + esc(u.username) + '\')">ลบ</button>') +
+        '</td></tr>';
+    }).join('') + '</tbody></table></div>',
+    '<button class="btn pri sm" onclick="formUser()">+ เพิ่มผู้ใช้</button>');
+}
+
+function roleBadge(role){
+  var cls = role === 'ผู้ดูแล' ? 'ok' : (role === 'แก้ไขได้' ? 'info' : 'mute');
+  return '<span class="b ' + cls + '">' + esc(role) + '</span>';
+}
+
+/** ฝัง object ลงใน onclick อย่างปลอดภัย */
+function attr(obj){
+  // ต้องแปลง & ก่อนตัวอื่น ไม่งั้น &quot; ที่เพิ่งสร้างจะโดนแปลงซ้ำ
+  return JSON.stringify(JSON.stringify(obj))
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function formUser(json){
+  var u = json ? (typeof json === 'string' ? JSON.parse(json) : json) : {};
+  var isNew = !u.username;
+
+  openForm({
+    title: isNew ? 'เพิ่มผู้ใช้ใหม่' : 'แก้ไขผู้ใช้ ' + u.username,
+    action: 'user.save',
+    record: Object.assign({ id: isNew ? '' : u.username, role: 'ดูอย่างเดียว', status: 'ใช้งาน' }, u),
+    fields: [
+      { key:'username', label:'ชื่อผู้ใช้ (ภาษาอังกฤษ)', required:isNew, ph:'เช่น somchai',
+        hint: isNew ? 'a-z 0-9 . _ - ยาว 3–24 ตัว · เปลี่ยนภายหลังไม่ได้' : 'เปลี่ยนชื่อผู้ใช้ไม่ได้' },
+      { key:'name', label:'ชื่อที่แสดง', required:true, ph:'เช่น สมชาย' },
+      { key:'role', label:'สิทธิ์การใช้งาน', type:'select', blank:false, required:true,
+        options:['ดูอย่างเดียว','แก้ไขได้','ผู้ดูแล'],
+        hint:'ดูอย่างเดียว = เปิดดูได้ทุกหน้า · แก้ไขได้ = เพิ่ม/แก้/ลบข้อมูล · ผู้ดูแล = จัดการผู้ใช้และการตั้งค่าได้ด้วย' },
+      { key:'password', label: isNew ? 'รหัสผ่านเริ่มต้น' : 'ตั้งรหัสผ่านใหม่ (เว้นว่าง = ไม่เปลี่ยน)',
+        required:isNew, ph:'อย่างน้อย 8 ตัวอักษร',
+        hint:'จดไว้ส่งให้เจ้าตัว — ระบบเก็บแบบเข้ารหัส เปิดดูย้อนหลังไม่ได้' },
+      { key:'mustChange', label:'ให้เปลี่ยนรหัสผ่านตอนเข้าครั้งแรก', type:'select', blank:false,
+        options:[{value:'true',label:'ใช่ (แนะนำ)'},{value:'false',label:'ไม่ต้อง'}] },
+      { key:'status', label:'สถานะ', type:'select', blank:false, options:['ใช้งาน','ระงับ'],
+        hint:'ระงับ = เข้าระบบไม่ได้ทันที แต่ยังเก็บบัญชีไว้' },
+      { key:'note', label:'หมายเหตุ', type:'textarea', full:true }
+    ],
+    wide: true
+  });
+
+  // ชื่อผู้ใช้เปลี่ยนไม่ได้ ล็อกช่องไว้เลยจะได้ไม่เข้าใจผิด
+  if (!isNew) {
+    var el = document.getElementById('f_username');
+    if (el) { el.readOnly = true; el.style.background = 'var(--surface-2)'; }
+  }
+}
+
+function delUser(username){
+  confirmAction('ลบผู้ใช้ "' + username + '" ใช่ไหม — เข้าระบบไม่ได้อีกทันที', function(){
+    callApi('user.delete', { username: username }).then(function(){
+      toast('ลบผู้ใช้แล้ว', 'ok');
+      load();
+    }).catch(function(e){ toast(e.message || e, 'err'); });
+  });
+}
+
+/* ---- ลิงก์เข้าใช้งาน ---- */
+
+function settingsShareCard(links){
+  if (!links || !links.appUrl) {
+    return card('🔗 ลิงก์เข้าใช้งาน',
+      '<div class="empty">ยังหาลิงก์จริงไม่เจอ — เปิดเว็บแอปจากลิงก์ที่ลงท้าย /exec สักครั้ง แล้วระบบจะจำให้เอง</div>');
+  }
+  return card('🔗 ลิงก์เข้าใช้งาน',
+    '<div class="f mb12"><label>ลิงก์หลัก — ส่งให้ทุกคนได้ (เข้าด้วยชื่อผู้ใช้และรหัสผ่าน)</label>' +
+      '<input class="inp" id="appUrl" readonly value="' + esc(links.appUrl) + '" onclick="this.select()"></div>' +
+    '<div class="row mb12">' +
+      '<button class="btn pri" onclick="copyField(\'appUrl\')">📋 คัดลอกลิงก์หลัก</button>' +
+    '</div>' +
+    '<div class="hr"></div>' +
+    '<div class="f mb12"><label>👀 ลิงก์ดูอย่างเดียวแบบไม่ต้องล็อกอิน</label>' +
+      '<input class="inp" id="shareUrl" readonly value="' + esc(links.viewUrl) + '" onclick="this.select()"></div>' +
+    '<p class="fs12 ' + (links.shareEnabled ? 'muted' : 'warn-text') + '">' +
+      (links.shareEnabled
+        ? 'เปิดอยู่ — ใครก็ตามที่มีลิงก์นี้เปิดดูข้อมูลได้โดยไม่ต้องล็อกอิน'
+        : '⚠️ ปิดอยู่ — ลิงก์นี้ยังใช้ไม่ได้ เปิดสวิตช์ได้ที่หัวข้อ "ความปลอดภัยและการเข้าใช้งาน" ด้านบน') +
+    '</p>' +
+    '<div class="row mt12">' +
+      '<button class="btn" onclick="copyField(\'shareUrl\')">📋 คัดลอกลิงก์แชร์</button>' +
+      '<button class="btn dgr" onclick="doRotateShare()">🔁 ออกลิงก์แชร์ใหม่</button>' +
+    '</div>' +
+    '<div class="hr"></div>' +
+    '<p class="fs12 muted">🆘 ลิงก์กู้ระบบ (ใช้ตอนลืมรหัสผ่านจนเข้าไม่ได้ — ห้ามส่งต่อ)<br>' +
+    '<code class="fs12">' + esc(links.adminUrl) + '</code></p>');
+}
+
+function copyField(id){
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.select();
+  try { document.execCommand('copy'); toast('คัดลอกแล้ว', 'ok'); }
+  catch (e) { toast('กดค้างที่ช่องแล้วเลือก คัดลอก', 'err'); }
+}
+</script>

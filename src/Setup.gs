@@ -28,6 +28,8 @@ function onOpen() {
     .addSeparator()
     .addItem('🩺 ซ่อมข้อมูลที่คอลัมน์เลื่อน', 'REPAIR')
     .addSeparator()
+    .addItem('🔐 ตั้งรหัสผ่านผู้ดูแลใหม่', 'resetAdminPassword')
+    .addSeparator()
     .addItem('💾 สำรองข้อมูลลง Drive ตอนนี้', 'backupNow')
     .addItem('🗓️ ตั้งสำรองข้อมูลอัตโนมัติทุกวัน', 'installBackupTrigger')
     .addToUi();
@@ -56,6 +58,7 @@ function setupSystem() {
   seedRooms_();
   seedSettings_();
   ensureTokens_();
+  ensureFirstAdmin_();     // ต้องมีผู้ดูแลอย่างน้อยหนึ่งคนเสมอ ไม่งั้นไม่มีใครเข้าระบบได้
   ensureDriveFolders_();
 
   var msg = 'ติดตั้งระบบเรียบร้อย\n\n' +
@@ -167,8 +170,11 @@ function linksMessage_() {
 
   if (url && !isTestUrl_(url)) {
     return '━━━━━━━━━━━━━━━━━━━━━━\n' +
-      '🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' + url + '?key=' + admin + '\n\n' +
-      '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้ใครก็ได้)\n' + url + '?key=' + view + '\n' +
+      '🔗 ลิงก์เข้าใช้งาน (ใช้ลิงก์นี้เป็นหลัก — ส่งให้ทุกคนได้)\n' + url + '\n' +
+      '   เข้าด้วยชื่อผู้ใช้และรหัสผ่าน แล้วตั้ง PIN 6 หลักไว้ใช้ครั้งต่อไป\n\n' +
+      '🆘 ลิงก์กู้ระบบ (ใช้ตอนลืมรหัสผ่านจนเข้าไม่ได้ — ห้ามส่งต่อ)\n' + url + '?key=' + admin + '\n\n' +
+      '👀 ลิงก์ดูอย่างเดียวแบบไม่ต้องล็อกอิน\n' + url + '?key=' + view + '\n' +
+      '   ใช้ได้ต่อเมื่อเปิดสวิตช์ "เปิดลิงก์แชร์แบบไม่ต้องล็อกอิน" ในหน้าตั้งค่า\n' +
       '━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       'เปิดในมือถือแล้วกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป';
   }
@@ -242,6 +248,7 @@ function START_HERE() {
       : '✅ ข้อมูลเดิมมีอยู่แล้ว (' + after + ' รายการซื้อ) — ข้ามการนำเข้า');
 
     log.push('✅ ออกกุญแจผู้ดูแลและกุญแจแชร์แล้ว');
+    log.push('✅ เปิดระบบล็อกอิน · ตั้งค่า · อ่านข้อความจากรูป');
 
     try { installBackupTrigger(); log.push('✅ สำรองข้อมูลลง Drive อัตโนมัติ ทุกวันตี 2'); }
     catch (e) { log.push('⚠️ ตั้งสำรองอัตโนมัติไม่ได้: ' + e.message); }
@@ -252,7 +259,50 @@ function START_HERE() {
     QUIET_ = wasQuiet;
   }
 
-  return alert_('The M Corner AP — ติดตั้งเรียบร้อย\n\n' + log.join('\n') + '\n\n' + linksMessage_());
+  return alert_('The M Corner AP — ติดตั้งเรียบร้อย\n\n' + log.join('\n') + '\n\n' +
+    firstAdminMessage_() + linksMessage_());
+}
+
+/**
+ * รหัสผ่านของผู้ดูแลคนแรก — แสดงครั้งเดียวแล้วลบออกจากที่เก็บชั่วคราวทันที
+ * ตัวรหัสผ่านจริงถูกเก็บแบบเข้ารหัสในชีต Users อ่านย้อนกลับไม่ได้
+ * ถ้าพลาดไม่ได้จด ให้ใช้เมนู "ตั้งรหัสผ่านผู้ดูแลใหม่"
+ */
+function firstAdminMessage_() {
+  var pw = props_().getProperty('FIRST_ADMIN_PASSWORD');
+  if (!pw) return '';
+  props_().deleteProperty('FIRST_ADMIN_PASSWORD');
+  return '━━━━━━━━━━━━━━━━━━━━━━\n' +
+    '👤 บัญชีผู้ดูแลคนแรก (จดไว้ก่อนปิดหน้าต่างนี้)\n\n' +
+    '   ชื่อผู้ใช้  admin\n' +
+    '   รหัสผ่าน  ' + pw + '\n\n' +
+    'ระบบจะให้เปลี่ยนรหัสผ่านทันทีที่ล็อกอินครั้งแรก\n' +
+    'ข้อความนี้แสดงครั้งเดียว — ถ้าพลาด ใช้เมนู 🔐 ตั้งรหัสผ่านผู้ดูแลใหม่\n' +
+    '━━━━━━━━━━━━━━━━━━━━━━\n\n';
+}
+
+/**
+ * ตั้งรหัสผ่านผู้ดูแลใหม่ เมื่อเข้าระบบไม่ได้จริง ๆ
+ * เรียกจากเมนูในชีตเท่านั้น (คนเรียกต้องเปิดชีตได้อยู่แล้ว)
+ */
+function resetAdminPassword() {
+  var u = findUser_('admin');
+  if (!u) {
+    var made = ensureFirstAdmin_();
+    return alert_('สร้างบัญชี admin ใหม่แล้ว\n\nชื่อผู้ใช้  admin\nรหัสผ่าน  ' + made.password);
+  }
+  var pw = randomToken_(12);
+  var salt = randomToken_(16);
+  updateRow_(SHEETS.USERS, u._row, Object.assign({}, u, {
+    passSalt: salt, passHash: hashSecret_(pw, salt),
+    mustChange: true, status: 'ใช้งาน', failCount: 0, lockUntil: '', updatedAt: new Date()
+  }));
+  revokeAllSessions_('admin');
+  logActivity_('ตั้งรหัสผ่านผู้ดูแลใหม่จากเมนูชีต', 'admin', '');
+  return alert_('ตั้งรหัสผ่านใหม่ให้บัญชี admin แล้ว\n\n' +
+    '   ชื่อผู้ใช้  admin\n   รหัสผ่าน  ' + pw + '\n\n' +
+    'อุปกรณ์ที่เคยตั้ง PIN และหน้าที่ล็อกอินค้างไว้ ถูกให้ออกจากระบบทั้งหมดแล้ว\n' +
+    'ระบบจะให้เปลี่ยนรหัสผ่านทันทีที่ล็อกอิน');
 }
 
 /** ชื่อไทยของ START_HERE เผื่อหาในรายการฟังก์ชันง่ายขึ้น */

@@ -3,7 +3,8 @@ require('./mock-gas.js');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const order = ['Config.gs','Util.gs','Setup.gs','Auth.gs','Drive.gs','Seed.gs','Finance.gs','Backup.gs','Migrate.gs',
+const order = ['Config.gs','Util.gs','Setup.gs','Users.gs','Auth.gs','Settings.gs','Drive.gs','Ocr.gs',
+               'Seed.gs','Finance.gs','Backup.gs','Migrate.gs',
                'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs',
                'Api.gs','Web.gs','Notify.gs'];
 order.forEach(f => vm.runInThisContext(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f }));
@@ -411,7 +412,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 54);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 72);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
@@ -433,7 +434,8 @@ check('เรียงจากมากไปน้อย', cpr.rooms[0].total 
 const up = upcomingSchedule_(365);
 check('ปฏิทินงานที่จะถึงทำงาน', Array.isArray(up), true);
 const dump = exportAll_();
-check('สำรองครบ 11 ชีต', Object.keys(dump.sheets).length, 11);
+check('สำรองครบทุกชีตที่ส่งออกได้', Object.keys(dump.sheets).length, Object.keys(SHEETS).length - EXPORT_SKIP_SHEETS.length);
+check('ไฟล์สำรองไม่มีชีต Sessions', dump.sheets[SHEETS.SESSIONS], undefined);
 check('สำรองรายการซื้อครบ', dump.counts.Purchases, 94);
 const csv = exportCsv_(SHEETS.PURCHASES);
 check('CSV มีหัวตาราง', csv.content.indexOf('รายการสินค้า') > 0, true);
@@ -453,10 +455,17 @@ check('สร้างกุญแจผู้ดูแลแล้ว', adminKe
 check('สร้างกุญแจแชร์แล้ว', viewKey.length >= 20, true);
 check('กุญแจสองชุดไม่ซ้ำกัน', adminKey !== viewKey, true);
 
-check('ไม่มีกุญแจ → บทบาท none', resolveRole_(''), 'none');
-check('กุญแจผู้ดูแล → admin', resolveRole_(adminKey), 'admin');
-check('กุญแจแชร์ → viewer', resolveRole_(viewKey), 'viewer');
-check('กุญแจมั่ว → none', resolveRole_('xxxxxxxxxxxxxxxxxxxxxx'), 'none');
+// ลิงก์แชร์ต้องถูกเปิดสวิตช์ก่อนถึงใช้ได้ (ค่าตั้งต้นคือปิด)
+setSetting_('share_link_enabled', 'เปิด');
+const roleOf = k => resolveActor_({ _key: k }).role;
+check('ไม่มีกุญแจ → ไม่มีสิทธิ์', roleOf(''), 'none');
+check('กุญแจกู้ระบบ → ผู้ดูแล', roleOf(adminKey), ROLE.ADMIN);
+check('กุญแจแชร์ → ดูอย่างเดียว', roleOf(viewKey), ROLE.VIEWER);
+check('กุญแจมั่ว → ไม่มีสิทธิ์', roleOf('xxxxxxxxxxxxxxxxxxxxxx'), 'none');
+setSetting_('share_link_enabled', 'ปิด');
+check('ปิดสวิตช์แล้วกุญแจแชร์ใช้ไม่ได้', roleOf(viewKey), 'none');
+check('ปิดสวิตช์ไม่กระทบกุญแจกู้ระบบ', roleOf(adminKey), ROLE.ADMIN);
+setSetting_('share_link_enabled', 'เปิด');
 
 check('ไม่มีกุญแจ อ่านข้อมูลไม่ได้', api('purchase.list', { year: 'all' }).ok, false);
 check('กุญแจแชร์ อ่านข้อมูลได้', api('purchase.list', { year: 'all', _key: viewKey }).ok, true);
@@ -466,7 +475,7 @@ check('จำนวนรายการไม่เปลี่ยนหลั�
 check('กุญแจแชร์ ลบไม่ได้', api('purchase.delete', { _key: viewKey, id: 'x' }).ok, false);
 check('กุญแจแชร์ กู้คืนข้อมูลไม่ได้', api('backup.import', { _key: viewKey, data: {} }).ok, false);
 check('กุญแจแชร์ ออกลิงก์ใหม่ไม่ได้', api('share.rotateToken', { _key: viewKey }).ok, false);
-check('กุญแจแชร์ ไม่เห็นลิงก์ผู้ดูแล', api('share.links', { _key: viewKey }).data.adminUrl, '');
+check('กุญแจแชร์ ขอดูลิงก์ไม่ได้เลย', api('share.links', { _key: viewKey }).ok, false);
 check('กุญแจแชร์ ไม่เห็นลิงก์ Google Sheet', api('app.bootstrap', { _key: viewKey }).data.sheetUrl, '');
 
 const added = api('purchase.save', { _key: adminKey, record: { item: 'ผู้ดูแลเพิ่มได้', price: 99, buyDate: '2026-01-01' } });
@@ -474,15 +483,16 @@ check('กุญแจผู้ดูแล แก้ข้อมูลได้
 check('ผู้ดูแลเห็นลิงก์ Google Sheet', api('app.bootstrap', { _key: adminKey }).data.sheetUrl.length > 0, true);
 check('ผู้ดูแลแก้ไขได้ (canEdit)', api('app.bootstrap', { _key: adminKey }).data.canEdit, true);
 check('ผู้ดูลิงก์แชร์แก้ไม่ได้ (canEdit)', api('app.bootstrap', { _key: viewKey }).data.canEdit, false);
+check('ผู้ดูลิงก์แชร์ไม่ใช่ผู้ดูแล', api('app.bootstrap', { _key: viewKey }).data.isAdmin, false);
 api('purchase.delete', { _key: adminKey, id: added.data.id });
 
 const rotated = api('share.rotateToken', { _key: adminKey }).data;
 check('ออกลิงก์แชร์ใหม่แล้วกุญแจเปลี่ยน', rotated.token !== viewKey, true);
-check('กุญแจแชร์เดิมใช้ไม่ได้อีก', resolveRole_(viewKey), 'none');
-check('กุญแจแชร์ใหม่ใช้ได้', resolveRole_(rotated.token), 'viewer');
-check('ออกลิงก์ใหม่ไม่กระทบกุญแจผู้ดูแล', resolveRole_(adminKey), 'admin');
+check('กุญแจแชร์เดิมใช้ไม่ได้อีก', roleOf(viewKey), 'none');
+check('กุญแจแชร์ใหม่ใช้ได้', roleOf(rotated.token), ROLE.VIEWER);
+check('ออกลิงก์ใหม่ไม่กระทบกุญแจกู้ระบบ', roleOf(adminKey), ROLE.ADMIN);
 global.Session.getActiveUser = realUser;
-check('เจ้าของชีตเข้าได้แม้ไม่มีกุญแจ', resolveRole_(''), 'admin');
+check('เจ้าของชีตเข้าได้แม้ไม่มีกุญแจ', roleOf(''), ROLE.ADMIN);
 
 console.log('\n── 13. ตัวติดตั้งรวบยอด START_HERE ──');
 {
@@ -493,13 +503,13 @@ console.log('\n── 13. ตัวติดตั้งรวบยอด START
   ['SEEDED_V1'].forEach(k => PropertiesService.getScriptProperties().deleteProperty(k));
   const out = START_HERE();
   check('START_HERE รันจบและคืนสรุป', typeof out === 'string' && out.indexOf('ติดตั้งเรียบร้อย') > 0, true);
-  check('สร้างชีตครบ 11 แท็บ',
+  check('สร้างชีตครบทุกแท็บ',
     Object.keys(SHEETS).every(k => !!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS[k])), true);
   check('นำเข้าข้อมูลครบ 94 รายการซื้อ', readRows_(SHEETS.PURCHASES).length, 94);
   check('ทะเบียนห้อง 24 ห้อง', readRows_(SHEETS.ROOMS).length, 24);
   check('ออกกุญแจให้แล้วทั้งสองชุด',
     getSetting_('admin_token', '').length >= 20 && getSetting_('view_token', '').length >= 20, true);
-  check('บอกวิธี deploy ต่อเมื่อยังไม่ได้ deploy', out.indexOf('Web app') > 0 || out.indexOf('ลิงก์ของคุณ') > 0, true);
+  check('บอกวิธี deploy ต่อเมื่อยังไม่ได้ deploy', out.indexOf('Web app') > 0 || out.indexOf('ลิงก์เข้าใช้งาน') > 0, true);
   const again = START_HERE();
   check('รันซ้ำไม่ทำข้อมูลซ้ำ', readRows_(SHEETS.PURCHASES).length, 94);
   check('รันซ้ำไม่สร้างห้องซ้ำ', readRows_(SHEETS.ROOMS).length, 24);
@@ -557,7 +567,7 @@ check('app.version เรียกได้ด้วยกุญแจแชร�
 
 const bk = backupToDrive_();
 check('สำรองลง Drive สำเร็จ', /^the-m-corner-ap-.*\.json$/.test(bk.name), true);
-check('ไฟล์สำรองมีข้อมูลครบ 11 ชีต', Object.keys(bk.counts).length, 11);
+check('ไฟล์สำรองมีข้อมูลครบทุกชีตที่ส่งออกได้', Object.keys(bk.counts).length, Object.keys(SHEETS).length - EXPORT_SKIP_SHEETS.length);
 check('ไฟล์สำรองที่เพิ่งสร้างอยู่ในประวัติ',
   listBackups_().some(b => b.name === bk.name), true);
 setSetting_('backup_keep', '2');
@@ -571,6 +581,193 @@ check('ค้นหาสั้นเกินไปคืนว่าง', glob
 const digest = buildDigest_();
 check('สรุปแจ้งเตือนสร้างได้', !!digest.generatedAt, true);
 check('ส่งอีเมลได้', String(sendDigestNow()).indexOf('ส่งสรุป') === 0, true);
+
+console.log('\n── 16. บัญชีผู้ใช้ · ล็อกอิน · PIN ──');
+{
+  const realUser2 = global.Session.getActiveUser;
+  global.Session.getActiveUser = () => ({ getEmail: () => '' });   // ผู้ใช้ทั่วไป ไม่ใช่เจ้าของชีต
+  const admKey = getSetting_('admin_token', '');
+
+  // --- ผู้ดูแลคนแรกถูกสร้างตอนติดตั้ง ---
+  check('มีบัญชี admin ตอนติดตั้ง', !!findUser_('admin'), true);
+  check('admin เป็นผู้ดูแล', findUser_('admin').role, ROLE.ADMIN);
+  check('รหัสผ่านเก็บแบบเข้ารหัส ไม่ใช่ข้อความเปล่า', findUser_('admin').passHash.length >= 40, true);
+
+  // --- ตั้งรหัสผ่านที่รู้ค่าเพื่อทดสอบ ---
+  const u0 = findUser_('admin');
+  const salt0 = randomToken_(16);
+  updateRow_(SHEETS.USERS, u0._row, Object.assign({}, u0, {
+    passSalt: salt0, passHash: hashSecret_('AdminPass123', salt0), mustChange: false
+  }));
+
+  check('รหัสผ่านผิด ล็อกอินไม่ผ่าน', (() => { try { login_('admin','ผิดแน่'); return false; } catch(e){ return true; } })(), true);
+
+  const ses = login_('admin', 'AdminPass123');
+  check('ล็อกอินถูกต้องได้รหัสอ้างอิง', ses.session.length >= 30, true);
+  check('ล็อกอินคืนบทบาทมาด้วย', ses.user.role, ROLE.ADMIN);
+  check('รหัสอ้างอิงใช้ระบุตัวตนได้', sessionUser_(ses.session).username, 'admin');
+  check('รหัสอ้างอิงมั่วใช้ไม่ได้', sessionUser_('ไม่มีจริงเลยนะ'), null);
+
+  // --- ตรวจสิทธิ์ผ่าน api() จริง ---
+  check('มี session แล้วอ่านข้อมูลได้', api('purchase.list', { _session: ses.session, year:'all' }).ok, true);
+  check('มี session แล้วแก้ข้อมูลได้',
+    api('purchase.save', { _session: ses.session, record:{ item:'ทดสอบสิทธิ์', price:1, buyDate:'2026-01-01' } }).ok, true);
+  const tmpRow = api('purchase.list', { _session: ses.session, year:'all' }).data.filter(r=>r.item==='ทดสอบสิทธิ์')[0];
+  if (tmpRow) api('purchase.delete', { _session: ses.session, id: tmpRow.id });
+
+  // --- สร้างผู้ใช้สามระดับ ---
+  check('ผู้ดูแลสร้างผู้ใช้ได้',
+    api('user.save', { _session: ses.session, record:{ username:'viewer1', name:'คนดู', role:'ดูอย่างเดียว', password:'ViewPass123' } }).ok, true);
+  check('สร้างผู้ใช้แก้ไขได้',
+    api('user.save', { _session: ses.session, record:{ username:'editor1', name:'คนแก้', role:'แก้ไขได้', password:'EditPass123' } }).ok, true);
+  check('ชื่อผู้ใช้ผิดรูปแบบถูกปฏิเสธ',
+    api('user.save', { _session: ses.session, record:{ username:'ก', name:'x', role:'ดูอย่างเดียว', password:'12345678' } }).ok, false);
+  check('รหัสผ่านสั้นเกินถูกปฏิเสธ',
+    api('user.save', { _session: ses.session, record:{ username:'shorty', name:'x', role:'ดูอย่างเดียว', password:'123' } }).ok, false);
+
+  const vs = login_('viewer1', 'ViewPass123').session;
+  const es = login_('editor1', 'EditPass123').session;
+
+  check('คนดูอ่านข้อมูลได้', api('purchase.list', { _session: vs, year:'all' }).ok, true);
+  check('คนดูแก้ข้อมูลไม่ได้',
+    api('purchase.save', { _session: vs, record:{ item:'แอบเพิ่ม', price:1, buyDate:'2026-01-01' } }).ok, false);
+  check('คนดูสำรองข้อมูลไม่ได้ (ไฟล์มีข้อมูลบัญชีคนอื่น)', api('backup.export', { _session: vs }).ok, false);
+  check('คนดูดึง CSV ไม่ได้', api('backup.csv', { _session: vs, sheet: SHEETS.USERS }).ok, false);
+  check('คนดูจัดการผู้ใช้ไม่ได้', api('user.list', { _session: vs }).ok, false);
+  check('คนดูอัปโหลดไฟล์เข้า Drive เจ้าของไม่ได้',
+    api('file.upload', { _session: vs, bucket:'misc', files:[{ name:'x.jpg', mimeType:'image/jpeg', dataUrl:'data:image/jpeg;base64,QUJD' }] }).ok, false);
+  check('คนดูลบไฟล์แนบไม่ได้', api('file.trash', { _session: vs, id:'FILE1' }).ok, false);
+  check('คนดูสั่งอ่านรูปไม่ได้ (เปลืองโควตา Drive เจ้าของ)',
+    api('ocr.read', { _session: vs, dataUrl:'data:image/jpeg;base64,QUJD' }).ok, false);
+  check('คนดูเปลี่ยนรหัสผ่านตัวเองได้ (ไม่ใช่การแก้ข้อมูลหอ)',
+    api('auth.changePassword', { _session: vs, oldPassword:'ViewPass123', newPassword:'ViewPass456' }).ok, true);
+  api('auth.changePassword', { _session: vs, oldPassword:'ViewPass456', newPassword:'ViewPass123' });
+  check('คนดูแก้การตั้งค่าไม่ได้', api('settings.save', { _session: vs, values:{ building_name:'ยึดแล้ว' } }).ok, false);
+
+  check('คนแก้ไขได้ เพิ่มข้อมูลได้',
+    api('purchase.save', { _session: es, record:{ item:'คนแก้เพิ่ม', price:5, buyDate:'2026-01-01' } }).ok, true);
+  check('คนแก้ไขได้ จัดการผู้ใช้ไม่ได้', api('user.list', { _session: es }).ok, false);
+  check('คนแก้ไขได้ ดูการตั้งค่าได้', api('settings.list', { _session: es }).ok, true);
+  check('คนแก้ไขได้ ไม่เห็นปุ่มบันทึกการตั้งค่า', api('settings.list', { _session: es }).data.canEdit, false);
+  const mine = api('purchase.list', { _session: es, year:'all' }).data.filter(r=>r.item==='คนแก้เพิ่ม')[0];
+  if (mine) api('purchase.delete', { _session: es, id: mine.id });
+
+  // --- ชีตลับต้องไม่หลุดออกไปทางไฟล์สำรอง ---
+  const admDump = api('backup.export', { _session: ses.session });
+  check('ผู้ดูแลสำรองข้อมูลได้', admDump.ok, true);
+  check('ไฟล์สำรองไม่มีรหัสอ้างอิงของใครเลย', admDump.data.sheets[SHEETS.SESSIONS], undefined);
+  check('ส่งออก Sessions เป็น CSV ไม่ได้', api('backup.csv', { _session: ses.session, sheet: SHEETS.SESSIONS }).ok, false);
+
+  // --- PIN 6 หลัก ---
+  const pinRes = api('auth.setPin', { _session: ses.session, pin:'482913', device:'เครื่องทดสอบ' });
+  check('ตั้ง PIN สำเร็จ', pinRes.ok, true);
+  const dev = pinRes.data.device;
+  check('PIN เดาง่ายถูกปฏิเสธ', api('auth.setPin', { _session: ses.session, pin:'111111' }).ok, false);
+  check('PIN ไม่ครบ 6 หลักถูกปฏิเสธ', api('auth.setPin', { _session: ses.session, pin:'123' }).ok, false);
+
+  check('ปลดล็อกด้วย PIN ผิดไม่ได้', api('auth.unlock', { device: dev, pin:'000000' }).ok, false);
+  const un = api('auth.unlock', { device: dev, pin:'482913' });
+  check('ปลดล็อกด้วย PIN ถูกได้ session ใหม่', un.ok, true);
+  check('session จาก PIN ใช้งานได้จริง', sessionUser_(un.data.session).username, 'admin');
+  check('รหัสอุปกรณ์ใช้แทน session ไม่ได้', sessionUser_(dev), null);
+
+  check('อุปกรณ์โผล่ในรายการของเจ้าตัว', api('auth.devices', { _session: ses.session }).data.length >= 1, true);
+  check('รายชื่ออุปกรณ์ไม่มี PIN ติดมาด้วย',
+    Object.keys(api('auth.devices', { _session: ses.session }).data[0]).indexOf('pinHash'), -1);
+
+  // ใส่ PIN ผิดครบโควตาแล้วอุปกรณ์ต้องถูกยกเลิก
+  for (let i = 0; i < 5; i++) api('auth.unlock', { device: dev, pin:'000001' });
+  check('ใส่ PIN ผิด 5 ครั้งแล้วอุปกรณ์ถูกยกเลิก', api('auth.unlock', { device: dev, pin:'482913' }).ok, false);
+
+  // --- ล็อกบัญชีเมื่อใส่รหัสผ่านผิดหลายครั้ง ---
+  setSetting_('login_max_fail', '3');
+  for (let i = 0; i < 3; i++) { try { login_('viewer1','ผิด'); } catch(e){} }
+  check('ใส่รหัสผ่านผิดครบโควตาแล้วบัญชีถูกล็อก',
+    (() => { try { login_('viewer1','ViewPass123'); return false; } catch(e){ return /รออีก/.test(e.message); } })(), true);
+  const vlock = findUser_('viewer1');
+  updateRow_(SHEETS.USERS, vlock._row, Object.assign({}, vlock, { lockUntil:'', failCount:0 }));
+  check('ปลดล็อกแล้วเข้าได้ตามปกติ', login_('viewer1','ViewPass123').user.username, 'viewer1');
+  setSetting_('login_max_fail', '5');
+
+  // --- กันไม่ให้ระบบเหลือผู้ดูแลศูนย์คน ---
+  check('ลดสิทธิ์ผู้ดูแลคนสุดท้ายไม่ได้',
+    api('user.save', { _session: ses.session, record:{ username:'admin', name:'ผู้ดูแลระบบ', role:'ดูอย่างเดียว' } }).ok, false);
+  check('ลบบัญชีตัวเองไม่ได้', api('user.delete', { _session: ses.session, username:'admin' }).ok, false);
+  check('ลบผู้ใช้คนอื่นได้', api('user.delete', { _session: ses.session, username:'viewer1' }).ok, true);
+  check('ลบแล้วล็อกอินไม่ได้อีก', (() => { try { login_('viewer1','ViewPass123'); return false; } catch(e){ return true; } })(), true);
+
+  // --- ระงับบัญชี ---
+  api('user.save', { _session: ses.session, record:{ username:'editor1', name:'คนแก้', role:'แก้ไขได้', status:'ระงับ' } });
+  check('บัญชีที่ถูกระงับใช้ session เดิมต่อไม่ได้', api('purchase.list', { _session: es, year:'all' }).ok, false);
+  check('บัญชีที่ถูกระงับล็อกอินใหม่ไม่ได้',
+    (() => { try { login_('editor1','EditPass123'); return false; } catch(e){ return true; } })(), true);
+
+  // --- ออกจากระบบ ---
+  const tmpSes = login_('admin','AdminPass123').session;
+  check('ก่อนออกจากระบบใช้งานได้', api('purchase.list', { _session: tmpSes, year:'all' }).ok, true);
+  api('auth.logout', { _session: tmpSes });
+  check('ออกจากระบบแล้วใช้ไม่ได้', api('purchase.list', { _session: tmpSes, year:'all' }).ok, false);
+  check('ระบบบอกให้กลับไปล็อกอิน', api('purchase.list', { _session: tmpSes, year:'all' }).needLogin, true);
+
+  // --- คำสั่งที่เปิดให้เรียกก่อนล็อกอิน ---
+  check('auth.me เรียกได้โดยไม่ต้องล็อกอิน', api('auth.me', {}).ok, true);
+  check('ยังไม่ล็อกอิน signedIn เป็นเท็จ', api('auth.me', {}).data.signedIn, false);
+  check('กุญแจกู้ระบบยังเข้าได้เสมอ', api('auth.me', { _key: admKey }).data.isAdmin, true);
+
+  global.Session.getActiveUser = realUser2;
+}
+
+console.log('\n── 17. หน้าตั้งค่า ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  const sl = api('settings.list', { _key: admKey });
+  check('ผังหน้าตั้งค่าโหลดได้', sl.ok, true);
+  check('มีหลายหมวด', sl.data.groups.length >= 6, true);
+  const allKeys = sl.data.groups.reduce((a,g) => a.concat(g.items.map(i=>i.key)), []);
+  check('มีตัวเลือกธีมให้ตั้ง', allKeys.indexOf('theme') >= 0, true);
+  check('ไม่ส่งรหัสเข้าตึกออกไปหน้าเว็บ', allKeys.indexOf('door_code'), -1);
+  check('ไม่ส่งกุญแจผู้ดูแลออกไปหน้าเว็บ', allKeys.indexOf('admin_token'), -1);
+
+  check('บันทึกค่าที่ถูกต้องได้',
+    api('settings.save', { _key: admKey, values:{ ac_cycle_months:'4' } }).ok, true);
+  check('ค่าถูกบันทึกลงชีตจริง', getSetting_('ac_cycle_months',''), '4');
+  check('ตัวเลขที่ไม่ใช่ตัวเลขถูกปฏิเสธ',
+    api('settings.save', { _key: admKey, values:{ ac_cycle_months:'หกเดือน' } }).ok, false);
+  check('ค่านอกตัวเลือกถูกปฏิเสธ',
+    api('settings.save', { _key: admKey, values:{ theme:'สายรุ้ง' } }).ok, false);
+  check('ค่าลับแก้ผ่านหน้าเว็บไม่ได้',
+    (api('settings.save', { _key: admKey, values:{ admin_token:'ยึดระบบ' } }).ok &&
+     getSetting_('admin_token','') === admKey), true);
+  api('settings.save', { _key: admKey, values:{ ac_cycle_months:'6' } });
+}
+
+console.log('\n── 18. อ่านข้อความจากรูป (OCR) ──');
+{
+  const st = require('./mock-gas.js').store;
+  const admKey = getSetting_('admin_token', '');
+  st.ocrText = [
+    'ร้านไทยวัสดุ สาขาบางแค',
+    'วันที่ 01/09/2569',
+    'ปั๊มน้ำ 750W 4,250.00',
+    'สายไฟ VAF 2x1.5 350.00',
+    'รวมทั้งสิ้น 4,600.00'
+  ].join('\n');
+
+  const r = api('ocr.read', { _key: admKey, dataUrl:'data:image/jpeg;base64,QUJD', context:'purchase' });
+  check('อ่านรูปแล้วคืนผลได้', r.ok, true);
+  check('จับยอดรวมได้', r.data.guess.amount, 4600);
+  check('จับวันที่ พ.ศ. แล้วแปลงเป็น ค.ศ.', r.data.guess.date, '2026-09-01');
+  check('จับชื่อร้านได้', r.data.guess.vendor, 'ร้านไทยวัสดุ สาขาบางแค');
+  check('แยกรายการสินค้าได้', r.data.guess.items.length, 2);
+  check('ชื่อสินค้าไม่โดนตัดตัวเลขในชื่อทิ้ง', r.data.guess.items[0].name, 'ปั๊มน้ำ 750W');
+  check('จับคู่ช่องให้ฟอร์มซื้อของ', r.data.guess.fields.buyDate, '2026-09-01');
+  check('เรียก Drive แล้วลบไฟล์ชั่วคราวทิ้ง', st.fetches.length >= 2, true);
+
+  setSetting_('ocr_enabled', 'ปิด');
+  check('ปิดสวิตช์แล้วเรียกไม่ได้',
+    api('ocr.read', { _key: admKey, dataUrl:'data:image/jpeg;base64,QUJD' }).ok, false);
+  setSetting_('ocr_enabled', 'เปิด');
+}
 
 console.log('\n════════════════════════════');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);

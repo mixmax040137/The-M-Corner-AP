@@ -1,10 +1,10 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-08-31 17:43 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-01 03:59 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
- * ประกอบด้วย: Config.gs, Util.gs, Setup.gs, Auth.gs, Drive.gs, Seed.gs, Finance.gs, Migrate.gs, Backup.gs, Debt.gs, Purchase.gs, Maintenance.gs, Building.gs, Dashboard.gs, Api.gs, Notify.gs, Web.gs
+ * ประกอบด้วย: Config.gs, Util.gs, Setup.gs, Users.gs, Auth.gs, Settings.gs, Drive.gs, Ocr.gs, Seed.gs, Finance.gs, Migrate.gs, Backup.gs, Debt.gs, Purchase.gs, Maintenance.gs, Building.gs, Dashboard.gs, Api.gs, Notify.gs, Web.gs
  */
 
 
@@ -59,6 +59,8 @@ var SHEETS = {
   BUILDING_REPAIRS: 'BuildingRepairs',// ซ่อมแซมตึกโดยรวม
   ASSETS: 'RoomAssets',               // ทรัพย์สินประจำห้อง
   FINANCE: 'Finance',                 // รายรับ-รายจ่ายประจำเดือนของหอ
+  USERS: 'Users',                     // บัญชีผู้ใช้และรหัสผ่าน
+  SESSIONS: 'Sessions',               // การเข้าใช้งานที่ยังไม่หมดอายุ + อุปกรณ์ที่ตั้ง PIN ไว้
   SETTINGS: 'Settings',               // ค่าตั้งต้น / ข้อมูลอาคาร
   LOG: 'ActivityLog'                  // ประวัติการแก้ไข
 };
@@ -230,6 +232,37 @@ SCHEMA[SHEETS.FINANCE] = [
   { key: 'updatedAt', label: 'แก้ไขล่าสุด',    type: 'date' }
 ];
 
+/** บทบาทผู้ใช้ เรียงจากสิทธิ์มากไปน้อย */
+var ROLES = ['ผู้ดูแล', 'แก้ไขได้', 'ดูอย่างเดียว'];
+
+SCHEMA[SHEETS.USERS] = [
+  { key: 'username',  label: 'ชื่อผู้ใช้',      type: 'text' },
+  { key: 'name',      label: 'ชื่อที่แสดง',     type: 'text' },
+  { key: 'role',      label: 'บทบาท',          type: 'select', options: ROLES },
+  { key: 'passHash',  label: 'รหัสผ่าน (เข้ารหัส)', type: 'text' },
+  { key: 'passSalt',  label: 'ค่าสุ่มรหัสผ่าน',  type: 'text' },
+  { key: 'status',    label: 'สถานะ',          type: 'select', options: ['ใช้งาน', 'ระงับ'] },
+  { key: 'mustChange', label: 'ต้องเปลี่ยนรหัสผ่าน', type: 'bool' },
+  { key: 'failCount', label: 'ใส่รหัสผิดติดกัน', type: 'number' },
+  { key: 'lockUntil', label: 'ล็อกถึงเวลา',     type: 'text' },
+  { key: 'lastLogin', label: 'เข้าใช้ล่าสุด',    type: 'text' },
+  { key: 'note',      label: 'หมายเหตุ',       type: 'multiline' },
+  { key: 'updatedAt', label: 'แก้ไขล่าสุด',     type: 'date' }
+];
+
+SCHEMA[SHEETS.SESSIONS] = [
+  { key: 'token',     label: 'รหัสอ้างอิง',     type: 'text' },
+  { key: 'username',  label: 'ชื่อผู้ใช้',      type: 'text' },
+  { key: 'kind',      label: 'ประเภท',         type: 'select', options: ['เข้าใช้งาน', 'อุปกรณ์'] },
+  { key: 'pinHash',   label: 'PIN (เข้ารหัส)',  type: 'text' },
+  { key: 'pinSalt',   label: 'ค่าสุ่ม PIN',     type: 'text' },
+  { key: 'failCount', label: 'ใส่ PIN ผิดติดกัน', type: 'number' },
+  { key: 'device',    label: 'อุปกรณ์',        type: 'text' },
+  { key: 'expiresAt', label: 'หมดอายุ',        type: 'text' },
+  { key: 'createdAt', label: 'สร้างเมื่อ',      type: 'text' },
+  { key: 'lastSeen',  label: 'ใช้งานล่าสุด',    type: 'text' }
+];
+
 SCHEMA[SHEETS.SETTINGS] = [
   { key: 'key',   label: 'คีย์',      type: 'text' },
   { key: 'label', label: 'รายการ',    type: 'text' },
@@ -255,7 +288,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 3;
+var SCHEMA_VERSION = 4;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -275,7 +308,27 @@ var DEFAULT_SETTINGS = [
   { key: 'admin_emails',    label: 'อีเมลผู้ดูแลเพิ่มเติม',     value: '', note: 'คั่นด้วยเครื่องหมายจุลภาค เว้นว่างได้' },
   { key: 'webapp_url',      label: 'Web app URL (ลงท้าย /exec)', value: '', note: 'ระบบจำให้เองตอนเปิดเว็บครั้งแรก · หรือวางเองจาก Deploy > Manage deployments' },
   { key: 'backup_keep',     label: 'เก็บไฟล์สำรองย้อนหลัง (ชุด)', value: '30', note: '' },
-  { key: 'refresh_seconds', label: 'รีเฟรชข้อมูลอัตโนมัติทุก (วินาที)', value: '25', note: 'ใส่ 0 เพื่อปิด' }
+  { key: 'refresh_seconds', label: 'รีเฟรชข้อมูลอัตโนมัติทุก (วินาที)', value: '25', note: 'ใส่ 0 เพื่อปิด' },
+  { key: 'share_link_enabled', label: 'เปิดลิงก์แชร์แบบไม่ต้องล็อกอิน', value: 'ปิด', note: 'เปิด = ใครมีลิงก์แชร์ก็ดูได้เลย · ปิด = ต้องล็อกอินทุกคน' },
+  { key: 'session_hours',   label: 'อยู่ในระบบได้นาน (ชั่วโมง)', value: '12', note: 'ครบแล้วต้องล็อกอินหรือใส่ PIN ใหม่' },
+  { key: 'device_days',     label: 'จำอุปกรณ์ที่ตั้ง PIN ไว้ (วัน)', value: '90', note: '' },
+  { key: 'login_max_fail',  label: 'ใส่รหัสผิดได้กี่ครั้งก่อนล็อก', value: '5', note: '' },
+  { key: 'login_lock_minutes', label: 'ล็อกนานกี่นาทีเมื่อผิดครบ', value: '15', note: '' },
+  { key: 'ocr_enabled',     label: 'เปิดใช้การอ่านข้อความจากรูป', value: 'เปิด', note: 'แนบรูปแล้วระบบเดาข้อความ/ตัวเลขให้ แก้ไขเองได้เสมอ' },
+  { key: 'ocr_language',    label: 'ภาษาที่ใช้อ่านข้อความจากรูป', value: 'th', note: 'th = ไทย · en = อังกฤษ' },
+  { key: 'ocr_autofill',    label: 'เมื่ออ่านรูปเสร็จให้ทำอะไร', value: 'ถามก่อนเติม', note: 'ถามก่อนเติม = ปลอดภัยที่สุด · เติมให้เลย = เร็วที่สุด' },
+  { key: 'theme',           label: 'ธีมสีหน้าจอ',              value: 'ตามเครื่อง', note: 'ตามเครื่อง = สลับสว่าง/มืดตามระบบของอุปกรณ์' },
+  { key: 'accent',          label: 'สีเน้นของระบบ',            value: 'ฟ้าคราม', note: '' },
+  { key: 'number_format',   label: 'รูปแบบตัวเลขเงิน',          value: '1,234.56', note: '' },
+  { key: 'date_format',     label: 'รูปแบบปีที่แสดง',           value: 'พ.ศ. (2569)', note: 'มีผลกับการแสดงผลเท่านั้น ข้อมูลในชีตยังเก็บเป็น ค.ศ. เสมอ' },
+  { key: 'start_page',      label: 'หน้าแรกเมื่อเปิดระบบ',       value: 'แดชบอร์ด', note: '' },
+  { key: 'due_soon_days',   label: 'เตือนก่อนถึงกำหนดชำระ (วัน)', value: '5', note: '' },
+  { key: 'notify_email',    label: 'อีเมลรับสรุปแจ้งเตือน',      value: '', note: 'เว้นว่าง = ส่งเข้าอีเมลเจ้าของชีต' },
+  { key: 'notify_weekday',  label: 'ส่งสรุปทุกวัน',             value: 'จันทร์', note: '' },
+  { key: 'currency',        label: 'สกุลเงิน',                 value: 'บาท', note: '' },
+  { key: 'default_due_day', label: 'วันครบกำหนดชำระประจำเดือน',  value: '20', note: 'ใช้เป็นค่าตั้งต้นตอนเพิ่มก้อนหนี้ใหม่' },
+  { key: 'late_fee',        label: 'ค่าปรับชำระล่าช้า (บาท)',    value: '0', note: 'ใส่ 0 ถ้าไม่มี' },
+  { key: 'backup_hour',     label: 'สำรองข้อมูลอัตโนมัติตอนกี่โมง', value: '2', note: '0–23 · ค่าเริ่มต้นคือตีสอง' }
 ];
 
 
@@ -646,6 +699,8 @@ function onOpen() {
     .addSeparator()
     .addItem('🩺 ซ่อมข้อมูลที่คอลัมน์เลื่อน', 'REPAIR')
     .addSeparator()
+    .addItem('🔐 ตั้งรหัสผ่านผู้ดูแลใหม่', 'resetAdminPassword')
+    .addSeparator()
     .addItem('💾 สำรองข้อมูลลง Drive ตอนนี้', 'backupNow')
     .addItem('🗓️ ตั้งสำรองข้อมูลอัตโนมัติทุกวัน', 'installBackupTrigger')
     .addToUi();
@@ -674,6 +729,7 @@ function setupSystem() {
   seedRooms_();
   seedSettings_();
   ensureTokens_();
+  ensureFirstAdmin_();     // ต้องมีผู้ดูแลอย่างน้อยหนึ่งคนเสมอ ไม่งั้นไม่มีใครเข้าระบบได้
   ensureDriveFolders_();
 
   var msg = 'ติดตั้งระบบเรียบร้อย\n\n' +
@@ -785,8 +841,11 @@ function linksMessage_() {
 
   if (url && !isTestUrl_(url)) {
     return '━━━━━━━━━━━━━━━━━━━━━━\n' +
-      '🔑 ลิงก์ของคุณ (แก้ไขข้อมูลได้ — เก็บไว้ใช้เอง)\n' + url + '?key=' + admin + '\n\n' +
-      '👀 ลิงก์แชร์ (ดูอย่างเดียว — ส่งให้ใครก็ได้)\n' + url + '?key=' + view + '\n' +
+      '🔗 ลิงก์เข้าใช้งาน (ใช้ลิงก์นี้เป็นหลัก — ส่งให้ทุกคนได้)\n' + url + '\n' +
+      '   เข้าด้วยชื่อผู้ใช้และรหัสผ่าน แล้วตั้ง PIN 6 หลักไว้ใช้ครั้งต่อไป\n\n' +
+      '🆘 ลิงก์กู้ระบบ (ใช้ตอนลืมรหัสผ่านจนเข้าไม่ได้ — ห้ามส่งต่อ)\n' + url + '?key=' + admin + '\n\n' +
+      '👀 ลิงก์ดูอย่างเดียวแบบไม่ต้องล็อกอิน\n' + url + '?key=' + view + '\n' +
+      '   ใช้ได้ต่อเมื่อเปิดสวิตช์ "เปิดลิงก์แชร์แบบไม่ต้องล็อกอิน" ในหน้าตั้งค่า\n' +
       '━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       'เปิดในมือถือแล้วกด "เพิ่มลงหน้าจอโฮม" เพื่อใช้เหมือนแอป';
   }
@@ -860,6 +919,7 @@ function START_HERE() {
       : '✅ ข้อมูลเดิมมีอยู่แล้ว (' + after + ' รายการซื้อ) — ข้ามการนำเข้า');
 
     log.push('✅ ออกกุญแจผู้ดูแลและกุญแจแชร์แล้ว');
+    log.push('✅ เปิดระบบล็อกอิน · ตั้งค่า · อ่านข้อความจากรูป');
 
     try { installBackupTrigger(); log.push('✅ สำรองข้อมูลลง Drive อัตโนมัติ ทุกวันตี 2'); }
     catch (e) { log.push('⚠️ ตั้งสำรองอัตโนมัติไม่ได้: ' + e.message); }
@@ -870,7 +930,50 @@ function START_HERE() {
     QUIET_ = wasQuiet;
   }
 
-  return alert_('The M Corner AP — ติดตั้งเรียบร้อย\n\n' + log.join('\n') + '\n\n' + linksMessage_());
+  return alert_('The M Corner AP — ติดตั้งเรียบร้อย\n\n' + log.join('\n') + '\n\n' +
+    firstAdminMessage_() + linksMessage_());
+}
+
+/**
+ * รหัสผ่านของผู้ดูแลคนแรก — แสดงครั้งเดียวแล้วลบออกจากที่เก็บชั่วคราวทันที
+ * ตัวรหัสผ่านจริงถูกเก็บแบบเข้ารหัสในชีต Users อ่านย้อนกลับไม่ได้
+ * ถ้าพลาดไม่ได้จด ให้ใช้เมนู "ตั้งรหัสผ่านผู้ดูแลใหม่"
+ */
+function firstAdminMessage_() {
+  var pw = props_().getProperty('FIRST_ADMIN_PASSWORD');
+  if (!pw) return '';
+  props_().deleteProperty('FIRST_ADMIN_PASSWORD');
+  return '━━━━━━━━━━━━━━━━━━━━━━\n' +
+    '👤 บัญชีผู้ดูแลคนแรก (จดไว้ก่อนปิดหน้าต่างนี้)\n\n' +
+    '   ชื่อผู้ใช้  admin\n' +
+    '   รหัสผ่าน  ' + pw + '\n\n' +
+    'ระบบจะให้เปลี่ยนรหัสผ่านทันทีที่ล็อกอินครั้งแรก\n' +
+    'ข้อความนี้แสดงครั้งเดียว — ถ้าพลาด ใช้เมนู 🔐 ตั้งรหัสผ่านผู้ดูแลใหม่\n' +
+    '━━━━━━━━━━━━━━━━━━━━━━\n\n';
+}
+
+/**
+ * ตั้งรหัสผ่านผู้ดูแลใหม่ เมื่อเข้าระบบไม่ได้จริง ๆ
+ * เรียกจากเมนูในชีตเท่านั้น (คนเรียกต้องเปิดชีตได้อยู่แล้ว)
+ */
+function resetAdminPassword() {
+  var u = findUser_('admin');
+  if (!u) {
+    var made = ensureFirstAdmin_();
+    return alert_('สร้างบัญชี admin ใหม่แล้ว\n\nชื่อผู้ใช้  admin\nรหัสผ่าน  ' + made.password);
+  }
+  var pw = randomToken_(12);
+  var salt = randomToken_(16);
+  updateRow_(SHEETS.USERS, u._row, Object.assign({}, u, {
+    passSalt: salt, passHash: hashSecret_(pw, salt),
+    mustChange: true, status: 'ใช้งาน', failCount: 0, lockUntil: '', updatedAt: new Date()
+  }));
+  revokeAllSessions_('admin');
+  logActivity_('ตั้งรหัสผ่านผู้ดูแลใหม่จากเมนูชีต', 'admin', '');
+  return alert_('ตั้งรหัสผ่านใหม่ให้บัญชี admin แล้ว\n\n' +
+    '   ชื่อผู้ใช้  admin\n   รหัสผ่าน  ' + pw + '\n\n' +
+    'อุปกรณ์ที่เคยตั้ง PIN และหน้าที่ล็อกอินค้างไว้ ถูกให้ออกจากระบบทั้งหมดแล้ว\n' +
+    'ระบบจะให้เปลี่ยนรหัสผ่านทันทีที่ล็อกอิน');
 }
 
 /** ชื่อไทยของ START_HERE เผื่อหาในรายการฟังก์ชันง่ายขึ้น */
@@ -889,56 +992,521 @@ function showKeysOnly() {
 
 
 /* ══════════════════════════════════════════════════════════════
+   Users.gs
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Users.gs — บัญชีผู้ใช้ รหัสผ่าน การเข้าใช้งาน และ PIN
+ *
+ * แนวคิด
+ *   1. ล็อกอินด้วยชื่อผู้ใช้ + รหัสผ่าน → ได้ "รหัสอ้างอิงการเข้าใช้งาน" (session)
+ *      เก็บไว้ในเครื่อง แล้วแนบไปกับทุกคำสั่ง
+ *   2. ตั้ง PIN 6 หลักบนเครื่องที่ใช้ประจำได้ → ได้ "รหัสอุปกรณ์" (device token)
+ *      คราวหน้าใส่แค่ PIN ก็เข้าได้ ไม่ต้องพิมพ์รหัสผ่านยาว ๆ
+ *   3. PIN ใช้เดี่ยว ๆ ไม่ได้ ต้องคู่กับรหัสอุปกรณ์ที่อยู่ในเครื่องนั้นเท่านั้น
+ *      ใส่ผิดครบโควตาเมื่อไหร่ รหัสอุปกรณ์ถูกยกเลิก ต้องกลับไปใช้รหัสผ่าน
+ *
+ * เรื่องที่ต้องรู้ตามตรง
+ *   Apps Script ไม่มี bcrypt/argon2 ให้ใช้ จึงใช้ SHA-256 วนซ้ำหลายพันรอบ
+ *   พร้อมค่าสุ่มประจำผู้ใช้ (salt) ซึ่งแข็งแรงพอสำหรับระบบภายในขนาดนี้
+ *   แต่ไม่เท่า bcrypt — อย่าใช้รหัสผ่านซ้ำกับบัญชีสำคัญอื่น
+ */
+
+var HASH_ROUNDS = 2000;
+
+/* ------------------------------------------------------------------ */
+/*  การเข้ารหัส                                                        */
+/* ------------------------------------------------------------------ */
+
+function randomToken_(len) {
+  var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  var out = '';
+  for (var i = 0; i < (len || 32); i++) out += abc.charAt(Math.floor(Math.random() * abc.length));
+  return out;
+}
+
+function sha256_(text) {
+  return Utilities.base64Encode(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(text), Utilities.Charset.UTF_8));
+}
+
+/** SHA-256 วนซ้ำพร้อม salt — ใช้ทั้งกับรหัสผ่านและ PIN */
+function hashSecret_(secret, salt, rounds) {
+  rounds = rounds || HASH_ROUNDS;
+  var out = String(salt) + '|' + String(secret);
+  for (var i = 0; i < rounds; i++) out = sha256_(out + '|' + i);
+  return out;
+}
+
+/** เทียบสองสตริงโดยใช้เวลาเท่ากันเสมอ ไม่ให้เดาได้จากเวลาที่ใช้ */
+function safeEqual_(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  ผู้ใช้                                                             */
+/* ------------------------------------------------------------------ */
+
+/** ค่าที่ถือว่า "ใช่" — dropdown ในหน้าเว็บส่งมาเป็นข้อความ ไม่ใช่ boolean */
+function truthy_(v) {
+  if (v === true) return true;
+  var s = String(v == null ? '' : v).trim().toLowerCase();
+  return s === 'true' || s === 'ใช่' || s === '1' || s === 'yes';
+}
+
+function normUsername_(u) {
+  return String(u || '').trim().toLowerCase();
+}
+
+function findUser_(username) {
+  var u = normUsername_(username);
+  if (!u) return null;
+  var rows = readRows_(SHEETS.USERS);
+  for (var i = 0; i < rows.length; i++) {
+    if (normUsername_(rows[i].username) === u) return rows[i];
+  }
+  return null;
+}
+
+function listUsers_() {
+  return readRows_(SHEETS.USERS).map(function (u) {
+    return {
+      username: u.username, name: u.name, role: u.role, status: u.status,
+      mustChange: truthy_(u.mustChange),
+      lastLogin: u.lastLogin, note: u.note,
+      locked: isLocked_(u),
+      devices: countDevices_(u.username)
+    };
+  });
+}
+
+function isLocked_(user) {
+  var until = String(user.lockUntil || '').trim();
+  if (!until) return false;
+  return new Date(until).getTime() > Date.now();
+}
+
+function countDevices_(username) {
+  return readRows_(SHEETS.SESSIONS).filter(function (s) {
+    return s.kind === 'อุปกรณ์' && normUsername_(s.username) === normUsername_(username) && !isExpired_(s);
+  }).length;
+}
+
+/**
+ * สร้าง/แก้ไขผู้ใช้ — ผู้ดูแลเท่านั้น
+ * ใส่ password ว่างไว้ = ไม่เปลี่ยนรหัสผ่านเดิม
+ */
+function saveUser_(obj, actingRole) {
+  if (actingRole !== 'ผู้ดูแล') throw new Error('เฉพาะผู้ดูแลเท่านั้นที่จัดการผู้ใช้ได้');
+
+  var username = normUsername_(obj.username);
+  if (!/^[a-z0-9_.-]{3,24}$/.test(username)) {
+    throw new Error('ชื่อผู้ใช้ต้องเป็น a-z 0-9 _ . - ยาว 3–24 ตัว');
+  }
+  if (ROLES.indexOf(obj.role) < 0) throw new Error('บทบาทไม่ถูกต้อง');
+
+  var existing = findUser_(username);
+  var pwd = String(obj.password || '');
+  if (!existing && pwd.length < 8) throw new Error('รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร');
+  if (pwd && pwd.length < 8) throw new Error('รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร');
+
+  var salt = existing ? existing.passSalt : randomToken_(16);
+  var hash = existing ? existing.passHash : '';
+  if (pwd) { salt = randomToken_(16); hash = hashSecret_(pwd, salt); }
+
+  var rec = {
+    username: username,
+    name: obj.name || username,
+    role: obj.role,
+    passHash: hash, passSalt: salt,
+    status: obj.status || 'ใช้งาน',
+    mustChange: truthy_(obj.mustChange),
+    failCount: 0, lockUntil: '',
+    lastLogin: existing ? existing.lastLogin : '',
+    note: obj.note || '',
+    updatedAt: new Date()
+  };
+
+  if (existing) {
+    // กันไม่ให้เหลือผู้ดูแลศูนย์คน
+    if (existing.role === 'ผู้ดูแล' && rec.role !== 'ผู้ดูแล' && countAdmins_() <= 1) {
+      throw new Error('ต้องเหลือผู้ดูแลอย่างน้อย 1 คน');
+    }
+    if (existing.role === 'ผู้ดูแล' && rec.status === 'ระงับ' && countAdmins_() <= 1) {
+      throw new Error('ระงับผู้ดูแลคนสุดท้ายไม่ได้');
+    }
+    logActivity_('แก้ไขผู้ใช้', username, rec.role + (pwd ? ' · เปลี่ยนรหัสผ่าน' : ''));
+    return sanitizeUser_(updateRow_(SHEETS.USERS, existing._row, Object.assign({}, existing, rec)));
+  }
+  logActivity_('เพิ่มผู้ใช้', username, rec.role);
+  return sanitizeUser_(insertRow_(SHEETS.USERS, rec));
+}
+
+function countAdmins_() {
+  return readRows_(SHEETS.USERS).filter(function (u) {
+    return u.role === 'ผู้ดูแล' && u.status !== 'ระงับ';
+  }).length;
+}
+
+function sanitizeUser_(u) {
+  return { username: u.username, name: u.name, role: u.role, status: u.status };
+}
+
+function deleteUser_(username, actingRole, actingUsername) {
+  if (actingRole !== 'ผู้ดูแล') throw new Error('เฉพาะผู้ดูแลเท่านั้นที่จัดการผู้ใช้ได้');
+  var u = findUser_(username);
+  if (!u) throw new Error('ไม่พบผู้ใช้: ' + username);
+  if (normUsername_(username) === normUsername_(actingUsername)) throw new Error('ลบบัญชีตัวเองไม่ได้');
+  if (u.role === 'ผู้ดูแล' && countAdmins_() <= 1) throw new Error('ต้องเหลือผู้ดูแลอย่างน้อย 1 คน');
+
+  revokeAllSessions_(username);
+  deleteRow_(SHEETS.USERS, u._row);
+  logActivity_('ลบผู้ใช้', username, '');
+  return true;
+}
+
+/* ------------------------------------------------------------------ */
+/*  การเข้าใช้งาน                                                      */
+/* ------------------------------------------------------------------ */
+
+function isExpired_(s) {
+  var e = String(s.expiresAt || '').trim();
+  if (!e) return true;
+  return new Date(e).getTime() <= Date.now();
+}
+
+function findSession_(token) {
+  var t = String(token || '').trim();
+  if (!t) return null;
+  var rows = readRows_(SHEETS.SESSIONS);
+  for (var i = 0; i < rows.length; i++) {
+    if (safeEqual_(rows[i].token, t)) return rows[i];
+  }
+  return null;
+}
+
+function createSession_(username, kind, hours, extra) {
+  var token = randomToken_(40);
+  var rec = Object.assign({
+    token: token, username: normUsername_(username), kind: kind,
+    pinHash: '', pinSalt: '', failCount: 0, device: '',
+    expiresAt: new Date(Date.now() + hours * 3600000).toISOString(),
+    createdAt: new Date().toISOString(),
+    lastSeen: new Date().toISOString()
+  }, extra || {});
+  insertRow_(SHEETS.SESSIONS, rec);
+  return token;
+}
+
+function revokeSession_(token) {
+  var s = findSession_(token);
+  if (s) deleteRow_(SHEETS.SESSIONS, s._row);
+  return true;
+}
+
+function revokeAllSessions_(username) {
+  var u = normUsername_(username);
+  var rows = readRows_(SHEETS.SESSIONS);
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (normUsername_(rows[i].username) === u) deleteRow_(SHEETS.SESSIONS, rows[i]._row);
+  }
+  return true;
+}
+
+/** ลบรายการที่หมดอายุทิ้ง ไม่ให้ชีตบวม */
+function purgeSessions_() {
+  var rows = readRows_(SHEETS.SESSIONS);
+  var removed = 0;
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (isExpired_(rows[i])) { deleteRow_(SHEETS.SESSIONS, rows[i]._row); removed++; }
+  }
+  return removed;
+}
+
+/** ล็อกอินด้วยรหัสผ่าน */
+function login_(username, password) {
+  var u = findUser_(username);
+  var fail = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+  if (!u) { hashSecret_('x', 'y', 50); throw new Error(fail); }   // หน่วงเท่ากันไม่ให้เดาว่ามีชื่อนี้ไหม
+  if (u.status === 'ระงับ') throw new Error('บัญชีนี้ถูกระงับการใช้งาน');
+  if (isLocked_(u)) {
+    var mins = Math.ceil((new Date(u.lockUntil).getTime() - Date.now()) / 60000);
+    throw new Error('ใส่รหัสผิดหลายครั้ง กรุณารออีก ' + mins + ' นาที');
+  }
+
+  if (!safeEqual_(hashSecret_(password, u.passSalt), u.passHash)) {
+    var maxFail = Number(getSetting_('login_max_fail', 5)) || 5;
+    var lockMin = Number(getSetting_('login_lock_minutes', 15)) || 15;
+    var n = (toNumber_(u.failCount) || 0) + 1;
+    var patch = { failCount: n };
+    if (n >= maxFail) {
+      patch.failCount = 0;
+      patch.lockUntil = new Date(Date.now() + lockMin * 60000).toISOString();
+    }
+    updateRow_(SHEETS.USERS, u._row, Object.assign({}, u, patch));
+    logActivity_('ล็อกอินไม่สำเร็จ', u.username, 'ครั้งที่ ' + n);
+    throw new Error(fail);
+  }
+
+  purgeSessions_();
+  var hours = Number(getSetting_('session_hours', 12)) || 12;
+  var token = createSession_(u.username, 'เข้าใช้งาน', hours);
+  updateRow_(SHEETS.USERS, u._row, Object.assign({}, u, {
+    failCount: 0, lockUntil: '', lastLogin: new Date().toISOString()
+  }));
+  logActivity_('ล็อกอิน', u.username, u.role);
+
+  return {
+    session: token,
+    user: { username: u.username, name: u.name, role: u.role },
+    mustChange: truthy_(u.mustChange)
+  };
+}
+
+/** เปลี่ยนรหัสผ่านของตัวเอง */
+function changePassword_(username, oldPassword, newPassword) {
+  var u = findUser_(username);
+  if (!u) throw new Error('ไม่พบผู้ใช้');
+  if (!safeEqual_(hashSecret_(oldPassword, u.passSalt), u.passHash)) {
+    throw new Error('รหัสผ่านเดิมไม่ถูกต้อง');
+  }
+  if (String(newPassword || '').length < 8) throw new Error('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
+
+  var salt = randomToken_(16);
+  updateRow_(SHEETS.USERS, u._row, Object.assign({}, u, {
+    passSalt: salt, passHash: hashSecret_(newPassword, salt), mustChange: false, updatedAt: new Date()
+  }));
+  logActivity_('เปลี่ยนรหัสผ่าน', u.username, '');
+  return true;
+}
+
+/* ------------------------------------------------------------------ */
+/*  PIN ประจำอุปกรณ์                                                   */
+/* ------------------------------------------------------------------ */
+
+/** ตั้ง PIN บนอุปกรณ์นี้ — ต้องล็อกอินอยู่แล้ว */
+function setPin_(sessionToken, pin, deviceName) {
+  if (!/^\d{6}$/.test(String(pin || ''))) throw new Error('PIN ต้องเป็นตัวเลข 6 หลัก');
+  if (/^(\d)\1{5}$/.test(pin) || pin === '123456' || pin === '654321') {
+    throw new Error('PIN นี้เดาง่ายเกินไป กรุณาเลือกใหม่');
+  }
+  var s = findSession_(sessionToken);
+  if (!s || isExpired_(s)) throw new Error('กรุณาล็อกอินใหม่ก่อนตั้ง PIN');
+
+  var days = Number(getSetting_('device_days', 90)) || 90;
+  var salt = randomToken_(16);
+  var token = createSession_(s.username, 'อุปกรณ์', days * 24, {
+    pinHash: hashSecret_(pin, salt), pinSalt: salt,
+    device: String(deviceName || '').slice(0, 80)
+  });
+  logActivity_('ตั้ง PIN บนอุปกรณ์', s.username, deviceName || '');
+  return { device: token };
+}
+
+/** ปลดล็อกด้วย PIN — ต้องมีรหัสอุปกรณ์คู่กันเสมอ */
+function unlockWithPin_(deviceToken, pin) {
+  var d = findSession_(deviceToken);
+  if (!d || d.kind !== 'อุปกรณ์') throw new Error('อุปกรณ์นี้ยังไม่ได้ตั้ง PIN — กรุณาล็อกอินด้วยรหัสผ่าน');
+  if (isExpired_(d)) { deleteRow_(SHEETS.SESSIONS, d._row); throw new Error('ครบกำหนดยืนยันตัวตนใหม่ — กรุณาล็อกอินด้วยรหัสผ่าน'); }
+
+  var u = findUser_(d.username);
+  if (!u || u.status === 'ระงับ') { deleteRow_(SHEETS.SESSIONS, d._row); throw new Error('บัญชีนี้ใช้งานไม่ได้แล้ว'); }
+
+  if (!safeEqual_(hashSecret_(pin, d.pinSalt), d.pinHash)) {
+    var n = (toNumber_(d.failCount) || 0) + 1;
+    if (n >= 5) {
+      deleteRow_(SHEETS.SESSIONS, d._row);
+      logActivity_('PIN ผิดครบโควตา ยกเลิกอุปกรณ์', d.username, '');
+      throw new Error('ใส่ PIN ผิด 5 ครั้ง ยกเลิก PIN บนเครื่องนี้แล้ว — กรุณาล็อกอินด้วยรหัสผ่าน');
+    }
+    updateRow_(SHEETS.SESSIONS, d._row, Object.assign({}, d, { failCount: n }));
+    throw new Error('PIN ไม่ถูกต้อง เหลืออีก ' + (5 - n) + ' ครั้ง');
+  }
+
+  updateRow_(SHEETS.SESSIONS, d._row, Object.assign({}, d, {
+    failCount: 0, lastSeen: new Date().toISOString()
+  }));
+  var hours = Number(getSetting_('session_hours', 12)) || 12;
+  var token = createSession_(u.username, 'เข้าใช้งาน', hours);
+  logActivity_('ปลดล็อกด้วย PIN', u.username, d.device || '');
+
+  return { session: token, user: { username: u.username, name: u.name, role: u.role } };
+}
+
+/** รายชื่ออุปกรณ์ที่ตั้ง PIN ไว้ของผู้ใช้คนหนึ่ง (ไม่คืนค่า PIN ออกไป) */
+function listDevices_(username) {
+  var u = normUsername_(username);
+  return readRows_(SHEETS.SESSIONS).filter(function (r) {
+    return r.kind === 'อุปกรณ์' && normUsername_(r.username) === u && !isExpired_(r);
+  }).map(function (r) {
+    return {
+      device: r.device || 'อุปกรณ์ไม่ระบุชื่อ',
+      createdAt: r.createdAt,
+      lastSeen: r.lastSeen,
+      expiresAt: r.expiresAt
+    };
+  });
+}
+
+function forgetDevice_(deviceToken) {
+  var d = findSession_(deviceToken);
+  if (d) { deleteRow_(SHEETS.SESSIONS, d._row); logActivity_('ยกเลิก PIN บนอุปกรณ์', d.username, d.device || ''); }
+  return true;
+}
+
+/** ยกเลิกอุปกรณ์ทั้งหมดของผู้ใช้ (เช่นทำเครื่องหาย) */
+function forgetAllDevices_(username) {
+  var u = normUsername_(username);
+  var rows = readRows_(SHEETS.SESSIONS);
+  var n = 0;
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].kind === 'อุปกรณ์' && normUsername_(rows[i].username) === u) {
+      deleteRow_(SHEETS.SESSIONS, rows[i]._row); n++;
+    }
+  }
+  logActivity_('ยกเลิกอุปกรณ์ทั้งหมด', username, n + ' เครื่อง');
+  return n;
+}
+
+/* ------------------------------------------------------------------ */
+/*  ตรวจสิทธิ์จาก session                                              */
+/* ------------------------------------------------------------------ */
+
+/** คืนข้อมูลผู้ใช้จากรหัสอ้างอิง หรือ null ถ้าใช้ไม่ได้ */
+function sessionUser_(token) {
+  var s = findSession_(token);
+  if (!s || s.kind !== 'เข้าใช้งาน' || isExpired_(s)) return null;
+  var u = findUser_(s.username);
+  if (!u || u.status === 'ระงับ') return null;
+  return { username: u.username, name: u.name, role: u.role, _row: s._row };
+}
+
+/** สร้างผู้ดูแลคนแรกตอนติดตั้ง คืนรหัสผ่านที่สุ่มให้ (แสดงครั้งเดียว) */
+function ensureFirstAdmin_() {
+  if (readRows_(SHEETS.USERS).length) return null;
+  var password = randomToken_(12);
+  var salt = randomToken_(16);
+  insertRow_(SHEETS.USERS, {
+    username: 'admin', name: 'ผู้ดูแลระบบ', role: 'ผู้ดูแล',
+    passHash: hashSecret_(password, salt), passSalt: salt,
+    status: 'ใช้งาน', mustChange: true, failCount: 0, lockUntil: '',
+    lastLogin: '', note: 'บัญชีแรกที่ระบบสร้างให้ตอนติดตั้ง', updatedAt: new Date()
+  });
+  // เก็บไว้ให้ START_HERE แสดงครั้งเดียวแล้วลบทิ้ง ไม่เขียนลงชีต
+  props_().setProperty('FIRST_ADMIN_PASSWORD', password);
+  logActivity_('สร้างผู้ดูแลคนแรก', 'admin', '');
+  return { username: 'admin', password: password };
+}
+
+
+/* ══════════════════════════════════════════════════════════════
    Auth.gs
    ══════════════════════════════════════════════════════════════ */
 
 /**
- * Auth.gs — สิทธิ์เข้าใช้งานแบบลิงก์
+ * Auth.gs — ใครเข้าได้ และทำอะไรได้บ้าง
  *
- * ระบบถูก deploy แบบ "ใครมีลิงก์ก็เปิดได้" (Anyone) เพื่อให้แชร์ให้คนอื่นดูได้
- * โดยไม่ต้องให้เขาเข้าถึง Google Sheet ของเรา สิทธิ์จึงคุมด้วย "กุญแจ" ในลิงก์แทน
+ * ทางเข้าระบบมี 3 ทาง เรียงตามลำดับที่ตรวจ
+ *   1. บัญชีผู้ใช้  — ล็อกอินด้วยรหัสผ่านหรือ PIN แล้วได้รหัสอ้างอิง (แนะนำให้ใช้ทางนี้)
+ *   2. ลิงก์แชร์    — เปิด/ปิดได้ในหน้าตั้งค่า ใครมีลิงก์ก็ดูได้อย่างเดียว ไม่ต้องล็อกอิน
+ *   3. กุญแจกู้ระบบ — ลิงก์ ?key=<admin_token> เก็บไว้เผื่อลืมรหัสผ่านจนเข้าไม่ได้
  *
- *   ลิงก์ผู้ดูแล  .../exec?key=<admin_token>   → เพิ่ม/แก้/ลบได้ทุกอย่าง
- *   ลิงก์แชร์     .../exec?key=<view_token>    → ดูอย่างเดียว แก้อะไรไม่ได้
- *   ไม่มีกุญแจ                                  → เข้าไม่ได้
- *
- * กุญแจสองชุดนี้สุ่มขึ้นตอนติดตั้ง เก็บอยู่ในชีต Settings
- * ถ้าลิงก์แชร์หลุด ให้กด "ออกกุญแจแชร์ใหม่" ลิงก์เดิมจะใช้ไม่ได้ทันที
- *
- * ⚠️ การกันสิทธิ์ทำที่ฝั่งเซิร์ฟเวอร์ (ฟังก์ชัน api) ไม่ใช่แค่ซ่อนปุ่มในหน้าเว็บ
+ * ⚠️ การกันสิทธิ์ทำที่ฝั่งเซิร์ฟเวอร์ในฟังก์ชัน api() ก่อนทำงานทุกครั้ง
+ *    ไม่ใช่แค่ซ่อนปุ่มในหน้าเว็บ
  */
 
-var ROLE = { ADMIN: 'admin', VIEWER: 'viewer', NONE: 'none' };
+var ROLE = { ADMIN: 'ผู้ดูแล', EDITOR: 'แก้ไขได้', VIEWER: 'ดูอย่างเดียว', NONE: 'none' };
 
-/** คำสั่งที่เปลี่ยนแปลงข้อมูล — ต้องเป็นผู้ดูแลเท่านั้น */
-var MUTATING_ACTIONS = /\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow)$/;
+/** คำสั่งที่เปิดให้เรียกได้โดยยังไม่ได้ล็อกอิน */
+var PUBLIC_ACTIONS = /^auth\.(login|unlock|me|ping)$/;
 
-function resolveRole_(key) {
-  key = String(key || '').trim();
-  if (key) {
-    if (key === getSetting_('admin_token', '')) return ROLE.ADMIN;
-    if (key === getSetting_('view_token', '')) return ROLE.VIEWER;
-  }
-  // เจ้าของชีต (หรืออีเมลที่อนุญาตไว้) เข้าได้เสมอ แม้ไม่มีกุญแจในลิงก์
-  var email = String(currentUserEmail_() || '').toLowerCase();
-  if (email && email !== 'unknown') {
-    if (email === String(ownerEmail_() || '').toLowerCase()) return ROLE.ADMIN;
-    var allow = String(getSetting_('admin_emails', '') || '')
-      .split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(String);
-    if (allow.indexOf(email) >= 0) return ROLE.ADMIN;
-  }
-  return ROLE.NONE;
+/**
+ * คำสั่งที่เปลี่ยนแปลงข้อมูลหรือใช้พื้นที่ของเจ้าของ — ต้องเป็นผู้ดูแลหรือแก้ไขได้
+ * รวม upload/trash ด้วย เพราะเป็นการเขียนและลบไฟล์ใน Google Drive ของเจ้าของ
+ * และ ocr.read ที่สร้างไฟล์ชั่วคราวใน Drive ทุกครั้งที่เรียก
+ */
+var MUTATING_ACTIONS = /^ocr\.read$|\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow|upload|trash)$/;
+
+/**
+ * คำสั่งที่เฉพาะผู้ดูแลเท่านั้น
+ * backup.* ทั้งหมดอยู่ในนี้เพราะไฟล์สำรองมีข้อมูลบัญชีผู้ใช้ติดไปด้วย
+ */
+var ADMIN_ONLY_ACTIONS = /^(user\.|share\.|settings\.save|backup\.|auth\.forgetAllDevices)/;
+
+/** ระดับสิทธิ์ ยิ่งมากยิ่งทำได้เยอะ */
+function roleRank_(role) {
+  if (role === ROLE.ADMIN) return 3;
+  if (role === ROLE.EDITOR) return 2;
+  if (role === ROLE.VIEWER) return 1;
+  return 0;
 }
 
-function requireRole_(action, key) {
-  var role = resolveRole_(key);
-  if (role === ROLE.NONE) {
-    throw new Error('ลิงก์นี้ไม่มีสิทธิ์เข้าใช้งาน — ขอลิงก์ที่ถูกต้องจากเจ้าของหอพัก');
+/**
+ * หาว่าคำสั่งนี้ถูกเรียกโดยใคร
+ * @return {{role:string, username:string, name:string, via:string}}
+ */
+function resolveActor_(payload) {
+  payload = payload || {};
+
+  var u = sessionUser_(payload._session);
+  if (u) return { role: u.role, username: u.username, name: u.name, via: 'บัญชีผู้ใช้' };
+
+  var key = String(payload._key || '').trim();
+  if (key) {
+    if (safeEqual_(key, getSetting_('admin_token', ''))) {
+      return { role: ROLE.ADMIN, username: '', name: 'กุญแจกู้ระบบ', via: 'กุญแจกู้ระบบ' };
+    }
+    if (shareLinkEnabled_() && safeEqual_(key, getSetting_('view_token', ''))) {
+      return { role: ROLE.VIEWER, username: '', name: 'ผู้ชมผ่านลิงก์แชร์', via: 'ลิงก์แชร์' };
+    }
   }
-  if (MUTATING_ACTIONS.test(action) && role !== ROLE.ADMIN) {
-    throw new Error('ลิงก์นี้เป็นแบบดูอย่างเดียว จึงแก้ไขข้อมูลไม่ได้');
+
+  // เจ้าของชีตเข้าได้เสมอ เผื่อกรณีเข้าไม่ได้จริง ๆ
+  var email = String(currentUserEmail_() || '').toLowerCase();
+  if (email && email === String(ownerEmail_() || '').toLowerCase()) {
+    return { role: ROLE.ADMIN, username: '', name: 'เจ้าของชีต', via: 'บัญชี Google เจ้าของชีต' };
   }
-  return role;
+
+  return { role: ROLE.NONE, username: '', name: '', via: '' };
+}
+
+function shareLinkEnabled_() {
+  return String(getSetting_('share_link_enabled', 'ปิด')).trim().indexOf('เปิด') === 0;
+}
+
+function requireRole_(action, payloadOrKey) {
+  var payload = (payloadOrKey && typeof payloadOrKey === 'object') ? payloadOrKey : { _key: payloadOrKey };
+  if (PUBLIC_ACTIONS.test(action)) return ROLE.NONE;
+
+  var actor = resolveActor_(payload);
+  if (actor.role === ROLE.NONE) throw new Error('กรุณาเข้าสู่ระบบก่อนใช้งาน');
+
+  if (ADMIN_ONLY_ACTIONS.test(action) && actor.role !== ROLE.ADMIN) {
+    throw new Error('เฉพาะผู้ดูแลเท่านั้นที่ทำรายการนี้ได้');
+  }
+  if (MUTATING_ACTIONS.test(action) && roleRank_(actor.role) < roleRank_(ROLE.EDITOR)) {
+    throw new Error('บัญชีนี้เปิดดูได้อย่างเดียว จึงแก้ไขข้อมูลไม่ได้');
+  }
+  return actor.role;
+}
+
+/** ใช้ในหน้าเว็บ เพื่อรู้ว่ากำลังเปิดด้วยสิทธิ์อะไร */
+function whoAmI(payload) {
+  var actor = resolveActor_(payload && typeof payload === 'object' ? payload : { _key: payload });
+  return {
+    role: actor.role,
+    canEdit: roleRank_(actor.role) >= roleRank_(ROLE.EDITOR),
+    isAdmin: actor.role === ROLE.ADMIN,
+    signedIn: actor.role !== ROLE.NONE,
+    username: actor.username,
+    name: actor.name || (actor.role === ROLE.NONE ? '' : actor.role),
+    via: actor.via,
+    label: actor.role === ROLE.NONE ? 'ยังไม่ได้เข้าสู่ระบบ' : actor.role
+  };
 }
 
 function currentUserEmail_() {
@@ -1024,15 +1592,177 @@ function shareUrl_(token) {
   return base ? base + '?key=' + token : '(ยังไม่ได้ deploy)';
 }
 
-/** ใช้ในหน้าเว็บ เพื่อรู้ว่ากำลังเปิดด้วยสิทธิ์อะไร */
-function whoAmI(key) {
-  var role = resolveRole_(key);
+
+/* ══════════════════════════════════════════════════════════════
+   Settings.gs
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Settings.gs — หน้าตั้งค่าของระบบ
+ *
+ * ค่าทั้งหมดเก็บอยู่ในชีต Settings เหมือนเดิม ไฟล์นี้แค่จัดกลุ่มให้อ่านง่าย
+ * บอกชนิดของช่องกรอก และกันไม่ให้ค่าที่ไม่ควรแก้ผ่านเว็บหลุดออกไป
+ *
+ * ⚠️ ค่าที่เป็นความลับ (รหัสเข้าตึก / กุญแจต่าง ๆ) ไม่ส่งออกไปหน้าเว็บ
+ *    และแก้ได้ในชีตเท่านั้น
+ */
+
+/** ค่าที่ห้ามอ่านและห้ามเขียนผ่านหน้าเว็บเด็ดขาด */
+var SECRET_SETTINGS = ['door_code', 'admin_code', 'admin_token', 'view_token'];
+
+/**
+ * ผังหน้าตั้งค่า — เรียงตามลำดับที่อยากให้เห็น
+ * type: text | number | select | multiline
+ */
+var SETTINGS_FORM = [
+  {
+    group: 'ข้อมูลหอพัก', icon: '🏢',
+    items: [
+      { key: 'building_name', type: 'text' },
+      { key: 'building_address', type: 'multiline' },
+      { key: 'total_rooms', type: 'number', readOnly: true, note: 'นับจากทะเบียนห้องอัตโนมัติ' }
+    ]
+  },
+  {
+    group: 'หน้าตาและการแสดงผล', icon: '🎨',
+    items: [
+      { key: 'theme', type: 'select', options: ['ตามเครื่อง', 'สว่าง', 'มืด'] },
+      { key: 'accent', type: 'select', options: ['ฟ้าคราม', 'เขียวมรกต', 'ม่วง', 'ส้มอิฐ'] },
+      { key: 'number_format', type: 'select', options: ['1,234.56', '1,234'] },
+      { key: 'date_format', type: 'select', options: ['พ.ศ. (2569)', 'ค.ศ. (2026)'] },
+      { key: 'start_page', type: 'select', options: ['แดชบอร์ด', 'รายการสรุปรวม', 'หนี้สิน', 'รายการซื้อของ', 'ซ่อมแซมตามห้อง'] },
+      { key: 'refresh_seconds', type: 'number' }
+    ]
+  },
+  {
+    group: 'การแจ้งเตือน', icon: '🔔',
+    items: [
+      { key: 'ac_cycle_months', type: 'number' },
+      { key: 'warranty_alert_days', type: 'number' },
+      { key: 'overdue_alert_days', type: 'number' },
+      { key: 'due_soon_days', type: 'number' },
+      { key: 'notify_email', type: 'text' },
+      { key: 'notify_weekday', type: 'select', options: ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'] }
+    ]
+  },
+  {
+    group: 'การเงิน', icon: '💰',
+    items: [
+      { key: 'currency', type: 'text' },
+      { key: 'default_due_day', type: 'number' },
+      { key: 'late_fee', type: 'number' }
+    ]
+  },
+  {
+    group: 'ความปลอดภัยและการเข้าใช้งาน', icon: '🔐',
+    items: [
+      { key: 'share_link_enabled', type: 'select', options: ['ปิด', 'เปิด'] },
+      { key: 'session_hours', type: 'number' },
+      { key: 'device_days', type: 'number' },
+      { key: 'login_max_fail', type: 'number' },
+      { key: 'login_lock_minutes', type: 'number' }
+    ]
+  },
+  {
+    group: 'อ่านข้อความจากรูป (OCR)', icon: '🔎',
+    items: [
+      { key: 'ocr_enabled', type: 'select', options: ['เปิด', 'ปิด'] },
+      { key: 'ocr_language', type: 'select', options: ['th', 'en'] },
+      { key: 'ocr_autofill', type: 'select', options: ['ถามก่อนเติม', 'เติมให้เลย', 'ไม่เติม'] }
+    ]
+  },
+  {
+    group: 'สำรองข้อมูล', icon: '💾',
+    items: [
+      { key: 'backup_keep', type: 'number' },
+      { key: 'backup_hour', type: 'number', note: '0–23 นาฬิกา' }
+    ]
+  }
+];
+
+/** ป้ายชื่อของแต่ละคีย์ เอามาจาก DEFAULT_SETTINGS เพื่อไม่ให้เขียนซ้ำสองที่ */
+function settingMeta_(key) {
+  for (var i = 0; i < DEFAULT_SETTINGS.length; i++) {
+    if (DEFAULT_SETTINGS[i].key === key) return DEFAULT_SETTINGS[i];
+  }
+  return { key: key, label: key, value: '', note: '' };
+}
+
+/** คีย์ทั้งหมดที่หน้าตั้งค่าแก้ได้ (ไม่รวมช่องอ่านอย่างเดียวและค่าลับ) */
+function editableSettingKeys_() {
+  var out = {};
+  SETTINGS_FORM.forEach(function (g) {
+    g.items.forEach(function (it) {
+      if (!it.readOnly && SECRET_SETTINGS.indexOf(it.key) < 0) out[it.key] = it;
+    });
+  });
+  return out;
+}
+
+/** ส่งผังหน้าตั้งค่าพร้อมค่าปัจจุบันให้หน้าเว็บ */
+function listSettings_(role) {
+  var current = {};
+  readRows_(SHEETS.SETTINGS).forEach(function (r) {
+    if (SECRET_SETTINGS.indexOf(String(r.key)) < 0) current[String(r.key)] = String(r.value || '');
+  });
+
+  var groups = SETTINGS_FORM.map(function (g) {
+    return {
+      group: g.group,
+      icon: g.icon,
+      items: g.items.map(function (it) {
+        var meta = settingMeta_(it.key);
+        return {
+          key: it.key,
+          label: meta.label,
+          note: it.note || meta.note || '',
+          type: it.type,
+          options: it.options || null,
+          readOnly: !!it.readOnly,
+          value: current[it.key] !== undefined ? current[it.key] : String(meta.value || '')
+        };
+      })
+    };
+  });
+
   return {
-    role: role,
+    groups: groups,
     canEdit: role === ROLE.ADMIN,
-    email: currentUserEmail_() || 'ผู้ใช้ผ่านลิงก์',
-    label: role === ROLE.ADMIN ? 'ผู้ดูแล' : (role === ROLE.VIEWER ? 'ดูอย่างเดียว' : 'ไม่มีสิทธิ์')
+    // เตือนไว้ให้เห็นในหน้าเว็บ ว่าค่าลับอยู่ในชีตนะ ไม่ได้หายไปไหน
+    secretNote: 'รหัสเข้าตึกและกุญแจลิงก์ไม่แสดงที่นี่เพื่อความปลอดภัย — แก้ได้ในชีต Settings โดยตรง'
   };
+}
+
+/** บันทึกค่าจากหน้าตั้งค่า — รับเฉพาะคีย์ที่อยู่ในผังเท่านั้น */
+function saveSettings_(values) {
+  values = values || {};
+  var allowed = editableSettingKeys_();
+  var changed = [];
+
+  Object.keys(values).forEach(function (k) {
+    var spec = allowed[k];
+    if (!spec) return;                       // คีย์แปลกปลอมหรือค่าลับ — ข้ามเงียบ ๆ
+
+    var v = String(values[k] === null || values[k] === undefined ? '' : values[k]).trim();
+
+    if (spec.type === 'number') {
+      var n = toNumber_(v);
+      if (n === null) throw new Error(settingMeta_(k).label + ': ต้องเป็นตัวเลข');
+      v = String(n);
+    }
+    if (spec.type === 'select' && spec.options && spec.options.indexOf(v) < 0) {
+      throw new Error(settingMeta_(k).label + ': ค่าที่เลือกไม่ถูกต้อง');
+    }
+    if (v.length > 500) throw new Error(settingMeta_(k).label + ': ข้อความยาวเกินไป');
+
+    if (String(getSetting_(k, '')) !== v) {
+      setSetting_(k, v);
+      changed.push(settingMeta_(k).label);
+    }
+  });
+
+  if (changed.length) logActivity_('แก้ไขการตั้งค่า', changed.join(', '), '');
+  return { saved: changed.length, changed: changed };
 }
 
 
@@ -1158,6 +1888,306 @@ function extractDriveId_(raw) {
 function trashFile_(fileId) {
   try { DriveApp.getFileById(fileId).setTrashed(true); return true; }
   catch (e) { return false; }
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   Ocr.gs
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Ocr.gs — อ่านข้อความจากรูปที่แนบเข้ามา แล้วเดาค่าลงฟอร์มให้
+ *
+ * วิธีทำงาน: ส่งรูปเข้า Google Drive แบบสั่งให้แปลงเป็นเอกสาร (convert=true)
+ * พร้อมเปิดโหมดอ่านตัวอักษร (ocr=true) — เป็นตัวอ่านตัวเดียวกับที่ Google Docs ใช้
+ * อ่านข้อความออกมาแล้วลบไฟล์ชั่วคราวทิ้งทันที
+ *
+ * ⚠️ ค่าที่ได้เป็นแค่ "ข้อเสนอ" หน้าเว็บต้องให้ผู้ใช้ตรวจและแก้ได้เสมอ
+ *    ตัวอ่านพลาดได้ โดยเฉพาะลายมือและรูปเอียง
+ */
+
+var OCR_ENDPOINT = 'https://www.googleapis.com/upload/drive/v2/files';
+
+/**
+ * @param {{dataUrl:string, fileId:string, mimeType:string, context:string}} p
+ * @return {{text:string, lines:string[], guess:Object, engine:string}}
+ */
+function ocrRead_(p) {
+  p = p || {};
+  if (String(getSetting_('ocr_enabled', 'เปิด')).indexOf('เปิด') !== 0) {
+    throw new Error('การอ่านข้อความจากรูปถูกปิดอยู่ — เปิดได้ในหน้าตั้งค่า');
+  }
+
+  var blob = ocrBlob_(p);
+  if (!blob) throw new Error('ไม่พบรูปที่จะอ่าน');
+
+  var mime = blob.getContentType() || '';
+  if (!/^image\/|pdf$/.test(mime)) {
+    throw new Error('อ่านได้เฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น');
+  }
+
+  var text = ocrExtractText_(blob);
+  var lines = ocrLines_(text);
+  return {
+    text: text,
+    lines: lines,
+    guess: ocrGuess_(lines, String(p.context || '')),
+    engine: 'Google Drive OCR'
+  };
+}
+
+/** หารูปจาก dataUrl ที่หน้าเว็บส่งมา หรือจากไฟล์ที่อัปโหลดไปแล้ว */
+function ocrBlob_(p) {
+  if (p.dataUrl) {
+    var raw = String(p.dataUrl);
+    var base64 = raw.indexOf(',') >= 0 ? raw.split(',')[1] : raw;
+    var mime = p.mimeType || (raw.match(/^data:([^;,]+)/) || [])[1] || 'image/jpeg';
+    return Utilities.newBlob(Utilities.base64Decode(base64), mime, 'ocr-temp');
+  }
+  if (p.fileId) {
+    var id = extractDriveId_(p.fileId) || p.fileId;
+    return DriveApp.getFileById(id).getBlob();
+  }
+  return null;
+}
+
+/**
+ * เรียก Drive REST v2 ตรง ๆ ด้วย UrlFetchApp
+ * ทำแบบนี้เพื่อไม่ต้องเปิดบริการเสริม Drive API ในหน้า Apps Script ให้ยุ่งยาก
+ */
+function ocrExtractText_(blob) {
+  var lang = String(getSetting_('ocr_language', 'th') || 'th').slice(0, 5);
+  var token = ScriptApp.getOAuthToken();
+  var url = OCR_ENDPOINT + '?uploadType=media&convert=true&ocr=true&ocrLanguage=' +
+            encodeURIComponent(lang);
+
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: blob.getContentType(),
+    payload: blob.getBytes(),
+    headers: { Authorization: 'Bearer ' + token },
+    muteHttpExceptions: true
+  });
+
+  if (res.getResponseCode() >= 300) {
+    throw new Error('อ่านรูปไม่สำเร็จ (' + res.getResponseCode() + ') — ลองใหม่อีกครั้ง');
+  }
+
+  var meta = JSON.parse(res.getContentText());
+  var tempId = meta.id;
+  try {
+    var exportUrl = (meta.exportLinks && meta.exportLinks['text/plain']) ||
+      'https://www.googleapis.com/drive/v2/files/' + tempId + '/export?mimeType=text/plain';
+    var txt = UrlFetchApp.fetch(exportUrl, {
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    return txt.getResponseCode() < 300 ? txt.getContentText() : '';
+  } finally {
+    // ลบไฟล์ชั่วคราวเสมอ ไม่ให้ Drive รก แม้ขั้นตอนก่อนหน้าจะพัง
+    try { DriveApp.getFileById(tempId).setTrashed(true); } catch (e) { /* ลบไม่ได้ก็ปล่อย */ }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  แปลงข้อความดิบเป็นค่าที่กรอกฟอร์มได้                                */
+/* ------------------------------------------------------------------ */
+
+function ocrLines_(text) {
+  return String(text || '')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map(function (l) { return l.replace(/\s+/g, ' ').trim(); })
+    .filter(function (l) { return l.length > 0; });
+}
+
+/** เลขไทย ๐-๙ → 0-9 */
+function thaiDigits_(s) {
+  return String(s || '').replace(/[๐-๙]/g, function (c) {
+    return String('๐๑๒๓๔๕๖๗๘๙'.indexOf(c));
+  });
+}
+
+var TH_MONTHS = {
+  'ม.ค': 1, 'มกราคม': 1, 'ก.พ': 2, 'กุมภาพันธ์': 2, 'มี.ค': 3, 'มีนาคม': 3,
+  'เม.ย': 4, 'เมษายน': 4, 'พ.ค': 5, 'พฤษภาคม': 5, 'มิ.ย': 6, 'มิถุนายน': 6,
+  'ก.ค': 7, 'กรกฎาคม': 7, 'ส.ค': 8, 'สิงหาคม': 8, 'ก.ย': 9, 'กันยายน': 9,
+  'ต.ค': 10, 'ตุลาคม': 10, 'พ.ย': 11, 'พฤศจิกายน': 11, 'ธ.ค': 12, 'ธันวาคม': 12
+};
+
+/** คำที่มักอยู่ข้างหน้ายอดเงินจริง ๆ ในสลิป/ใบเสร็จ */
+var AMOUNT_HINTS = /(จำนวนเงิน|ยอดเงิน|ยอดรวม|รวมทั้งสิ้น|รวมเงิน|รวม|สุทธิ|ราคา|total|amount|grand\s*total|net)/i;
+
+/** คำที่บอกว่าเลขบรรทัดนั้นไม่ใช่ยอดเงิน */
+var AMOUNT_SKIP = /(เลขที่|อ้างอิง|ref|no\.|บัญชี|โทร|tel|รหัส|barcode|เวลา|time|vat|ภาษี)/i;
+
+/** ดึงตัวเลขเงินทั้งหมดในบรรทัด */
+function ocrAmountsIn_(line) {
+  var s = thaiDigits_(line);
+  var out = [];
+  var re = /(?:^|[^\d.,])(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+\.\d{2}|\d{3,})(?![\d.,]*%)/g;
+  var m;
+  while ((m = re.exec(s)) !== null) {
+    var n = Number(m[1].replace(/,/g, ''));
+    if (isFinite(n) && n > 0) out.push(n);
+  }
+  return out;
+}
+
+/** เดาวันที่จากข้อความ คืนรูปแบบ YYYY-MM-DD */
+function ocrGuessDate_(lines) {
+  var joined = thaiDigits_(lines.join(' \n '));
+
+  // 1 ก.ย. 2569  /  1 กันยายน 2569
+  var keys = Object.keys(TH_MONTHS).sort(function (a, b) { return b.length - a.length; });
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i].replace(/\./g, '\\.');
+    var re = new RegExp('(\\d{1,2})\\s*' + key + '\\.?\\s*(\\d{2,4})');
+    var m = joined.match(re);
+    if (m) {
+      var y = ocrNormYear_(Number(m[2]));
+      return ocrIso_(y, TH_MONTHS[keys[i]], Number(m[1]));
+    }
+  }
+
+  // 2026-09-01 — ต้องเช็คก่อนแบบ วัน/เดือน/ปี ไม่งั้น 2026-03-10 จะถูกอ่านเป็น 26-03-10
+  var m3 = joined.match(/(?:^|[^\d])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d])/);
+  if (m3) return ocrIso_(Number(m3[1]), Number(m3[2]), Number(m3[3]));
+
+  // 01/09/2569 · 01-09-2026 · 1.9.26
+  var m2 = joined.match(/(?:^|[^\d])(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})(?![\d])/);
+  if (m2) {
+    var d = Number(m2[1]), mo = Number(m2[2]);
+    if (mo > 12 && d <= 12) { var t = d; d = mo; mo = t; }   // เผื่อสลิปฝรั่งเขียน MM/DD
+    if (d <= 31 && mo <= 12) return ocrIso_(ocrNormYear_(Number(m2[3])), mo, d);
+  }
+
+  return '';
+}
+
+/** พ.ศ. → ค.ศ. และปีสองหลัก → สี่หลัก */
+function ocrNormYear_(y) {
+  if (y > 2400) return y - 543;          // 2569 = พ.ศ. เต็ม → 2026
+  if (y >= 1000) return y;               // 2026 = ค.ศ. อยู่แล้ว
+  if (y >= 60) return 2500 + y - 543;    // 69 = พ.ศ. สองหลัก → 2026
+  return 2000 + y;                       // 26 = ค.ศ. สองหลัก → 2026
+}
+
+function ocrIso_(y, m, d) {
+  if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31) return '';
+  return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2);
+}
+
+/** เดายอดเงิน — เอาบรรทัดที่มีคำใบ้ก่อน ถ้าไม่มีค่อยเอาเลขที่มากที่สุด */
+function ocrGuessAmount_(lines) {
+  var hinted = [];
+  var all = [];
+
+  lines.forEach(function (line) {
+    if (AMOUNT_SKIP.test(line)) return;
+    var nums = ocrAmountsIn_(line);
+    if (!nums.length) return;
+    all = all.concat(nums);
+    if (AMOUNT_HINTS.test(line)) hinted = hinted.concat(nums);
+  });
+
+  var pick = hinted.length ? hinted : all;
+  if (!pick.length) return null;
+
+  // ยอดรวมมักเป็นตัวใหญ่สุดในกลุ่มที่เข้าข่าย
+  return pick.reduce(function (a, b) { return b > a ? b : a; }, 0) || null;
+}
+
+/** เดาชื่อร้าน/ผู้ขาย — บรรทัดแรกที่เป็นตัวอักษรจริง ไม่ใช่เลขล้วน */
+function ocrGuessVendor_(lines) {
+  for (var i = 0; i < Math.min(lines.length, 6); i++) {
+    var l = lines[i];
+    if (l.length < 3 || l.length > 60) continue;
+    if (/^[\d\s\-.,:/]+$/.test(thaiDigits_(l))) continue;
+    if (/(ใบเสร็จ|ใบกำกับ|receipt|invoice|tax)/i.test(l)) continue;
+    return l;
+  }
+  return '';
+}
+
+/** บรรทัดนี้เป็นวันที่ล้วน ๆ หรือเปล่า — จะได้ไม่นับเป็นรายการสินค้า */
+function ocrLooksLikeDate_(s) {
+  return /^\D{0,12}\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\D{0,12}$/.test(s);
+}
+
+/**
+ * เดาชื่อรายการ — ใบเสร็จมักเขียน "ชื่อของ ... ราคา" โดยราคาอยู่ท้ายบรรทัด
+ * จึงตัดเฉพาะตัวเลขท้ายบรรทัดออก ที่เหลือคือชื่อของ
+ * (ตัดตัวเลขทุกตัวไม่ได้ เพราะ "ปั๊มน้ำ 750W" จะเหลือแค่ "ปั๊มน้ำ W")
+ */
+function ocrGuessItems_(lines) {
+  var items = [];
+  lines.forEach(function (line) {
+    if (AMOUNT_SKIP.test(line) || AMOUNT_HINTS.test(line)) return;
+    var s = thaiDigits_(line);
+    if (ocrLooksLikeDate_(s)) return;
+
+    var m = s.match(/(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+\.\d{2}|\d{3,})\s*(?:บาท|฿|THB)?\s*$/i);
+    if (!m) return;
+
+    var price = Number(m[1].replace(/,/g, ''));
+    var name = s.slice(0, m.index)
+      // ตัด "x2" ที่บอกจำนวนทิ้ง แต่ต้องไม่ไปกิน "2x1.5" ที่เป็นสเปกของสินค้า
+      .replace(/(^|[^\d])[x×@]\s*\d{1,3}\s*$/i, '$1')
+      .replace(/[\s:.\-]+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (name.length >= 2 && name.length <= 60 && price > 0) {
+      items.push({ name: name, price: price });
+    }
+  });
+  return items.slice(0, 20);
+}
+
+/** เดาเลขที่อ้างอิง (สลิปโอนเงินมักมี) */
+function ocrGuessRef_(lines) {
+  for (var i = 0; i < lines.length; i++) {
+    var m = thaiDigits_(lines[i]).match(/(?:เลขที่รายการ|เลขที่อ้างอิง|อ้างอิง|ref(?:erence)?(?:\s*no)?)[:\s.]*([A-Za-z0-9]{6,30})/i);
+    if (m) return m[1];
+  }
+  return '';
+}
+
+/**
+ * รวมทุกอย่างเป็นชุดค่าที่เอาไปเติมฟอร์มได้
+ * @param {string} context ชื่อฟอร์มที่กำลังเปิดอยู่ เช่น 'purchase' | 'payment' | 'repair'
+ */
+function ocrGuess_(lines, context) {
+  var amount = ocrGuessAmount_(lines);
+  var date = ocrGuessDate_(lines);
+  var vendor = ocrGuessVendor_(lines);
+  var items = ocrGuessItems_(lines);
+  var ref = ocrGuessRef_(lines);
+
+  var g = {
+    amount: amount,
+    date: date,
+    vendor: vendor,
+    ref: ref,
+    items: items,
+    // ชื่อรายการที่แนะนำ — เอารายการที่แพงที่สุด ถ้าไม่มีก็ใช้ชื่อร้าน
+    title: items.length
+      ? items.reduce(function (a, b) { return b.price > a.price ? b : a; }).name
+      : vendor
+  };
+
+  // แต่ละฟอร์มใช้ชื่อช่องไม่เหมือนกัน จับคู่ให้ตรงตั้งแต่ที่นี่
+  if (context === 'payment') {
+    g.fields = { payDate: date, principal: amount, note: ref ? 'อ้างอิง ' + ref : '' };
+  } else if (context === 'purchase') {
+    g.fields = { buyDate: date, item: g.title, price: amount, vendor: vendor };
+  } else if (context === 'repair' || context === 'building' || context === 'ac') {
+    g.fields = { doneDate: date, detail: g.title, cost: amount, vendor: vendor };
+  } else {
+    g.fields = { date: date, detail: g.title, amount: amount, vendor: vendor };
+  }
+  return g;
 }
 
 
@@ -1860,6 +2890,7 @@ function runMigrations_() {
   var done = [];
   if (from < 2) done.push(migrateV2SplitPayment_());
   if (from < 3) done.push(migrateV3DebtParent_());
+  if (from < 4) done.push(migrateV4Users_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -2152,6 +3183,21 @@ function repairPaymentsSheet_() {
   return 'รายการชำระ: เลื่อนคอลัมน์กลับที่เดิม ' + fixed.length + ' รายการ · กู้เป็นดอกเบี้ย ' + toInterest + ' รายการ';
 }
 
+/**
+ * รุ่น 4 — เพิ่มระบบบัญชีผู้ใช้
+ *
+ * สร้างชีต Users กับ Sessions ถ้ายังไม่มี แล้วตั้งผู้ดูแลคนแรกให้
+ * ไม่แตะข้อมูลเดิมเลย เป็นการเพิ่มชีตใหม่ล้วน ๆ
+ */
+function migrateV4Users_() {
+  ensureSheet_(SHEETS.USERS);
+  ensureSheet_(SHEETS.SESSIONS);
+  seedSettings_();                       // เติมค่าตั้งค่าใหม่ที่เพิ่มมาพร้อมรุ่นนี้
+  // บัญชีผู้ดูแลคนแรกสร้างใน setupSystem() ไม่ใช่ที่นี่
+  // เพราะต้องมีให้ครบทุกครั้งที่ติดตั้ง ไม่ใช่เฉพาะตอนย้ายรุ่น
+  return 'สร้างชีตผู้ใช้และชีตการเข้าใช้งาน';
+}
+
 
 /* ══════════════════════════════════════════════════════════════
    Backup.gs
@@ -2162,11 +3208,25 @@ function repairPaymentsSheet_() {
  * ใช้ย้ายข้อมูลระหว่างเวอร์ชันเว็บกับ Google Sheet ได้สองทาง
  */
 
-/** ส่งออกทุกชีตเป็นก้อน JSON เดียว */
+/**
+ * ชีตที่ห้ามอยู่ในไฟล์สำรองเด็ดขาด
+ *
+ * Sessions เก็บ "รหัสอ้างอิงที่ใช้งานได้จริง" ของทุกคนที่ล็อกอินค้างไว้
+ * ใครได้ไฟล์นี้ไปก็สวมสิทธิ์คนนั้นได้ทันที และเป็นข้อมูลชั่วคราวที่ไม่ต้องกู้คืนอยู่แล้ว
+ * (รหัสผ่านในชีต Users เก็บแบบเข้ารหัส จึงสำรองได้ แต่ไฟล์สำรองเปิดให้เฉพาะผู้ดูแล)
+ */
+var EXPORT_SKIP_SHEETS = [SHEETS.SESSIONS];
+
+function exportable_(name) {
+  return EXPORT_SKIP_SHEETS.indexOf(name) < 0;
+}
+
+/** ส่งออกทุกชีตเป็นก้อน JSON เดียว — เฉพาะผู้ดูแล (ดู ADMIN_ONLY_ACTIONS) */
 function exportAll_() {
   var out = { app: APP.NAME, version: APP.VERSION, exportedAt: nowStamp_(), sheets: {} };
   Object.keys(SHEETS).forEach(function (k) {
     var name = SHEETS[k];
+    if (!exportable_(name)) return;
     out.sheets[name] = readRows_(name).map(function (r) {
       var c = {};
       Object.keys(r).forEach(function (key) { if (key !== '_row') c[key] = r[key]; });
@@ -2182,6 +3242,7 @@ function exportAll_() {
 function exportCsv_(sheetName) {
   var cols = SCHEMA[sheetName];
   if (!cols) throw new Error('ไม่รู้จักชีต: ' + sheetName);
+  if (!exportable_(sheetName)) throw new Error('ชีตนี้ส่งออกไม่ได้เพราะมีข้อมูลการเข้าใช้งานอยู่');
   var rows = readRows_(sheetName);
   var lines = [cols.map(function (c) { return csvCell_(c.label); }).join(',')];
   rows.forEach(function (r) {
@@ -2211,6 +3272,7 @@ function importAll_(payload) {
   var stat = {};
   Object.keys(data.sheets).forEach(function (name) {
     if (!SCHEMA[name]) return;
+    if (!exportable_(name)) return;      // ไม่ยอมให้ยัดรหัสอ้างอิงปลอมเข้ามาทางไฟล์สำรอง
     var incoming = data.sheets[name] || [];
     if (mode === 'replace') {
       clearSheet_(name);
@@ -3615,13 +4677,18 @@ function costPerRoom_(year) {
 function api(action, payload) {
   payload = payload || {};
   try {
-    var role = requireRole_(action, payload._key);
+    var role = requireRole_(action, payload);
     var fn = API_ROUTES[action];
     if (!fn) throw new Error('ไม่รู้จักคำสั่ง: ' + action);
     return { ok: true, data: fn(payload, role) };
   } catch (e) {
     console.error(action + ' -> ' + e);
-    return { ok: false, error: String(e && e.message ? e.message : e) };
+    return {
+      ok: false,
+      error: String(e && e.message ? e.message : e),
+      // หน้าเว็บใช้ธงนี้เด้งกลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความเฉย ๆ
+      needLogin: /เข้าสู่ระบบก่อน/.test(String(e && e.message ? e.message : e))
+    };
   }
 }
 
@@ -3631,8 +4698,9 @@ var API_ROUTES = {
   'app.bootstrap': function (p, role) {
     return {
       app: { name: APP.NAME, subtitle: APP.SUBTITLE, version: APP.VERSION },
-      user: whoAmI(p._key),
-      canEdit: role === ROLE.ADMIN,
+      user: whoAmI(p),
+      canEdit: roleRank_(role) >= roleRank_(ROLE.EDITOR),
+      isAdmin: role === ROLE.ADMIN,
       floors: FLOORS,
       rooms: ROOMS,
       schema: {
@@ -3656,7 +4724,14 @@ var API_ROUTES = {
         warrantyAlertDays: Number(getSetting_('warranty_alert_days', 30)),
         overdueAlertDays: Number(getSetting_('overdue_alert_days', 7)),
         buildingName: getSetting_('building_name', APP.NAME),
-        refreshSeconds: Number(getSetting_('refresh_seconds', 25))
+        refreshSeconds: Number(getSetting_('refresh_seconds', 25)),
+        theme: getSetting_('theme', 'ตามเครื่อง'),
+        startPage: getSetting_('start_page', 'แดชบอร์ด'),
+        currency: getSetting_('currency', 'บาท'),
+        defaultDueDay: Number(getSetting_('default_due_day', 20)),
+        ocrEnabled: String(getSetting_('ocr_enabled', 'เปิด')).indexOf('เปิด') === 0,
+        ocrAutofill: getSetting_('ocr_autofill', 'ถามก่อนเติม'),
+        shareLinkEnabled: shareLinkEnabled_()
       },
       version: dataVersion_(),
       sheetUrl: role === ROLE.ADMIN ? getSpreadsheet_().getUrl() : ''
@@ -3741,21 +4816,64 @@ var API_ROUTES = {
 
   /* ---------- ลิงก์แชร์ ---------- */
   'share.links': function (p, role) {
-    if (role !== ROLE.ADMIN) return { base: '', adminUrl: '', viewUrl: '' };
-    var base = '';
-    try { base = ScriptApp.getService().getUrl() || ''; } catch (e) { }
+    if (role !== ROLE.ADMIN) return { base: '', appUrl: '', adminUrl: '', viewUrl: '', shareEnabled: false };
+    var base = webAppUrl_();
     return {
       base: base,
+      appUrl: base,
       adminUrl: base ? base + '?key=' + getSetting_('admin_token', '') : '',
-      viewUrl: base ? base + '?key=' + getSetting_('view_token', '') : ''
+      viewUrl: base ? base + '?key=' + getSetting_('view_token', '') : '',
+      shareEnabled: shareLinkEnabled_()
     };
   },
   'share.rotateToken': function () { return rotateViewToken_(); },
 
   /* ---------- สำรองข้อมูลลง Drive ---------- */
   'backup.backupNow': function () { return backupToDrive_(); },
-  'backup.history': function (p, role) { return role === ROLE.ADMIN ? listBackups_() : []; }
+  'backup.history': function (p, role) { return role === ROLE.ADMIN ? listBackups_() : []; },
+
+  /* ---------- เข้าสู่ระบบ ---------- */
+
+  // เปิดให้เรียกได้ก่อนล็อกอิน (ดู PUBLIC_ACTIONS ใน Auth.gs)
+  'auth.ping': function () { return { ok: true, app: APP.NAME }; },
+  'auth.me': function (p) { return whoAmI(p); },
+  'auth.login': function (p) { return login_(p.username, p.password); },
+  'auth.unlock': function (p) { return unlockWithPin_(p.device, p.pin); },
+
+  // ต้องล็อกอินอยู่แล้ว
+  'auth.logout': function (p) { return revokeSession_(p._session); },
+  'auth.setPin': function (p) { return setPin_(p._session, p.pin, p.device); },
+  'auth.forgetDevice': function (p) { return forgetDevice_(p.device); },
+  'auth.forgetAllDevices': function (p) { return forgetAllDevices_(p.username || actorUsername_(p)); },
+  'auth.changePassword': function (p) {
+    var me = actorUsername_(p);
+    if (!me) throw new Error('บัญชีนี้เข้าผ่านลิงก์ จึงไม่มีรหัสผ่านให้เปลี่ยน');
+    return changePassword_(me, p.oldPassword, p.newPassword);
+  },
+  'auth.devices': function (p) {
+    var me = actorUsername_(p);
+    return me ? listDevices_(me) : [];
+  },
+
+  /* ---------- จัดการผู้ใช้ (ผู้ดูแลเท่านั้น) ---------- */
+  'user.list': function () { return listUsers_(); },
+  'user.save': function (p, role) { return saveUser_(p.record, role); },
+  'user.delete': function (p, role) { return deleteUser_(p.username, role, actorUsername_(p)); },
+  'user.resetPin': function (p) { return forgetAllDevices_(p.username); },
+  'user.signOutAll': function (p) { return revokeAllSessions_(p.username); },
+
+  /* ---------- ตั้งค่า ---------- */
+  'settings.list': function (p, role) { return listSettings_(role); },
+  'settings.save': function (p) { return saveSettings_(p.values); },
+
+  /* ---------- อ่านข้อความจากรูป ---------- */
+  'ocr.read': function (p) { return ocrRead_(p); }
 };
+
+/** ชื่อผู้ใช้ของคนที่กำลังเรียก (ว่างถ้าเข้าผ่านลิงก์) */
+function actorUsername_(payload) {
+  return resolveActor_(payload).username || '';
+}
 
 /** ดึงตัวเลือก dropdown จาก SCHEMA เพื่อให้หน้าเว็บกับชีตใช้ชุดเดียวกันเสมอ */
 function fieldOptions_(sheetName, key) {
@@ -3904,9 +5022,6 @@ function escapeHtml_(s) {
 
 function doGet(e) {
   var key = safeKey_((e && e.parameter && e.parameter.key) || '');
-  var role = resolveRole_(key);
-
-  if (role === ROLE.NONE) return denyPage_();
 
   // อัปเดตโค้ดแล้วเปิดเว็บเลยโดยไม่ได้รัน START_HERE ก็ต้องย้ายคอลัมน์ให้ทัน
   // ไม่งั้นโค้ดใหม่จะอ่านชีตโครงเก่าแล้วข้อมูลเลื่อนคอลัมน์
@@ -3915,12 +5030,17 @@ function doGet(e) {
 
   rememberExecUrl_();   // ตอนนี้โค้ดทำงานอยู่ใน /exec จริง จึงจดที่อยู่ไว้ใช้ตอนแสดงลิงก์
 
+  // หน้าเว็บเปิดได้เสมอ แต่จะเห็นแค่หน้าล็อกอินจนกว่าจะยืนยันตัวตนผ่าน
+  // ตัวกันสิทธิ์จริงอยู่ในฟังก์ชัน api() ฝั่งเซิร์ฟเวอร์ ไม่ได้อยู่ที่หน้านี้
+  var actor = resolveActor_({ _key: key });
+
   var t = HtmlService.createTemplateFromFile('Index');
   t.appName = APP.NAME;
   t.subtitle = APP.SUBTITLE;
   t.version = APP.VERSION;
-  t.accessKey = key;   // กรองแล้ว ปลอดภัยที่จะฝังลงหน้าโดยตรง
-  t.role = role;
+  t.accessKey = key;          // กรองแล้ว ปลอดภัยที่จะฝังลงหน้าโดยตรง
+  t.role = actor.role;
+  t.theme = safeTheme_(getSetting_('theme', 'ตามเครื่อง'));
 
   return t.evaluate()
     .setTitle(APP.NAME)
@@ -3942,7 +5062,13 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-/** หน้าที่แสดงเมื่อเปิดลิงก์โดยไม่มีกุญแจที่ถูกต้อง */
+/** ธีมที่ฝังลงหน้าได้อย่างปลอดภัย (ค่าอื่นถือว่าตามเครื่อง) */
+function safeTheme_(v) {
+  var s = String(v || '').trim();
+  return (s === 'สว่าง' || s === 'มืด') ? s : 'ตามเครื่อง';
+}
+
+/** หน้าที่แสดงเมื่อระบบยังติดตั้งไม่เสร็จ หรือเปิดลิงก์ผิด */
 function denyPage_() {
   var html =
     '<!doctype html><html lang="th"><head><meta charset="utf-8">' +

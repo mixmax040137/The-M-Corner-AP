@@ -41,7 +41,7 @@ function setTheme(name, quiet){
     callApi('settings.save', { values: { theme: name } }).catch(function(){ /* เก็บในเครื่องก็พอ */ });
   }
   if (!quiet) toast('เปลี่ยนเป็นธีม' + (name === 'ตามเครื่อง' ? 'ตามเครื่อง' : name), 'ok');
-  if (S.page === 'settings') load();
+  if (S.page === 'settings') load({ quiet: true });
 }
 
 /** ปุ่มบนแถบหัว — วนสว่าง → มืด → ตามเครื่อง */
@@ -111,7 +111,7 @@ function doForgetAllDevices(){
     callApi('auth.forgetAllDevices', {}).then(function(n){
       saveDevice('');
       toast('ยกเลิก PIN แล้ว ' + n + ' เครื่อง', 'ok');
-      load();
+      load({ quiet: true });
     }).catch(function(e){ toast(e.message || e, 'err'); });
   });
 }
@@ -190,7 +190,7 @@ function saveSettingsForm(){
     if (vals.theme) { lsSet(LS_THEME, vals.theme); applyTheme(vals.theme); }
     toast(r.saved ? 'บันทึกแล้ว ' + r.saved + ' รายการ' : 'ไม่มีอะไรเปลี่ยนแปลง', 'ok');
     // ค่าบางตัว (รอบรีเฟรช ชื่ออาคาร) มีผลกับทั้งหน้า จึงโหลดใหม่ทั้งชุด
-    return callApi('app.bootstrap').then(function(b){ S.boot = b; load(); });
+    return callApi('app.bootstrap').then(function(b){ S.boot = b; load({ quiet: true }); });
   }).catch(function(e){ toast(e.message || e, 'err'); });
 }
 
@@ -272,7 +272,7 @@ function delUser(username){
   confirmAction('ลบผู้ใช้ "' + username + '" ใช่ไหม — เข้าระบบไม่ได้อีกทันที', function(){
     callApi('user.delete', { username: username }).then(function(){
       toast('ลบผู้ใช้แล้ว', 'ok');
-      load();
+      load({ quiet: true });
     }).catch(function(e){ toast(e.message || e, 'err'); });
   });
 }

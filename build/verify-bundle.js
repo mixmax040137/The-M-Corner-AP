@@ -487,8 +487,10 @@ console.log('\n── build/AllInOne.gs ──');
 
     check('ค่าตั้งต้นรีเฟรชคือ 5 นาที',
       await p5.evaluate(() => S.boot.settings.refreshSeconds) === 300);
-    check('ป้ายบอกรอบเป็น "นาที" ไม่ใช่ "วินาที"',
-      (await p5.$eval('#liveDot', e => e.innerHTML)).includes('ทุก 5 นาที'));
+    check('ตัวบอกสถานะเริ่มที่ "ซิงก์แล้ว"',
+      (await p5.$eval('#liveDot', e => e.textContent)).includes('ซิงก์แล้ว'));
+    check('คำอธิบายบอกรอบเป็นนาที ไม่ใช่วินาที',
+      (await p5.$eval('#liveDot [title]', e => e.getAttribute('title'))).includes('ทุก 5 นาที'));
 
     // กำลังพิมพ์อยู่ในช่องค้นหา = ยุ่ง ห้ามโหลดทับ
     await p5.focus('#searchBox');
@@ -508,14 +510,13 @@ console.log('\n── build/AllInOne.gs ──');
     const typed = await p5.evaluate(() => {
       S.version = 'เก่า';
       // จำลองรอบตรวจข้อมูลหนึ่งรอบ ตามตรรกะเดียวกับใน startPolling
-      var changed = true;
-      if (changed && Date.now() >= S.selfChangeUntil && userIsBusy()) liveDotPending();
+      if (Date.now() >= S.selfChangeUntil && userIsBusy()) syncSet('pending');
       return document.getElementById('f_item').value;
     });
     check('มีข้อมูลใหม่ตอนกำลังกรอก → ข้อความที่พิมพ์ไว้ไม่หาย',
       typed === 'ปั๊มน้ำที่ยังกรอกไม่เสร็จ', typed);
     check('ขึ้นปุ่ม "มีข้อมูลใหม่" ให้กดเองแทนการโหลดทับ',
-      (await p5.$eval('#liveDot', e => e.innerHTML)).includes('มีข้อมูลใหม่'));
+      (await p5.$eval('#liveDot', e => e.textContent)).includes('มีข้อมูลใหม่'));
     await p5.evaluate(() => closeModal());
 
     // กดบันทึกแล้วต้องจดรุ่นข้อมูลใหม่ไว้ ไม่งั้นจะโหลดซ้ำและขึ้นข้อความผิด ๆ
@@ -536,6 +537,92 @@ console.log('\n── build/AllInOne.gs ──');
                               CLIENT_MUTATING.test('file.upload') === true));
     check('หน้ารีเฟรชไม่มี JS error', errs5.length === 0, errs5.join(' | '));
     await p5.close();
+  }
+
+  /* ---------- ตัวบอกสถานะ + ซิงก์เงียบเบื้องหลัง ---------- */
+  console.log('\n── ตัวบอกสถานะและการซิงก์เงียบ ──');
+  {
+    const p6 = await b.newPage({ viewport: { width: 1300, height: 900 } });
+    const errs6 = [];
+    p6.on('pageerror', e => errs6.push(e.message));
+    await p6.goto('file://' + file);
+    await p6.waitForTimeout(1000);
+    await p6.evaluate(() => go('purchases'));
+    await p6.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+
+    const label = () => p6.$eval('#liveDot', e => e.textContent.trim());
+
+    // สถานะแต่ละแบบต้องขึ้นข้อความให้ผู้ใช้เข้าใจ
+    for (const [state, want] of [['saving','กำลังบันทึก'], ['saved','บันทึกแล้ว'],
+                                 ['syncing','กำลังซิงก์'], ['offline','เชื่อมต่อไม่ได้'],
+                                 ['paused','ไม่ตรวจอัตโนมัติ']]) {
+      await p6.evaluate(st => { SYNC.state = ''; syncSet(st); }, state);
+      check('สถานะ ' + state + ' ขึ้นว่า "' + want + '"', (await label()).includes(want), await label());
+    }
+
+    // สถานะที่ต้องให้ผู้ใช้จัดการ ต้องกดได้ และห้ามถูกสถานะทั่วไปมากลบ
+    await p6.evaluate(() => { SYNC.state = ''; syncSet('pending'); });
+    check('"มีข้อมูลใหม่" กดได้', await p6.$('#liveDot button') !== null);
+    await p6.evaluate(() => syncSet('synced'));
+    check('"มีข้อมูลใหม่" ไม่ถูกสถานะปกติมากลบทิ้ง', (await label()).includes('มีข้อมูลใหม่'), await label());
+    await p6.evaluate(() => { SYNC.state = ''; syncSet('offline'); syncSet('syncing'); });
+    check('"เชื่อมต่อไม่ได้" ก็ไม่ถูกกลบเหมือนกัน', (await label()).includes('เชื่อมต่อไม่ได้'), await label());
+    await p6.evaluate(() => { SYNC.state = ''; syncSet('synced'); });
+
+    // เน็ตหลุด ต้องแยกออกจาก "เซิร์ฟเวอร์ปฏิเสธคำสั่ง"
+    check('แยกอาการเน็ตหลุดออกจากคำสั่งผิดได้',
+      await p6.evaluate(() => isOfflineError(new Error('network error')) === true &&
+                              isOfflineError(new Error('เฉพาะผู้ดูแลเท่านั้น')) === false));
+
+    // ซิงก์เงียบ: ห้ามขึ้นวงกลมหมุนทับหน้า และห้ามเด้งกลับไปบนสุด
+    await p6.evaluate(() => window.scrollTo(0, 400));
+    await p6.waitForTimeout(80);
+    const quiet = await p6.evaluate(async () => {
+      var before = document.getElementById('view').innerHTML.length;
+      var sawSpinner = false;
+      var t = setInterval(function(){
+        if (/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText)) sawSpinner = true;
+      }, 10);
+      await load({ quiet: true });
+      clearInterval(t);
+      return { sawSpinner: sawSpinner, y: window.scrollY, kept: document.getElementById('view').innerHTML.length > 0, before: before };
+    });
+    check('ซิงก์เงียบ: ไม่ขึ้นวงกลมหมุนทับหน้า', quiet.sawSpinner === false);
+    check('ซิงก์เงียบ: ไม่เด้งกลับไปบนสุด', quiet.y === 400, 'อยู่ที่ ' + quiet.y);
+    check('ซิงก์เงียบ: ข้อมูลยังอยู่ครบ', quiet.kept === true);
+    check('ซิงก์เสร็จแล้วกลับไปสถานะปกติ', (await label()).includes('ซิงก์แล้ว'), await label());
+
+    // โหลดแบบปกติ (ผู้ใช้เปลี่ยนหน้า) ยังต้องเห็นว่ากำลังโหลด
+    const loud = await p6.evaluate(async () => {
+      var sawSpinner = false;
+      var t = setInterval(function(){
+        if (/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText)) sawSpinner = true;
+      }, 10);
+      await load();
+      clearInterval(t);
+      return sawSpinner;
+    });
+    check('เปลี่ยนหน้าเอง: ยังเห็นว่ากำลังโหลด', loud === true);
+
+    // แถวที่กางดูอยู่ ต้องยังกางอยู่หลังซิงก์
+    const keptOpen = await p6.evaluate(async () => {
+      var d = S.cache.purchases;
+      d.items[0].bill = { count: 2, shipping: 0, discount: 0,
+        lines: [{ name:'ก', qty:1, unit:'ชิ้น', unitPrice:10, total:10 },
+                { name:'ข', qty:1, unit:'ชิ้น', unitPrice:20, total:20 }] };
+      document.getElementById('view').innerHTML = ROUTES.purchases.render(d);
+      var btn = document.querySelector('.bill-toggle');
+      if (!btn) return 'ไม่มีบิลให้กาง';
+      btn.click();
+      var id = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
+      await load({ quiet: true });
+      var after = document.getElementById(id);
+      return after ? (after.hidden ? 'ถูกพับกลับ' : 'ยังกางอยู่') : 'หายไป';
+    });
+    check('รายการที่กางดูอยู่ ยังกางอยู่หลังซิงก์เงียบ', keptOpen === 'ยังกางอยู่', keptOpen);
+
+    check('หน้าตัวบอกสถานะไม่มี JS error', errs6.length === 0, errs6.join(' | '));
+    await p6.close();
   }
 
   console.log('\n════════════════════════════');

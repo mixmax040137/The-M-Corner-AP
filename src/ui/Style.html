@@ -474,6 +474,31 @@ body.locked .app{filter:blur(3px);pointer-events:none;user-select:none}
   .line-total{width:100%;margin:6px 0 0;text-align:right}
 }
 
+/* ============ ตัวบอกสถานะการซิงก์ (มุมขวาบน) ============
+   เงียบเมื่อทุกอย่างปกติ ชัดเจนเมื่อมีอะไรต้องจัดการ
+   ตัวที่กดได้จะยกขึ้นเล็กน้อยตอนเอาเมาส์ชี้ ให้รู้ว่ากดได้
+-------------------------------------------------------- */
+.sync-pill{
+  transition:background .15s,color .15s;
+  white-space:nowrap;line-height:1.7;
+}
+.sync-pill .spin{width:11px;height:11px;border-width:2px;vertical-align:-1px}
+button.sync-pill{padding:2px 10px}
+button.sync-pill:hover{filter:brightness(.94)}
+button.sync-pill:active{transform:translateY(1px)}
+/* สถานะที่ต้องให้ผู้ใช้จัดการ กะพริบเบา ๆ ให้สังเกตเห็น แต่ไม่รบกวนสายตา */
+.sync-pill.warn,.sync-pill.dgr{animation:syncNudge 2.4s ease-in-out infinite}
+@keyframes syncNudge{0%,88%,100%{opacity:1}94%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){
+  .sync-pill.warn,.sync-pill.dgr{animation:none}
+}
+@media (max-width:720px){
+  /* จอแคบ: เหลือแต่ไอคอนหรือวงหมุน ประหยัดที่บนแถบหัว
+     ข้อความยังอ่านได้จากการแตะค้าง (title) */
+  .sync-pill .sync-label{display:none}
+  .sync-pill{padding:3px 8px;font-size:13px}
+}
+
 @media print{
   .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
   .app{display:block} body{background:#fff}

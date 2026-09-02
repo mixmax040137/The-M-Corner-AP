@@ -484,6 +484,31 @@ body.locked .app{filter:blur(3px);pointer-events:none;user-select:none}
   .line-total{width:100%;margin:6px 0 0;text-align:right}
 }
 
+/* ============ ตัวบอกสถานะการซิงก์ (มุมขวาบน) ============
+   เงียบเมื่อทุกอย่างปกติ ชัดเจนเมื่อมีอะไรต้องจัดการ
+   ตัวที่กดได้จะยกขึ้นเล็กน้อยตอนเอาเมาส์ชี้ ให้รู้ว่ากดได้
+-------------------------------------------------------- */
+.sync-pill{
+  transition:background .15s,color .15s;
+  white-space:nowrap;line-height:1.7;
+}
+.sync-pill .spin{width:11px;height:11px;border-width:2px;vertical-align:-1px}
+button.sync-pill{padding:2px 10px}
+button.sync-pill:hover{filter:brightness(.94)}
+button.sync-pill:active{transform:translateY(1px)}
+/* สถานะที่ต้องให้ผู้ใช้จัดการ กะพริบเบา ๆ ให้สังเกตเห็น แต่ไม่รบกวนสายตา */
+.sync-pill.warn,.sync-pill.dgr{animation:syncNudge 2.4s ease-in-out infinite}
+@keyframes syncNudge{0%,88%,100%{opacity:1}94%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){
+  .sync-pill.warn,.sync-pill.dgr{animation:none}
+}
+@media (max-width:720px){
+  /* จอแคบ: เหลือแต่ไอคอนหรือวงหมุน ประหยัดที่บนแถบหัว
+     ข้อความยังอ่านได้จากการแตะค้าง (title) */
+  .sync-pill .sync-label{display:none}
+  .sync-pill{padding:3px 8px;font-size:13px}
+}
+
 @media print{
   .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
   .app{display:block} body{background:#fff}
@@ -601,19 +626,27 @@ function callApi(action, payload){
   // ผู้เรียกส่ง _session มาเองได้ (ตอนออกจากระบบต้องใช้ตัวเก่า)
   if (body._session === undefined) body._session = (typeof AUTH !== 'undefined' ? AUTH.session : '') || '';
   payload = body;
+  var mutating = CLIENT_MUTATING.test(action);
+  if (mutating) syncSet('saving');
+
   return new Promise(function(resolve, reject){
     google.script.run
       .withSuccessHandler(function(res){
-        if (!res) return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์'));
+        if (!res) { if (mutating) syncSet('offline'); return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์')); }
         if (res.ok) {
-          if (CLIENT_MUTATING.test(action)) markSelfChange();
+          if (mutating) { markSelfChange(); syncSet('saved'); }
           return resolve(res.data);
         }
         // หมดอายุระหว่างใช้งาน — พากลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความค้างไว้เฉย ๆ
         if (res.needLogin && typeof onSessionLost === 'function') onSessionLost();
+        if (mutating) syncSet('error', res.error);
         reject(new Error(res.error));
       })
-      .withFailureHandler(function(err){ reject(err); })
+      .withFailureHandler(function(err){
+        // เน็ตสะดุด — ของที่กรอกไว้ยังอยู่ในฟอร์ม ไม่หายไปไหน
+        if (mutating) syncSet(isOfflineError(err) ? 'offline' : 'error', (err && err.message) || String(err));
+        reject(err);
+      })
       .api(action, payload || {});
   });
 }
@@ -708,29 +741,71 @@ function go(page){
   load();
 }
 
-function refresh(){ load(true); }
+function refresh(){ load({ quiet: true }); }
 
 function setYear(y){
   S.year = y;
   load();
 }
 
-function load(force){
+/**
+ * โหลดข้อมูลของหน้าปัจจุบัน
+ *
+ * @param {{quiet:boolean}=} opts
+ *   quiet = ซิงก์เงียบ ๆ เบื้องหลัง ไม่ล้างหน้าเป็นวงกลมหมุน และคืนตำแหน่งที่เลื่อนค้างไว้
+ *           ใช้หลังกดบันทึก และตอนพบว่ามีคนแก้ข้อมูลจากที่อื่น
+ *           เพื่อให้หน้าจอนิ่งที่สุด ไม่กระพริบและไม่เด้งกลับไปบนสุด
+ */
+function load(opts){
+  opts = (opts === true) ? {} : (opts || {});     // เผื่อโค้ดเก่าที่เรียก load(true)
+  var quiet = !!opts.quiet;
   var view = document.getElementById('view');
-  view.innerHTML = '<div class="empty"><div class="big"><span class="spin"></span></div>กำลังโหลดข้อมูล…</div>';
   var r = ROUTES[S.page];
-  if (!r) { view.innerHTML = '<div class="empty">ไม่พบหน้านี้</div>'; return; }
-  r.load().then(function(data){
+  if (!r) { view.innerHTML = '<div class="empty">ไม่พบหน้านี้</div>'; return Promise.resolve(); }
+
+  if (!quiet) {
+    view.innerHTML = '<div class="empty"><div class="big"><span class="spin"></span></div>กำลังโหลดข้อมูล…</div>';
+  } else {
+    syncSet('syncing');
+  }
+
+  var keep = quiet ? snapshotView() : null;
+
+  return r.load().then(function(data){
     S.cache[S.page] = data;
     syncYearOptions(data.years || data.available || []);
     view.innerHTML = r.render(data);
     applyReadOnly(view);
     if (r.after) r.after(data);
+    if (keep) restoreView(keep);
+    if (quiet) syncSet('synced');
   }).catch(function(e){
+    if (quiet) {                       // ซิงก์เบื้องหลังพลาด — อย่าทิ้งของที่เห็นอยู่
+      syncSet(isOfflineError(e) ? 'offline' : 'error', e.message || e);
+      return;
+    }
     view.innerHTML = '<div class="card"><div class="card-b"><h3>โหลดข้อมูลไม่สำเร็จ</h3>' +
                      '<p class="muted">' + esc(e.message||e) + '</p>' +
                      '<button class="btn" onclick="load()">ลองใหม่</button></div></div>';
   });
+}
+
+/** จำสภาพหน้าจอไว้ก่อนวาดใหม่ เพื่อให้ผู้ใช้รู้สึกว่าหน้าไม่ได้ถูกโหลดใหม่ */
+function snapshotView(){
+  var open = [];
+  document.querySelectorAll('.bill-lines').forEach(function(el){
+    if (!el.hidden) open.push(el.id);
+  });
+  return { y: window.scrollY || 0, open: open };
+}
+
+function restoreView(keep){
+  keep.open.forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) { el.hidden = false; var b = el.previousElementSibling;
+              if (b) b.textContent = b.textContent.replace('▾', '▴'); }
+  });
+  if (keep.y) window.scrollTo(0, keep.y);
 }
 
 /** เติมตัวเลือกปีในแถบบนให้ตรงกับข้อมูลจริงของหน้านั้น */
@@ -803,32 +878,100 @@ function userIsBusy(){
 }
 
 function refreshLabel(sec){
-  if (sec % 3600 === 0) return 'ทุก ' + (sec / 3600) + ' ชั่วโมง';
-  if (sec % 60 === 0) return 'ทุก ' + (sec / 60) + ' นาที';
-  return 'ทุก ' + sec + ' วินาที';
+  if (!sec) return 'ปิดการตรวจอัตโนมัติ';
+  if (sec % 3600 === 0) return 'ตรวจข้อมูลใหม่ทุก ' + (sec / 3600) + ' ชั่วโมง';
+  if (sec % 60 === 0) return 'ตรวจข้อมูลใหม่ทุก ' + (sec / 60) + ' นาที';
+  return 'ตรวจข้อมูลใหม่ทุก ' + sec + ' วินาที';
 }
 
-function liveDotIdle(sec){
+/* ---------------- ตัวบอกสถานะการซิงก์ (มุมขวาบน) ----------------
+
+   หน้าที่: บอกให้รู้ตลอดว่าตอนนี้ข้อมูลตรงกับหลังบ้านหรือยัง
+   กำลังบันทึกอยู่ไหม หรือมีอะไรค้างที่ต้องจัดการ
+
+   ตั้งใจให้ "เงียบเมื่อทุกอย่างปกติ และชัดเจนเมื่อมีอะไรผิดปกติ"
+   สถานะที่ต้องให้ผู้ใช้ทำอะไรต่อ (มีข้อมูลใหม่ / เชื่อมต่อไม่ได้) กดได้
+------------------------------------------------------------------ */
+
+var SYNC = { state: 'synced', detail: '', at: 0, timer: null };
+
+var SYNC_LOOK = {
+  synced:  { cls: 'ok',   icon: '●',  text: 'ซิงก์แล้ว' },
+  syncing: { cls: 'info', icon: '',   text: 'กำลังซิงก์…',   spin: true },
+  saving:  { cls: 'info', icon: '',   text: 'กำลังบันทึก…',  spin: true },
+  saved:   { cls: 'ok',   icon: '✓',  text: 'บันทึกแล้ว' },
+  pending: { cls: 'warn', icon: '↻',  text: 'มีข้อมูลใหม่',  click: 'loadPending()' },
+  offline: { cls: 'dgr',  icon: '⚠',  text: 'เชื่อมต่อไม่ได้', click: 'retrySync()' },
+  error:   { cls: 'dgr',  icon: '⚠',  text: 'บันทึกไม่สำเร็จ', click: 'retrySync()' },
+  paused:  { cls: 'mute', icon: '○',  text: 'ไม่ตรวจอัตโนมัติ', click: 'loadPending()' }
+};
+
+/**
+ * @param {string} state ชื่อสถานะใน SYNC_LOOK
+ * @param {string=} detail ข้อความอธิบายเพิ่ม (โผล่ตอนเอาเมาส์ชี้)
+ */
+function syncSet(state, detail){
+  // สถานะที่ต้องให้ผู้ใช้จัดการ ห้ามถูกสถานะทั่วไปมากลบทิ้ง
+  if ((SYNC.state === 'pending' || SYNC.state === 'offline') &&
+      (state === 'synced' || state === 'syncing')) return;
+
+  SYNC.state = state;
+  SYNC.detail = detail || '';
+  if (state === 'synced' || state === 'saved') SYNC.at = Date.now();
+  syncPaint();
+
+  clearTimeout(SYNC.timer);
+  if (state === 'saved') {                       // โชว์ "บันทึกแล้ว" แป๊บเดียวแล้วกลับไปปกติ
+    SYNC.timer = setTimeout(function(){
+      if (SYNC.state === 'saved') syncSet('synced');
+    }, 2600);
+  }
+}
+
+function syncPaint(){
   var dot = document.getElementById('liveDot');
   if (!dot) return;
-  dot.dataset.pending = '';
-  dot.innerHTML = '<span class="b ok" title="ตรวจข้อมูลใหม่' + refreshLabel(sec) +
-                  ' · จะไม่โหลดทับตอนที่กำลังกรอกข้อมูลอยู่">● สด</span>';
+  var look = SYNC_LOOK[SYNC.state] || SYNC_LOOK.synced;
+
+  var tip = SYNC.detail || syncTooltip();
+  // ห่อข้อความไว้ เพื่อให้จอแคบซ่อนเฉพาะข้อความและยังเห็นไอคอนอยู่
+  var body = (look.spin ? '<span class="spin"></span> ' : (look.icon ? look.icon + ' ' : '')) +
+             '<span class="sync-label">' + look.text + '</span>';
+  var cls = 'b ' + look.cls + ' sync-pill';
+
+  dot.innerHTML = look.click
+    ? '<button class="' + cls + '" style="border:0;cursor:pointer;font:inherit" ' +
+      'title="' + esc(tip) + '" onclick="' + look.click + '">' + body + '</button>'
+    : '<span class="' + cls + '" title="' + esc(tip) + '">' + body + '</span>';
 }
 
-/** มีข้อมูลใหม่แต่ผู้ใช้กำลังยุ่ง — บอกไว้เฉย ๆ ให้กดเองเมื่อพร้อม */
-function liveDotPending(){
-  var dot = document.getElementById('liveDot');
-  if (!dot || dot.dataset.pending === '1') return;
-  dot.dataset.pending = '1';
-  dot.innerHTML = '<button class="b warn" style="border:0;cursor:pointer;font:inherit" ' +
-                  'title="มีการแก้ข้อมูลจากที่อื่น กดเพื่อโหลดใหม่เมื่อคุณพร้อม" ' +
-                  'onclick="loadPending()">↻ มีข้อมูลใหม่</button>';
+function syncTooltip(){
+  var base = refreshLabel(POLL_SECONDS) + ' · ไม่โหลดทับตอนกำลังกรอกข้อมูล';
+  if (!SYNC.at) return base;
+  var d = new Date(SYNC.at);
+  var hh = ('0' + d.getHours()).slice(-2), mm = ('0' + d.getMinutes()).slice(-2);
+  return 'ตรงกับข้อมูลหลังบ้านเมื่อ ' + hh + ':' + mm + ' น.\n' + base;
 }
 
+/** เน็ตสะดุด/หลุด ต่างจาก "เซิร์ฟเวอร์ตอบว่าทำไม่ได้" ซึ่งเป็นความผิดของคำสั่ง */
+function isOfflineError(e){
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  var m = String((e && e.message) || e || '');
+  return /network|failed|timeout|เครือข่าย|เชื่อมต่อ|ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์/i.test(m);
+}
+
+/** ผู้ใช้กดที่ตัวบอกสถานะตอนมีปัญหา — ลองใหม่ทันที */
+function retrySync(){
+  SYNC.state = 'syncing';
+  syncPaint();
+  load({ quiet: true });
+}
+
+/** โหลดข้อมูลใหม่ตอนที่ผู้ใช้พร้อม (กดจากป้าย "มีข้อมูลใหม่") */
 function loadPending(){
-  liveDotIdle(POLL_SECONDS);
-  load();
+  SYNC.state = 'syncing';
+  syncPaint();
+  load({ quiet: true });
 }
 
 var POLL_SECONDS = 0;
@@ -839,25 +982,27 @@ function startPolling(seconds){
   POLL_SECONDS = sec;
   clearInterval(POLL_TIMER);
 
-  var dot = document.getElementById('liveDot');
-  if (!sec) { if (dot) dot.innerHTML = ''; return; }
-  liveDotIdle(sec);
+  if (!sec) { syncSet('paused'); return; }   // ปิดการตรวจอัตโนมัติ — กดที่ป้ายเพื่อซิงก์เองได้
+  syncSet('synced');
 
   POLL_TIMER = setInterval(function(){
     if (document.hidden) return;
     callApi('app.version').then(function(v){
+      if (SYNC.state === 'offline') syncSet('synced');   // กลับมาต่อได้แล้ว
       if (!v || !v.version || v.version === S.version) return;
       S.version = v.version;
 
-      // เราเป็นคนแก้เอง และหน้าก็โหลดใหม่ไปแล้วตอนกดบันทึก
+      // เราเป็นคนแก้เอง และหน้าก็ซิงก์ไปแล้วตอนกดบันทึก
       if (Date.now() < S.selfChangeUntil) return;
 
       // กำลังกรอกข้อมูลอยู่ — ห้ามโหลดทับ รอให้ผู้ใช้กดเอง
-      if (userIsBusy()) { liveDotPending(); return; }
+      if (userIsBusy()) { syncSet('pending'); return; }
 
-      load();
-      toast('มีการแก้ข้อมูลจากที่อื่น — โหลดใหม่ให้แล้ว');
-    }).catch(function(){ /* เน็ตสะดุด ไว้รอบหน้า */ });
+      // ซิงก์เงียบ ๆ ไม่ล้างหน้า ไม่เด้งกลับไปบนสุด
+      load({ quiet: true });
+    }).catch(function(e){
+      syncSet(isOfflineError(e) ? 'offline' : 'error', (e && e.message) || String(e));
+    });
   }, sec * 1000);
 }
 
@@ -2383,7 +2528,7 @@ function setTheme(name, quiet){
     callApi('settings.save', { values: { theme: name } }).catch(function(){ /* เก็บในเครื่องก็พอ */ });
   }
   if (!quiet) toast('เปลี่ยนเป็นธีม' + (name === 'ตามเครื่อง' ? 'ตามเครื่อง' : name), 'ok');
-  if (S.page === 'settings') load();
+  if (S.page === 'settings') load({ quiet: true });
 }
 
 /** ปุ่มบนแถบหัว — วนสว่าง → มืด → ตามเครื่อง */
@@ -2453,7 +2598,7 @@ function doForgetAllDevices(){
     callApi('auth.forgetAllDevices', {}).then(function(n){
       saveDevice('');
       toast('ยกเลิก PIN แล้ว ' + n + ' เครื่อง', 'ok');
-      load();
+      load({ quiet: true });
     }).catch(function(e){ toast(e.message || e, 'err'); });
   });
 }
@@ -2532,7 +2677,7 @@ function saveSettingsForm(){
     if (vals.theme) { lsSet(LS_THEME, vals.theme); applyTheme(vals.theme); }
     toast(r.saved ? 'บันทึกแล้ว ' + r.saved + ' รายการ' : 'ไม่มีอะไรเปลี่ยนแปลง', 'ok');
     // ค่าบางตัว (รอบรีเฟรช ชื่ออาคาร) มีผลกับทั้งหน้า จึงโหลดใหม่ทั้งชุด
-    return callApi('app.bootstrap').then(function(b){ S.boot = b; load(); });
+    return callApi('app.bootstrap').then(function(b){ S.boot = b; load({ quiet: true }); });
   }).catch(function(e){ toast(e.message || e, 'err'); });
 }
 
@@ -2614,7 +2759,7 @@ function delUser(username){
   confirmAction('ลบผู้ใช้ "' + username + '" ใช่ไหม — เข้าระบบไม่ได้อีกทันที', function(){
     callApi('user.delete', { username: username }).then(function(){
       toast('ลบผู้ใช้แล้ว', 'ok');
-      load();
+      load({ quiet: true });
     }).catch(function(e){ toast(e.message || e, 'err'); });
   });
 }
@@ -3016,8 +3161,9 @@ function openForm(opts){
       return callApi(opts.action, Object.assign({ record: record }, opts.extra || {}));
     }).then(function(){
       closeModal();
-      toast('บันทึกเรียบร้อย', 'ok');
-      load();
+      // ตัวบอกสถานะมุมขวาบนขึ้น "บันทึกแล้ว" ให้อยู่แล้ว จึงไม่ต้องเด้ง toast ซ้ำ
+      // แล้วซิงก์เงียบ ๆ ไม่ล้างหน้าและไม่เด้งกลับไปบนสุด
+      load({ quiet: true });
     }).catch(function(e){
       btn.disabled = false;
       btn.textContent = rec.id ? 'บันทึกการแก้ไข' : 'บันทึก';
@@ -3234,7 +3380,7 @@ function formDebt(rec, ledger){
 
 function delDebt(id){
   confirmAction('ลบก้อนหนี้นี้? รายการชำระที่ผูกไว้จะยังอยู่', function(){
-    callApi('debt.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+    callApi('debt.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });
 }
@@ -3272,7 +3418,7 @@ function formDebtPayment(rec, ledger){
 
 function delDebtPayment(id){
   confirmAction('ลบรายการชำระนี้?', function(){
-    callApi('debt.deletePayment', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+    callApi('debt.deletePayment', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });
 }
@@ -3315,7 +3461,7 @@ function formPurchase(rec){
 
 function delPurchase(id){
   confirmAction('ลบรายการซื้อนี้?', function(){
-    callApi('purchase.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+    callApi('purchase.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });
 }
@@ -3346,7 +3492,7 @@ function formAc(rec){
 
 function delAc(id){
   confirmAction('ลบรายการล้างแอร์นี้?', function(){
-    callApi('ac.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+    callApi('ac.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });
 }
@@ -3388,7 +3534,7 @@ function formBulkAc(){
       cost: document.getElementById('bk_cost').value,
       note: document.getElementById('bk_note').value
     }).then(function(n){
-      closeModal(); toast('สร้างนัดหมาย ' + n + ' ห้องแล้ว', 'ok'); load();
+      closeModal(); toast('สร้างนัดหมาย ' + n + ' ห้องแล้ว', 'ok'); load({ quiet: true });
     }).catch(function(e){
       btn.disabled = false; btn.textContent = 'สร้างนัดหมาย'; toast(e.message||e, 'err');
     });
@@ -3434,7 +3580,7 @@ function formRepair(rec){
 
 function delRepair(id){
   confirmAction('ลบงานซ่อมนี้?', function(){
-    callApi('repair.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+    callApi('repair.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });
 }
@@ -3468,7 +3614,7 @@ function formBuilding(rec){
 
 function delBuilding(id){
   confirmAction('ลบงานซ่อมตึกนี้?', function(){
-    callApi('building.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+    callApi('building.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });
 }
@@ -3517,7 +3663,7 @@ function formFinance(rec){
 
 function delFinance(id){
   confirmAction('ลบรายการนี้?', function(){
-    callApi('finance.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load(); })
+    callApi('finance.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });
 }
@@ -3581,7 +3727,7 @@ function doImportJson(){
         closeModal();
         var n = Object.keys(stat).reduce(function(a,k){ return a + (stat[k]||0); }, 0);
         toast('กู้คืนสำเร็จ ' + n + ' รายการ', 'ok');
-        load();
+        load({ quiet: true });
       }).catch(function(e){
         btn.disabled = false; btn.textContent = 'กู้คืนข้อมูล'; toast(e.message||e, 'err');
       });
@@ -3611,7 +3757,7 @@ function copyShare(){
 function doRotateShare(){
   confirmAction('ออกลิงก์แชร์ชุดใหม่? คนที่ถือลิงก์เดิมจะเปิดไม่ได้อีก', function(){
     callApi('share.rotateToken', {}).then(function(){
-      toast('ออกลิงก์แชร์ชุดใหม่แล้ว','ok'); load();
+      toast('ออกลิงก์แชร์ชุดใหม่แล้ว','ok'); load({ quiet: true });
     }).catch(function(e){ toast(e.message||e,'err'); });
   });
 }
@@ -3619,7 +3765,7 @@ function doRotateShare(){
 function doBackupNow(){
   toast('กำลังสำรองข้อมูลลง Drive…');
   callApi('backup.backupNow', {}).then(function(r){
-    toast('สำรองแล้ว: ' + r.name, 'ok'); load();
+    toast('สำรองแล้ว: ' + r.name, 'ok'); load({ quiet: true });
   }).catch(function(e){ toast(e.message||e,'err'); });
 }
 </script>

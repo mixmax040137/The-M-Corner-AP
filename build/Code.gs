@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-02 10:32 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-02 11:34 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.1.0',
+  VERSION: '1.2.0',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };

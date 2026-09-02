@@ -325,6 +325,55 @@ console.log('\n── build/AllInOne.gs ──');
   }
 
   /* ---------- เช็คลิสต์งานซ่อม ---------- */
+  console.log('\n── กราฟกำไรขาดทุน ──');
+  await pg.evaluate(() => { S.year = '2026'; go('finance'); });
+  await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 8000 });
+  await pg.waitForTimeout(400);
+
+  check('มีกราฟ 2 อัน (รายรับ-รายจ่าย + กำไรขาดทุน)',
+    await pg.$$eval('.chart', e => e.length) === 2,
+    await pg.$$eval('.chart', e => e.length));
+  check('กราฟมีคำอธิบายสีครบทั้งสองเส้น', await pg.$$eval('.legend .k', e => e.length) >= 2);
+  check('มีแท่งครบ 12 เดือน ทั้งสองกราฟ',
+    await pg.$$eval('.chart .hit', e => e.length) === 24,
+    await pg.$$eval('.chart .hit', e => e.length));
+  check('เส้นตารางเป็นเส้นทึบ ไม่ใช่เส้นประ',
+    await pg.$$eval('.chart .grid-l', els => els.every(e => !getComputedStyle(e).strokeDasharray.match(/[1-9]/))));
+  check('ไม่ติดตัวเลขทุกแท่ง (ติดเฉพาะเดือนที่สูง/ต่ำสุด)',
+    await pg.$$eval('.chart .dlab', e => e.length) <= 4,
+    await pg.$$eval('.chart .dlab', e => e.length));
+  check('ช่องรับการชี้กว้างพอให้กดโดน (เกิน 24px)',
+    await pg.evaluate(() => document.querySelector('.chart .hit').getBoundingClientRect().width >= 24));
+  check('กดด้วยแป้นพิมพ์ได้', await pg.evaluate(() => document.querySelector('.chart .hit').tabIndex === 0));
+
+  // ชี้แล้วต้องขึ้นกล่องบอกค่า และต้องเป็นค่าของเดือนนั้นจริง
+  await pg.evaluate(() => {
+    const hit = document.querySelectorAll('.chart .hit')[1];
+    const r = hit.getBoundingClientRect();
+    hit.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+  });
+  await pg.waitForTimeout(200);
+  const tip = await pg.evaluate(() => {
+    const t = document.getElementById('chartTip');
+    return { on: !!t && t.classList.contains('on'), text: t ? t.innerText.replace(/\n/g, ' ') : '' };
+  });
+  check('ชี้แล้วขึ้นกล่องบอกค่า', tip.on, JSON.stringify(tip));
+  check('กล่องบอกค่าบอกทั้งรายรับและรายจ่าย',
+    tip.text.includes('รายรับ') && tip.text.includes('รายจ่าย'), tip.text);
+  check('กล่องบอกค่าตรงกับข้อมูลจริงของเดือนนั้น',
+    tip.text.includes(await pg.evaluate(() => S.cache.finance.byMonth[1].label)), tip.text);
+
+  // ตัวเลขทุกตัวต้องอ่านได้จากตารางด้วย ไม่ใช่ต้องชี้อย่างเดียว
+  check('ทุกค่าอ่านได้จากตารางข้างล่างด้วย',
+    (await pg.evaluate(() => document.getElementById('view').innerText)).includes('เทียบรายรับ / รายจ่าย'));
+
+  await pg.evaluate(() => chartOut());
+  check('เลื่อนเมาส์ออกแล้วกล่องหาย',
+    await pg.evaluate(() => !document.getElementById('chartTip').classList.contains('on')));
+
+  check('หน้ากราฟไม่มี JS error', errs.length === 0, errs.join(' | '));
+
   console.log('\n── หน้ารายละเอียดห้อง + ทะเบียนทรัพย์สิน ──');
   await pg.evaluate(() => go('rooms'));
   await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 8000 });

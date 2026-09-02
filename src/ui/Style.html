@@ -23,6 +23,10 @@
   --nav-w:236px;
   --font-ui:'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   --font-display:'Bai Jamjuree','IBM Plex Sans Thai','Noto Sans Thai',var(--font-ui);
+  /* สีกราฟ — น้ำเงิน/ส้ม ไม่ใช่เขียว/แดง เพราะเขียวกับแดงคนตาบอดสีเขียว-แดงแยกไม่ออก
+     (วัดได้ ΔE 4.9 ต่ำกว่าเกณฑ์ 6) ส่วนคู่นี้ได้ 27.6 ผ่านสบายทั้งโหมดสว่างและมืด
+     c1 = เงินเข้า/กำไร · c2 = เงินออก/ขาดทุน */
+  --c1:#2c5cc5; --c2:#b26a00;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
@@ -36,6 +40,7 @@
     --warn:#e0a340; --warn-soft:#2c2113; --warn-2:#f0c477; --warn-2:#f0c477;
     --danger:#f0716b; --danger-soft:#2e1818;
     --info:#4cb6ea; --info-soft:#10242f;
+    --c1:#5b87e8; --c2:#c0862c;
     --sh:0 1px 2px rgba(0,0,0,.45);
     --sh-lg:0 16px 40px rgba(0,0,0,.62);
     color-scheme:dark;
@@ -51,6 +56,7 @@
   --warn:#e0a340; --warn-soft:#2c2113; --warn-2:#f0c477;
   --danger:#f0716b; --danger-soft:#2e1818;
   --info:#4cb6ea; --info-soft:#10242f;
+  --c1:#5b87e8; --c2:#c0862c;
   --sh:0 1px 2px rgba(0,0,0,.45);
   --sh-lg:0 16px 40px rgba(0,0,0,.62);
   color-scheme:dark;
@@ -614,4 +620,40 @@ button.sync-pill:active{transform:translateY(1px)}
   .app{display:block} body{background:#fff}
   .card{break-inside:avoid;box-shadow:none}
 }
+
+/* ============ กราฟ ============ ------------------------------------
+   เส้นตารางกับแกนเป็นเส้นบางทึบ ไม่ใช้เส้นประ (เส้นประอ่านเหมือนเส้นคาดการณ์)
+   แท่งหนาไม่เกิน 24px ปลายด้านข้อมูลมนเล็กน้อย ด้านฐานเหลี่ยม
+   ตัวหนังสือทุกตัวใช้สีตัวอักษรปกติ ไม่ใช่สีของแท่ง — สีอยู่ที่แท่งเท่านั้น
+-------------------------------------------------------------------- */
+.chart-wrap{overflow-x:auto}
+.chart{display:block;width:100%;height:auto;min-width:560px}
+.chart .grid-l{stroke:var(--line);stroke-width:1;fill:none}
+.chart .axis-l{stroke:var(--line);stroke-width:1}
+.chart .tick{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.chart .xlab{fill:var(--ink-2);font-size:12px}
+.chart .dlab{fill:var(--ink);font-size:11px;font-weight:600}
+.chart .c1{fill:var(--c1)}
+.chart .c2{fill:var(--c2)}
+.chart .hit{fill:transparent;cursor:pointer}
+.chart .hit:focus{outline:none}
+.chart .band{fill:var(--ink);opacity:0;transition:opacity .12s}
+.chart g.on .band{opacity:.05}
+.chart .hit:focus-visible + .band,
+.chart g.on .band{opacity:.08}
+
+.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.legend .k{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+.legend .sw{width:12px;height:12px;border-radius:3px;flex:none}
+
+/* กล่องบอกค่าตอนชี้ — ค่าตัวใหญ่มาก่อน ชื่อรายการเป็นตัวรอง */
+.ctip{position:fixed;z-index:90;pointer-events:none;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:var(--sh-lg);
+  padding:8px 10px;font-size:12px;min-width:132px;opacity:0;transition:opacity .1s}
+.ctip.on{opacity:1}
+.ctip .m{font-weight:700;color:var(--ink);margin-bottom:6px}
+.ctip .r{display:flex;align-items:center;gap:7px;margin-top:3px}
+.ctip .r i{width:12px;height:2px;border-radius:2px;flex:none}
+.ctip .r b{color:var(--ink);font-variant-numeric:tabular-nums;margin-left:auto}
+.ctip .r span{color:var(--muted)}
 </style>

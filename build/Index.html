@@ -33,6 +33,10 @@
   --nav-w:236px;
   --font-ui:'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   --font-display:'Bai Jamjuree','IBM Plex Sans Thai','Noto Sans Thai',var(--font-ui);
+  /* สีกราฟ — น้ำเงิน/ส้ม ไม่ใช่เขียว/แดง เพราะเขียวกับแดงคนตาบอดสีเขียว-แดงแยกไม่ออก
+     (วัดได้ ΔE 4.9 ต่ำกว่าเกณฑ์ 6) ส่วนคู่นี้ได้ 27.6 ผ่านสบายทั้งโหมดสว่างและมืด
+     c1 = เงินเข้า/กำไร · c2 = เงินออก/ขาดทุน */
+  --c1:#2c5cc5; --c2:#b26a00;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
@@ -46,6 +50,7 @@
     --warn:#e0a340; --warn-soft:#2c2113; --warn-2:#f0c477; --warn-2:#f0c477;
     --danger:#f0716b; --danger-soft:#2e1818;
     --info:#4cb6ea; --info-soft:#10242f;
+    --c1:#5b87e8; --c2:#c0862c;
     --sh:0 1px 2px rgba(0,0,0,.45);
     --sh-lg:0 16px 40px rgba(0,0,0,.62);
     color-scheme:dark;
@@ -61,6 +66,7 @@
   --warn:#e0a340; --warn-soft:#2c2113; --warn-2:#f0c477;
   --danger:#f0716b; --danger-soft:#2e1818;
   --info:#4cb6ea; --info-soft:#10242f;
+  --c1:#5b87e8; --c2:#c0862c;
   --sh:0 1px 2px rgba(0,0,0,.45);
   --sh-lg:0 16px 40px rgba(0,0,0,.62);
   color-scheme:dark;
@@ -624,6 +630,42 @@ button.sync-pill:active{transform:translateY(1px)}
   .app{display:block} body{background:#fff}
   .card{break-inside:avoid;box-shadow:none}
 }
+
+/* ============ กราฟ ============ ------------------------------------
+   เส้นตารางกับแกนเป็นเส้นบางทึบ ไม่ใช้เส้นประ (เส้นประอ่านเหมือนเส้นคาดการณ์)
+   แท่งหนาไม่เกิน 24px ปลายด้านข้อมูลมนเล็กน้อย ด้านฐานเหลี่ยม
+   ตัวหนังสือทุกตัวใช้สีตัวอักษรปกติ ไม่ใช่สีของแท่ง — สีอยู่ที่แท่งเท่านั้น
+-------------------------------------------------------------------- */
+.chart-wrap{overflow-x:auto}
+.chart{display:block;width:100%;height:auto;min-width:560px}
+.chart .grid-l{stroke:var(--line);stroke-width:1;fill:none}
+.chart .axis-l{stroke:var(--line);stroke-width:1}
+.chart .tick{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.chart .xlab{fill:var(--ink-2);font-size:12px}
+.chart .dlab{fill:var(--ink);font-size:11px;font-weight:600}
+.chart .c1{fill:var(--c1)}
+.chart .c2{fill:var(--c2)}
+.chart .hit{fill:transparent;cursor:pointer}
+.chart .hit:focus{outline:none}
+.chart .band{fill:var(--ink);opacity:0;transition:opacity .12s}
+.chart g.on .band{opacity:.05}
+.chart .hit:focus-visible + .band,
+.chart g.on .band{opacity:.08}
+
+.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.legend .k{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+.legend .sw{width:12px;height:12px;border-radius:3px;flex:none}
+
+/* กล่องบอกค่าตอนชี้ — ค่าตัวใหญ่มาก่อน ชื่อรายการเป็นตัวรอง */
+.ctip{position:fixed;z-index:90;pointer-events:none;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:var(--sh-lg);
+  padding:8px 10px;font-size:12px;min-width:132px;opacity:0;transition:opacity .1s}
+.ctip.on{opacity:1}
+.ctip .m{font-weight:700;color:var(--ink);margin-bottom:6px}
+.ctip .r{display:flex;align-items:center;gap:7px;margin-top:3px}
+.ctip .r i{width:12px;height:2px;border-radius:2px;flex:none}
+.ctip .r b{color:var(--ink);font-variant-numeric:tabular-nums;margin-left:auto}
+.ctip .r span{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -2560,6 +2602,224 @@ function openRoom(room){
 /* ============================================================
    8) รายรับ-รายจ่ายหอ (รายเดือน)
    ============================================================ */
+/* ============================================================
+   กราฟ — วาดเป็น SVG ตรง ๆ ไม่พึ่งไลบรารีข้างนอก
+   เพราะหน้าเว็บของ Apps Script โหลดสคริปต์ข้ามโดเมนไม่ได้
+   และหน้าตัวอย่างต้องเปิดได้โดยไม่ต้องต่อเน็ต
+
+   สีที่ใช้เป็นน้ำเงิน/ส้ม ไม่ใช่เขียว/แดง เพราะวัดแล้วเขียวกับแดง
+   คนตาบอดสีเขียว-แดงแยกไม่ออก (ΔE 4.9 ต่ำกว่าเกณฑ์ 6) คู่นี้ได้ 27.6
+   ทุกตัวเลขที่กราฟแสดง อ่านได้จากตารางข้างล่างเสมอ
+   กล่องบอกค่าตอนชี้เป็นของแถม ไม่ใช่ทางเดียวที่จะรู้ค่า
+   ============================================================ */
+
+var CHART_W = 720, CHART_PADL = 62, CHART_PADR = 14, CHART_PADT = 14;
+var CHART_ON = null;
+
+/** ปัดขึ้นเป็นเลขกลม ๆ สำหรับหัวแกน Y */
+function niceMax(v){
+  if (v <= 0) return 1;
+  var mag = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
+  var n = v / mag;
+  var step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+  return step * mag;
+}
+
+/** ย่อจำนวนเงินให้สั้นพอสำหรับหัวแกน — 1.2 ล. / 85K */
+function shortBaht(v){
+  var a = Math.abs(v);
+  if (a >= 1000000) return (v / 1000000).toFixed(a >= 10000000 ? 0 : 1).replace(/\.0$/, '') + ' ล.';
+  if (a >= 1000) return Math.round(v / 1000) + 'K';
+  return String(Math.round(v));
+}
+
+/** แท่งที่ปลายด้านข้อมูลมน 4px ด้านฐานเหลี่ยม */
+function barPath(x, y, w, h, up){
+  var r = Math.min(4, w / 2, h);
+  if (h <= 0.5) return '';
+  return up
+    ? 'M' + x + ',' + (y + h) + 'V' + (y + r) + 'a' + r + ',' + r + ' 0 0 1 ' + r + ',-' + r +
+      'h' + (w - 2 * r) + 'a' + r + ',' + r + ' 0 0 1 ' + r + ',' + r + 'V' + (y + h) + 'Z'
+    : 'M' + x + ',' + y + 'V' + (y + h - r) + 'a' + r + ',' + r + ' 0 0 0 ' + r + ',' + r +
+      'h' + (w - 2 * r) + 'a' + r + ',' + r + ' 0 0 0 ' + r + ',-' + r + 'V' + y + 'Z';
+}
+
+/** ข้อมูลของกล่องบอกค่า เก็บเป็น JSON ใน attribute แล้ว esc() ให้ปลอดภัย */
+function tipData(label, rows){
+  return esc(JSON.stringify({ l: label, r: rows }));
+}
+
+function hitRect(x, y, w, h, tip){
+  return '<rect class="hit" tabindex="0" role="button" x="' + x + '" y="' + y +
+         '" width="' + w + '" height="' + h + '" data-tip="' + tip + '"></rect>';
+}
+
+function gridAndTicks(top, plotH, max, lines){
+  var out = '';
+  for (var i = 0; i <= lines; i++) {
+    var y = top + plotH - (plotH * i / lines);
+    out += '<line class="grid-l" x1="' + CHART_PADL + '" y1="' + y + '" x2="' + (CHART_W - CHART_PADR) + '" y2="' + y + '"></line>' +
+           '<text class="tick" x="' + (CHART_PADL - 8) + '" y="' + (y + 4) + '" text-anchor="end">' + shortBaht(max * i / lines) + '</text>';
+  }
+  return out;
+}
+
+function svgWrap(body, h, title){
+  return '<div class="chart-wrap"><svg class="chart" viewBox="0 0 ' + CHART_W + ' ' + h + '" ' +
+    'role="img" aria-label="' + esc(title) + '" onpointermove="chartHover(event)" onpointerleave="chartOut()" ' +
+    'onfocusin="chartHover(event)" onfocusout="chartOut()">' + body + '</svg></div>';
+}
+
+/**
+ * กราฟแท่งคู่ รายรับ / รายจ่าย รายเดือน
+ * ติดป้ายตัวเลขเฉพาะเดือนสูงสุดของแต่ละฝั่ง ไม่ติดทุกแท่ง
+ * เพราะติดครบทุกแท่งแล้วรกจนไม่มีใครอ่าน
+ */
+function chartIncomeExpense(rows){
+  var plotH = 190, top = CHART_PADT, H = top + plotH + 30;
+  var max = niceMax(Math.max.apply(null, rows.map(function(m){ return Math.max(m.income, m.expense); })) || 1);
+  var band = (CHART_W - CHART_PADL - CHART_PADR) / rows.length;
+  var bw = Math.min(24, (band - 10) / 2);
+
+  var maxIn = rows.reduce(function(a, b){ return b.income > a.income ? b : a; }, rows[0]);
+  var maxEx = rows.reduce(function(a, b){ return b.expense > a.expense ? b : a; }, rows[0]);
+
+  var body = gridAndTicks(top, plotH, max, 4);
+  rows.forEach(function(m, i){
+    var cx = CHART_PADL + band * i + band / 2;
+    // เว้นช่องว่างสีพื้น 2px ระหว่างแท่งคู่ ไม่ใช้เส้นขอบมาคั่น
+    var x1 = cx - bw - 1, x2 = cx + 1;
+    var h1 = plotH * (m.income / max), h2 = plotH * (m.expense / max);
+    body += '<g>' +
+      '<rect class="band" x="' + (cx - band / 2) + '" y="' + top + '" width="' + band + '" height="' + plotH + '" rx="6"></rect>' +
+      '<path class="c1" d="' + barPath(x1, top + plotH - h1, bw, h1, true) + '"></path>' +
+      '<path class="c2" d="' + barPath(x2, top + plotH - h2, bw, h2, true) + '"></path>';
+    if (m === maxIn && m.income) {
+      body += '<text class="dlab" x="' + (x1 + bw / 2) + '" y="' + (top + plotH - h1 - 6) + '" text-anchor="middle">' + shortBaht(m.income) + '</text>';
+    }
+    if (m === maxEx && m.expense) {
+      body += '<text class="dlab" x="' + (x2 + bw / 2) + '" y="' + (top + plotH - h2 - 6) + '" text-anchor="middle">' + shortBaht(m.expense) + '</text>';
+    }
+    body += '<text class="xlab" x="' + cx + '" y="' + (top + plotH + 18) + '" text-anchor="middle">' + esc(m.label) + '</text>' +
+      hitRect(cx - band / 2, top, band, plotH,
+        tipData(m.label, [['รายรับ', money(m.income), 1], ['รายจ่าย', money(m.expense), 2]])) +
+      '</g>';
+  });
+
+  body += '<line class="axis-l" x1="' + CHART_PADL + '" y1="' + (top + plotH) + '" x2="' + (CHART_W - CHART_PADR) + '" y2="' + (top + plotH) + '"></line>';
+  return svgWrap(body, H, 'กราฟแท่งเปรียบเทียบรายรับกับรายจ่ายของแต่ละเดือน');
+}
+
+/**
+ * กำไร/ขาดทุนสุทธิรายเดือน — แท่งขึ้นจากเส้นศูนย์คือกำไร ลงคือขาดทุน
+ * ตำแหน่งเหนือ/ใต้เส้นเป็นตัวบอกหลัก สีเป็นตัวย้ำอีกชั้นหนึ่ง
+ */
+function chartNet(rows){
+  var plotH = 170, top = CHART_PADT, H = top + plotH + 30;
+  var max = niceMax(Math.max.apply(null, rows.map(function(m){ return Math.abs(m.net); })) || 1);
+  var band = (CHART_W - CHART_PADL - CHART_PADR) / rows.length;
+  var bw = Math.min(24, band - 12);
+  var zero = top + plotH / 2, half = plotH / 2;
+
+  var best = rows.reduce(function(a, b){ return b.net > a.net ? b : a; }, rows[0]);
+  var worst = rows.reduce(function(a, b){ return b.net < a.net ? b : a; }, rows[0]);
+
+  var body = '';
+  [1, 0.5, 0, -0.5, -1].forEach(function(f){
+    var y = zero - half * f;
+    body += '<line class="grid-l" x1="' + CHART_PADL + '" y1="' + y + '" x2="' + (CHART_W - CHART_PADR) + '" y2="' + y + '"></line>' +
+            '<text class="tick" x="' + (CHART_PADL - 8) + '" y="' + (y + 4) + '" text-anchor="end">' + shortBaht(max * f) + '</text>';
+  });
+
+  rows.forEach(function(m, i){
+    var cx = CHART_PADL + band * i + band / 2;
+    var h = half * (Math.abs(m.net) / max);
+    var up = m.net >= 0;
+    body += '<g>' +
+      '<rect class="band" x="' + (cx - band / 2) + '" y="' + top + '" width="' + band + '" height="' + plotH + '" rx="6"></rect>' +
+      '<path class="' + (up ? 'c1' : 'c2') + '" d="' + barPath(cx - bw / 2, up ? zero - h : zero, bw, h, up) + '"></path>';
+    if ((m === best && m.net > 0) || (m === worst && m.net < 0)) {
+      body += '<text class="dlab" x="' + cx + '" y="' + (up ? zero - h - 6 : zero + h + 14) + '" text-anchor="middle">' + shortBaht(m.net) + '</text>';
+    }
+    body += '<text class="xlab" x="' + cx + '" y="' + (top + plotH + 18) + '" text-anchor="middle">' + esc(m.label) + '</text>' +
+      hitRect(cx - band / 2, top, band, plotH,
+        tipData(m.label, [[up ? 'กำไร' : 'ขาดทุน', money(m.net), up ? 1 : 2]])) +
+      '</g>';
+  });
+
+  body += '<line class="axis-l" x1="' + CHART_PADL + '" y1="' + zero + '" x2="' + (CHART_W - CHART_PADR) + '" y2="' + zero + '"></line>';
+  return svgWrap(body, H, 'กราฟกำไรขาดทุนสุทธิรายเดือน แท่งเหนือเส้นคือกำไร ใต้เส้นคือขาดทุน');
+}
+
+function chartTipBox(){
+  var box = document.getElementById('chartTip');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'chartTip';
+    box.className = 'ctip';
+    document.body.appendChild(box);
+  }
+  return box;
+}
+
+function chartHover(ev){
+  var hit = ev.target && ev.target.closest ? ev.target.closest('.hit') : null;
+  if (!hit) { chartOut(); return; }
+
+  var g = hit.parentNode;
+  if (CHART_ON && CHART_ON !== g) CHART_ON.classList.remove('on');
+  g.classList.add('on');
+  CHART_ON = g;
+
+  var data;
+  try { data = JSON.parse(hit.getAttribute('data-tip') || '{}'); } catch (e) { return; }
+
+  // ประกอบด้วย textContent ไม่ใช่ innerHTML — ชื่อรายการมาจากข้อมูล ไม่ควรถือว่าปลอดภัย
+  var box = chartTipBox();
+  box.innerHTML = '';
+  var head = document.createElement('div');
+  head.className = 'm';
+  head.textContent = data.l || '';
+  box.appendChild(head);
+
+  (data.r || []).forEach(function(row){
+    var line = document.createElement('div');
+    line.className = 'r';
+    var key = document.createElement('i');
+    key.style.background = 'var(--c' + (row[2] || 1) + ')';
+    var name = document.createElement('span');
+    name.textContent = row[0];
+    var val = document.createElement('b');
+    val.textContent = row[1];
+    line.appendChild(key); line.appendChild(name); line.appendChild(val);
+    box.appendChild(line);
+  });
+
+  // เกาะตำแหน่งเมาส์ ไม่ใช่ขอบบนของช่องรับการชี้ (ช่องนั้นสูงเท่ากราฟทั้งอัน
+  // วางไว้ข้างบนทีไรก็ไปบังหัวข้อการ์ดทุกที) ถ้าเลื่อนด้วยแป้นพิมพ์ก็ใช้ตัวแท่งแทน
+  var r = hit.getBoundingClientRect();
+  var px = (ev.clientX || ev.clientX === 0) ? ev.clientX : r.left + r.width / 2;
+  var py = (ev.clientY || ev.clientY === 0) ? ev.clientY : r.top + r.height / 2;
+  box.classList.add('on');
+  var left = Math.min(Math.max(8, px - box.offsetWidth / 2), window.innerWidth - box.offsetWidth - 8);
+  var above = py - box.offsetHeight - 14;
+  box.style.left = left + 'px';
+  box.style.top = (above < 8 ? py + 18 : above) + 'px';
+}
+
+function chartOut(){
+  if (CHART_ON) { CHART_ON.classList.remove('on'); CHART_ON = null; }
+  var box = document.getElementById('chartTip');
+  if (box) box.classList.remove('on');
+}
+
+function chartLegend(a, b){
+  return '<div class="legend">' +
+    '<span class="k"><span class="sw" style="background:var(--c1)"></span>' + esc(a) + '</span>' +
+    '<span class="k"><span class="sw" style="background:var(--c2)"></span>' + esc(b) + '</span>' +
+    '</div>';
+}
+
 ROUTES.finance = {
   load: function(){
     return Promise.all([
@@ -2576,6 +2836,16 @@ ROUTES.finance = {
       kpi('บันทึกแล้ว', d.monthsWithData + ' เดือน', d.count + ' รายการ') +
     '</div>';
 
+    // กราฟก่อน แล้วค่อยตาราง — ตารางข้างล่างคือที่อ่านค่าจริงได้ทุกตัว
+    // กราฟช่วยให้เห็นแนวโน้ม ไม่ได้มาแทนตัวเลข
+    var hasData = d.byMonth.some(function(m){ return m.income || m.expense; });
+    var charts = !hasData ? '' :
+      card('📈 รายรับ / รายจ่าย รายเดือน · ' + yearLabel,
+        chartLegend('รายรับ', 'รายจ่าย') + chartIncomeExpense(d.byMonth)) +
+      card('⚖️ กำไร / ขาดทุนสุทธิ รายเดือน · ' + yearLabel,
+        '<div class="fs12 muted mb8">แท่งเหนือเส้นศูนย์คือเดือนที่กำไร ใต้เส้นคือเดือนที่ขาดทุน</div>' +
+        chartNet(d.byMonth));
+
     var maxBar = Math.max.apply(null, d.byMonth.map(function(m){ return Math.max(m.income, m.expense); })) || 1;
     var monthly = card('📅 รายเดือน · ' + yearLabel,
       '<div class="tw"><table class="t"><thead><tr>' +
@@ -2590,8 +2860,8 @@ ROUTES.finance = {
           '<td class="num"><b style="color:' + (m.net >= 0 ? 'var(--ok)' : 'var(--danger)') + '">' +
             (blank ? '–' : money(m.net)) + '</b></td>' +
           '<td>' +
-            '<div class="bar-track mb8"><div class="bar-fill" style="width:' + (m.income/maxBar*100) + '%;background:var(--ok)"></div></div>' +
-            '<div class="bar-track"><div class="bar-fill" style="width:' + (m.expense/maxBar*100) + '%;background:var(--danger)"></div></div>' +
+            '<div class="bar-track mb8"><div class="bar-fill" style="width:' + (m.income/maxBar*100) + '%;background:var(--c1)"></div></div>' +
+            '<div class="bar-track"><div class="bar-fill" style="width:' + (m.expense/maxBar*100) + '%;background:var(--c2)"></div></div>' +
           '</td></tr>';
       }).join('') + '</tbody></table></div>', '', true);
 
@@ -2639,7 +2909,7 @@ ROUTES.finance = {
       : emptyBox('ยังไม่มีรายการใน' + yearLabel, '<button class="btn pri" onclick="formFinance(null)">+ บันทึกรายการ</button>'),
       '<button class="btn pri sm" onclick="formFinance(null)">+ บันทึกรายรับ-รายจ่าย</button>', true);
 
-    return head + monthly + '<div class="grid g2 mt12 mb12">' + byKind + byYear + '</div>' + kinds + list;
+    return head + charts + monthly + '<div class="grid g2 mt12 mb12">' + byKind + byYear + '</div>' + kinds + list;
   }
 };
 

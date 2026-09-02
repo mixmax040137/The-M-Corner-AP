@@ -16,6 +16,7 @@ function runMigrations_() {
   if (from < 3) done.push(migrateV3DebtParent_());
   if (from < 4) done.push(migrateV4Users_());
   if (from < 5) done.push(migrateV5RefreshRate_());
+  if (from < 7) done.push(migrateV7RepairTodo_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -306,6 +307,55 @@ function repairPaymentsSheet_() {
   rewriteSheet_(name, fixed);
   applyFormatting_(name);
   return 'รายการชำระ: เลื่อนคอลัมน์กลับที่เดิม ' + fixed.length + ' รายการ · กู้เป็นดอกเบี้ย ' + toInterest + ' รายการ';
+}
+
+/**
+ * รุ่น 7 — เปลี่ยนรายการที่ต้องซ่อมให้เป็นเช็คลิสต์ติ๊กได้
+ *
+ * ของเดิมเขียนรวมบรรทัดเดียวว่า "1.ยาแนว 2.เก็บสีห้อง 3.ทาสี"
+ * แปลงเป็นบรรทัดละงาน พร้อมช่องติ๊ก
+ *   [ ] ยาแนว
+ *   [ ] เก็บสีห้อง
+ *   [ ] ทาสี
+ *
+ * งานที่ปิดไปแล้ว (เสร็จสิ้น) ติ๊กให้ครบทุกข้อ เพราะซ่อมจบไปแล้วจริง
+ * ส่วนประเภทงานของแต่ละข้อ ปล่อยว่างไว้ให้เจ้าของหอมาเลือกเองทีหลัง
+ * เพราะเดาแทนไม่ได้ว่าข้อไหนเป็นงานประเภทใด
+ */
+function migrateV7RepairTodo_() {
+  var name = SHEETS.ROOM_REPAIRS;
+  var old = readByHeader_(name);
+  if (!old) return name + ': ไม่มีชีต ข้ามไป';
+
+  var changed = 0;
+  var rows = old.rows.map(function (r) {
+    var text = String(r['รายการที่ต้องซ่อมแซม'] || '');
+
+    // แถวที่ชีตเดิมไม่ได้ระบุรายการ เคยเติมข้อความแทนไว้
+    // ถ้าปล่อยไว้มันจะกลายเป็นงานหนึ่งข้อในเช็คลิสต์ จึงล้างให้ว่าง
+    if (text.trim() === '(ไม่ได้ระบุรายการ)') { text = ''; changed++; }
+
+    var todo = parseTodo_(text);
+
+    if (todo.length) {
+      if (String(r['สถานะ'] || '') === 'เสร็จสิ้น') {
+        todo.forEach(function (t) { t.done = true; });
+      }
+      var formatted = formatTodo_(todo);
+      if (formatted !== text) changed++;
+      r['รายการที่ต้องซ่อมแซม'] = formatted;
+    } else {
+      r['รายการที่ต้องซ่อมแซม'] = text;
+    }
+
+    var out = {};
+    SCHEMA[name].forEach(function (c) { out[c.key] = r[c.label]; });
+    return out;
+  });
+
+  rewriteSheet_(name, rows);
+  applyFormatting_(name);
+  return 'งานซ่อมห้อง: แปลงเป็นเช็คลิสต์ ' + changed + ' รายการ';
 }
 
 /**

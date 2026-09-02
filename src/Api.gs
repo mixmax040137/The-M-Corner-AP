@@ -107,6 +107,7 @@ var API_ROUTES = {
   'repair.list': function (p) { return listRoomRepairs_(p.year, p.room, p.status); },
   'repair.save': function (p) { return saveRoomRepair_(p.record); },
   'repair.delete': function (p) { return deleteRoomRepair_(p.id); },
+  'repair.toggle': function (p) { return toggleRepairItem_(p); },
 
   /* ---------- ซ่อมแซมตึกโดยรวม ---------- */
   'building.summary': function (p) { return buildingSummary_(p.year); },

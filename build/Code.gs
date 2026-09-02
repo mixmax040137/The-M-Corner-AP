@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-02 04:57 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-02 09:50 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -292,7 +292,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 6;
+var SCHEMA_VERSION = 7;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -1433,7 +1433,7 @@ var PUBLIC_ACTIONS = /^auth\.(login|unlock|me|ping)$/;
  * รวม upload/trash ด้วย เพราะเป็นการเขียนและลบไฟล์ใน Google Drive ของเจ้าของ
  * และ ocr.read ที่สร้างไฟล์ชั่วคราวใน Drive ทุกครั้งที่เรียก
  */
-var MUTATING_ACTIONS = /^ocr\.read$|\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow|upload|trash)$/;
+var MUTATING_ACTIONS = /^ocr\.read$|\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow|upload|trash|toggle)$/;
 
 /**
  * คำสั่งที่เฉพาะผู้ดูแลเท่านั้น
@@ -2673,11 +2673,19 @@ function seedAc_() {
 function seedRoomRepairs_() {
   var rows = SEED_ROOM_REPAIRS.map(function (r) {
     var room = r[0], year = r[1], date = r[2], items = r[3];
+
+    // ชีตเดิมเขียนรวมบรรทัดเดียวว่า "1.ยาแนว 2.เก็บสีห้อง" — เก็บเป็นเช็คลิสต์เลย
+    // งานเก่าทั้งหมดซ่อมจบไปแล้ว จึงติ๊กครบทุกข้อ
+    var todo = parseTodo_(items);
+    todo.forEach(function (t) { t.done = true; });
+
     return {
       id: uid_('FIX'), room: room, year: year,
       reportDate: '', bookDate: date, repairDate: date,
       category: guessRepairCategory_(items),
-      items: items || '(ไม่ได้ระบุรายการ)',
+      // ชีตเดิมบางแถวไม่ได้ระบุรายการ — ปล่อยว่างไว้ ไม่ใส่ข้อความแทน
+      // ไม่งั้นข้อความนั้นจะกลายเป็นงานค้างหนึ่งข้อในเช็คลิสต์
+      items: todo.length ? formatTodo_(todo) : '',
       priority: 'ปกติ', status: 'เสร็จสิ้น', technician: '', cost: null,
       photosBefore: [], photosAfter: [],
       note: date ? 'นำเข้าจากชีตเดิม' : 'นำเข้าจากชีตเดิม (ชีตเดิมระบุเฉพาะปี ไม่มีวันที่)',
@@ -2916,6 +2924,7 @@ function runMigrations_() {
   if (from < 3) done.push(migrateV3DebtParent_());
   if (from < 4) done.push(migrateV4Users_());
   if (from < 5) done.push(migrateV5RefreshRate_());
+  if (from < 7) done.push(migrateV7RepairTodo_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -3206,6 +3215,55 @@ function repairPaymentsSheet_() {
   rewriteSheet_(name, fixed);
   applyFormatting_(name);
   return 'รายการชำระ: เลื่อนคอลัมน์กลับที่เดิม ' + fixed.length + ' รายการ · กู้เป็นดอกเบี้ย ' + toInterest + ' รายการ';
+}
+
+/**
+ * รุ่น 7 — เปลี่ยนรายการที่ต้องซ่อมให้เป็นเช็คลิสต์ติ๊กได้
+ *
+ * ของเดิมเขียนรวมบรรทัดเดียวว่า "1.ยาแนว 2.เก็บสีห้อง 3.ทาสี"
+ * แปลงเป็นบรรทัดละงาน พร้อมช่องติ๊ก
+ *   [ ] ยาแนว
+ *   [ ] เก็บสีห้อง
+ *   [ ] ทาสี
+ *
+ * งานที่ปิดไปแล้ว (เสร็จสิ้น) ติ๊กให้ครบทุกข้อ เพราะซ่อมจบไปแล้วจริง
+ * ส่วนประเภทงานของแต่ละข้อ ปล่อยว่างไว้ให้เจ้าของหอมาเลือกเองทีหลัง
+ * เพราะเดาแทนไม่ได้ว่าข้อไหนเป็นงานประเภทใด
+ */
+function migrateV7RepairTodo_() {
+  var name = SHEETS.ROOM_REPAIRS;
+  var old = readByHeader_(name);
+  if (!old) return name + ': ไม่มีชีต ข้ามไป';
+
+  var changed = 0;
+  var rows = old.rows.map(function (r) {
+    var text = String(r['รายการที่ต้องซ่อมแซม'] || '');
+
+    // แถวที่ชีตเดิมไม่ได้ระบุรายการ เคยเติมข้อความแทนไว้
+    // ถ้าปล่อยไว้มันจะกลายเป็นงานหนึ่งข้อในเช็คลิสต์ จึงล้างให้ว่าง
+    if (text.trim() === '(ไม่ได้ระบุรายการ)') { text = ''; changed++; }
+
+    var todo = parseTodo_(text);
+
+    if (todo.length) {
+      if (String(r['สถานะ'] || '') === 'เสร็จสิ้น') {
+        todo.forEach(function (t) { t.done = true; });
+      }
+      var formatted = formatTodo_(todo);
+      if (formatted !== text) changed++;
+      r['รายการที่ต้องซ่อมแซม'] = formatted;
+    } else {
+      r['รายการที่ต้องซ่อมแซม'] = text;
+    }
+
+    var out = {};
+    SCHEMA[name].forEach(function (c) { out[c.key] = r[c.label]; });
+    return out;
+  });
+
+  rewriteSheet_(name, rows);
+  applyFormatting_(name);
+  return 'งานซ่อมห้อง: แปลงเป็นเช็คลิสต์ ' + changed + ' รายการ';
 }
 
 /**
@@ -4276,6 +4334,8 @@ function listRoomRepairs_(year, room, status) {
   return rows.map(function (r) {
     r.beforeRefs = toFileRefs_(r.photosBefore);
     r.afterRefs = toFileRefs_(r.photosAfter);
+    r.todo = parseTodo_(r.items);
+    r.progress = todoStats_(r.todo);
     return r;
   });
 }
@@ -4299,6 +4359,13 @@ function repairMatrix_(year) {
     var list = byRoom[room].sort(function (a, b) {
       return String(b.repairDate || b.bookDate || '').localeCompare(String(a.repairDate || a.bookDate || ''));
     });
+    list.forEach(function (r) {
+      r.beforeRefs = toFileRefs_(r.photosBefore);
+      r.afterRefs = toFileRefs_(r.photosAfter);
+      r.todo = parseTodo_(r.items);
+      r.progress = todoStats_(r.todo);
+    });
+
     var open = list.filter(function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; });
     return {
       room: room,
@@ -4307,11 +4374,9 @@ function repairMatrix_(year) {
       openCount: open.length,
       cost: round2_(sum_(list, function (r) { return r.cost; })),
       last: list.length ? (list[0].repairDate || list[0].bookDate || '') : '',
-      records: list.map(function (r) {
-        r.beforeRefs = toFileRefs_(r.photosBefore);
-        r.afterRefs = toFileRefs_(r.photosAfter);
-        return r;
-      })
+      records: list,
+      // นับ "จุด" ที่ยังไม่ได้ทำ ไม่ใช่จำนวนใบงาน — ใบเดียวอาจเหลืออีกหลายจุด
+      openTasks: sum_(open, function (r) { return r.progress.pending; })
     };
   });
 
@@ -4321,14 +4386,116 @@ function repairMatrix_(year) {
     rooms: rooms,
     totalJobs: scope.length,
     openJobs: scope.filter(function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; }).length,
-    totalCost: round2_(sum_(scope, function (r) { return r.cost; }))
+    totalCost: round2_(sum_(scope, function (r) { return r.cost; })),
+    openTasks: sum_(rooms, function (r) { return r.openTasks; })
   };
+}
+
+/* ------------------------------------------------------------------ */
+/*  เช็คลิสต์งานซ่อมในหนึ่งครั้ง                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * เข้าซ่อมห้องหนึ่งครั้ง มักซ่อมหลายจุดพร้อมกัน และแต่ละจุดคนละประเภทงาน
+ * จึงเก็บเป็นเช็คลิสต์ บรรทัดละหนึ่งงาน
+ *
+ *   [x] ยาแนวห้องน้ำ | ระบบน้ำ/สุขภัณฑ์
+ *   [ ] เก็บสีห้อง | สี/ผนัง/ฝ้า
+ *   [ ] เปลี่ยนก๊อกน้ำล้างจาน | ระบบน้ำ/สุขภัณฑ์
+ *
+ * ใช้ [x] / [ ] เพราะอ่านออกทันทีว่าอันไหนเสร็จแล้ว
+ * และเจ้าของหอเปิดชีตพิมพ์ x เองเพื่อติ๊กก็ได้
+ *
+ * ตัวอ่านยอมรับของเดิมด้วย ทั้งแบบ "1.ยาแนว 2.เก็บสีห้อง" และแบบบรรทัดเปล่า ๆ
+ * ข้อมูลเก่าจึงกลายเป็นเช็คลิสต์ได้เองโดยไม่ต้องพิมพ์ใหม่
+ */
+function parseTodo_(text) {
+  var raw = String(text == null ? '' : text);
+  if (!raw.trim()) return [];
+
+  var lines = raw.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+
+  // ของเดิมเขียนรวมบรรทัดเดียวว่า "1.ยาแนว 2.เก็บสีห้อง 3.ทาสี" — แตกออกให้
+  if (lines.length === 1 && /\d\s*[.)]/.test(lines[0]) && !/^\[/.test(lines[0])) {
+    lines = lines[0].split(/\s*\d+\s*[.)]\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+
+  return lines.map(function (line) {
+    var done = false;
+    var m = line.match(/^\[\s*([xX✓])?\s*\]\s*(.*)$/);
+    if (m) { done = !!m[1]; line = m[2]; }
+
+    // ตัดเลขลำดับหน้าบรรทัดทิ้ง ("1. ยาแนว" -> "ยาแนว")
+    line = line.replace(/^\d+\s*[.)]\s*/, '').trim();
+
+    var parts = line.split('|');
+    return {
+      done: done,
+      name: String(parts[0] || '').trim(),
+      category: String(parts[1] || '').trim()
+    };
+  }).filter(function (t) { return t.name; });
+}
+
+/** เขียนกลับเป็นข้อความรูปแบบเดียวกันเสมอ เพื่อให้ชีตอ่านง่าย */
+function formatTodo_(list) {
+  return (list || [])
+    .filter(function (t) { return String(t.name || '').trim(); })
+    .map(function (t) {
+      var name = String(t.name).replace(/\|/g, '/').trim();
+      var cat = String(t.category || '').replace(/\|/g, '/').trim();
+      return '[' + (t.done ? 'x' : ' ') + '] ' + name + (cat ? ' | ' + cat : '');
+    }).join('\n');
+}
+
+/** ความคืบหน้าของเช็คลิสต์หนึ่งชุด */
+function todoStats_(list) {
+  var total = (list || []).length;
+  var done = (list || []).filter(function (t) { return t.done; }).length;
+  return {
+    total: total,
+    done: done,
+    pending: total - done,
+    percent: total ? round2_((done / total) * 100) : 0
+  };
+}
+
+/**
+ * ปรับสถานะงานให้ตามเช็คลิสต์
+ *
+ * @param {boolean=} fromToggle มาจากการติ๊กในเช็คลิสต์หรือเปล่า
+ *
+ * ตอนกดบันทึกในฟอร์ม (fromToggle = false) จะเดินหน้าอย่างเดียว ไม่ดึงถอยหลัง
+ * เพราะผู้ใช้อาจตั้งสถานะเองไว้แล้ว เช่นเลือก "เสร็จสิ้น" ทั้งที่ยังไม่ได้ติ๊กทีละข้อ
+ * ระบบไม่ควรไปเถียงกับสิ่งที่เขาเลือกเอง
+ *
+ * แต่ตอนติ๊กในเช็คลิสต์ (fromToggle = true) การติ๊กคือเจตนาโดยตรง
+ * ติ๊กออกจากงานที่ปิดแล้ว จึงดึงกลับมาเป็น "กำลังซ่อม" ได้
+ */
+function statusFromTodo_(current, stats, fromToggle) {
+  if (current === 'ยกเลิก') return current;              // ยกเลิกแล้วคือจบ
+  if (!stats.total) return current;
+  if (stats.done === stats.total) return 'เสร็จสิ้น';
+  if (stats.done > 0 && (current === 'รอดำเนินการ' || current === 'นัดหมายแล้ว')) return 'กำลังซ่อม';
+  if (fromToggle && current === 'เสร็จสิ้น' && stats.pending > 0) return 'กำลังซ่อม';
+  return current;
 }
 
 function saveRoomRepair_(obj) {
   obj.year = yearOf_(obj.repairDate) || yearOf_(obj.bookDate) || yearOf_(obj.reportDate) || obj.year || new Date().getFullYear();
   obj.status = obj.status || (obj.repairDate ? 'เสร็จสิ้น' : (obj.bookDate ? 'นัดหมายแล้ว' : 'รอดำเนินการ'));
   obj.priority = obj.priority || 'ปกติ';
+
+  // เช็คลิสต์เป็นตัวตั้ง — สถานะกับประเภทงานของทั้งใบตามความคืบหน้าของรายการย่อย
+  var todo = parseTodo_(obj.items);
+  if (todo.length) {
+    obj.items = formatTodo_(todo);
+    var stats = todoStats_(todo);
+    obj.status = statusFromTodo_(obj.status, stats);
+    // ประเภทงานของทั้งใบ ใช้ประเภทที่พบบ่อยที่สุดในเช็คลิสต์ ถ้ายังไม่ได้เลือกเอง
+    if (!String(obj.category || '').trim()) obj.category = topCategory_(todo);
+  }
+
   obj.updatedAt = new Date();
 
   if (obj.id) {
@@ -4341,6 +4508,47 @@ function saveRoomRepair_(obj) {
   obj.id = obj.id || uid_('FIX');
   logActivity_('เพิ่มงานซ่อมห้อง', obj.id, obj.room + ' ' + String(obj.items || '').slice(0, 40));
   return insertRow_(SHEETS.ROOM_REPAIRS, obj);
+}
+
+/** ประเภทงานที่พบบ่อยที่สุดในเช็คลิสต์ ใช้เป็นประเภทของทั้งใบ */
+function topCategory_(todo) {
+  var count = {}, best = '', max = 0;
+  (todo || []).forEach(function (t) {
+    var c = String(t.category || '').trim();
+    if (!c) return;
+    count[c] = (count[c] || 0) + 1;
+    if (count[c] > max) { max = count[c]; best = c; }
+  });
+  return best;
+}
+
+/**
+ * ติ๊กงานทีละรายการจากหน้ารายการโดยไม่ต้องเปิดฟอร์ม
+ * @param {{id:string, index:number, done:boolean}} p
+ */
+function toggleRepairItem_(p) {
+  var found = findRow_(SHEETS.ROOM_REPAIRS, p && p.id);
+  if (!found) throw new Error('ไม่พบงานซ่อม: ' + (p && p.id));
+
+  var todo = parseTodo_(found.items);
+  var i = Number(p.index);
+  if (!(i >= 0 && i < todo.length)) throw new Error('ไม่พบรายการที่ ' + (i + 1) + ' ในงานนี้');
+
+  todo[i].done = !!p.done;
+  var stats = todoStats_(todo);
+
+  var patch = {
+    items: formatTodo_(todo),
+    status: statusFromTodo_(found.status, stats, true),
+    updatedAt: new Date()
+  };
+  logActivity_(p.done ? 'ติ๊กงานซ่อมเสร็จ' : 'ยกเลิกติ๊กงานซ่อม', found.id,
+               found.room + ' · ' + todo[i].name);
+
+  var saved = updateRow_(SHEETS.ROOM_REPAIRS, found._row, Object.assign({}, found, patch));
+  saved.todo = todo;
+  saved.progress = stats;
+  return saved;
 }
 
 function deleteRoomRepair_(id) {
@@ -4979,6 +5187,7 @@ var API_ROUTES = {
   'repair.list': function (p) { return listRoomRepairs_(p.year, p.room, p.status); },
   'repair.save': function (p) { return saveRoomRepair_(p.record); },
   'repair.delete': function (p) { return deleteRoomRepair_(p.id); },
+  'repair.toggle': function (p) { return toggleRepairItem_(p); },
 
   /* ---------- ซ่อมแซมตึกโดยรวม ---------- */
   'building.summary': function (p) { return buildingSummary_(p.year); },

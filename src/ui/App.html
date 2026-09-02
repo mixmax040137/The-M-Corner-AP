@@ -278,7 +278,7 @@ function applyReadOnly(root){
 ------------------------------------------------------------------ */
 
 /** คำสั่งที่ทำให้ข้อมูลในชีตเปลี่ยน (ให้ตรงกับ MUTATING_ACTIONS ฝั่งเซิร์ฟเวอร์) */
-var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|rotateToken|backupNow|upload|trash)$/;
+var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|rotateToken|backupNow|upload|trash|toggle)$/;
 
 /**
  * เพิ่งกดบันทึกเอง — หน้าโหลดข้อมูลใหม่ไปแล้วตอนกดบันทึก

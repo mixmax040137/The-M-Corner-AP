@@ -26,7 +26,7 @@ check('สร้างครบ 13 ชีต', Object.keys(SHEETS).length === 13
 check('รายการซื้อ 94 รายการ', readRows_(SHEETS.PURCHASES).length === 94);
 check('ยอดชำระหนี้ 5,049,654', Math.round(debtSummary_('หนี้หลัก', 'all').paid) === 5049654);
 check('รายรับ-รายจ่าย 32 รายการ', readRows_(SHEETS.FINANCE).length === 32);
-check('มีคำสั่ง API ครบ 73 คำสั่ง', Object.keys(API_ROUTES).length === 73);
+check('มีคำสั่ง API ครบ 74 คำสั่ง', Object.keys(API_ROUTES).length === 74);
 check('มีบัญชีผู้ดูแลคนแรกให้ล็อกอิน', !!findUser_('admin'), true);
 const adminKey = getSetting_('admin_token', ''), viewKey = getSetting_('view_token', '');
 check('มีกุญแจผู้ดูแลและกุญแจแชร์', !!(adminKey && viewKey && adminKey !== viewKey), true);
@@ -322,6 +322,92 @@ console.log('\n── build/AllInOne.gs ──');
     await p4.close();
   }
 
+  /* ---------- เช็คลิสต์งานซ่อม ---------- */
+  console.log('\n── เช็คลิสต์งานซ่อม ──');
+  {
+    await pg.evaluate(() => go('repairs'));
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+
+    // ในตารางต้องเป็นเช็คลิสต์ที่ติ๊กได้จริง ไม่ใช่ข้อความก้อนเดียว
+    check('ตารางแสดงเป็นเช็คลิสต์', (await pg.$$eval('.todo-view', e => e.length)) > 0);
+    check('มีช่องติ๊กให้กดจริง', (await pg.$$eval('.todo-line input[type=checkbox]', e => e.length)) > 0);
+    check('มีแถบความคืบหน้า', (await pg.$$eval('.todo-bar', e => e.length)) > 0);
+    check('บอกจำนวนที่เสร็จแล้ว',
+      (await pg.$eval('.todo-meta', e => e.textContent)).includes('เสร็จแล้ว'));
+    check('งานที่ติ๊กแล้วถูกขีดฆ่า', (await pg.$$eval('.todo-line.done', e => e.length)) > 0);
+
+    // เปิดฟอร์มแก้ไข ต้องได้เช็คลิสต์ที่แก้ได้ พร้อมประเภทงานรายข้อ
+    await pg.evaluate(() => {
+      var btn = Array.prototype.slice.call(document.querySelectorAll('#view [onclick]'))
+        .filter(function(e){ return (e.getAttribute('onclick') || '').indexOf('formRepair({') === 0; })[0];
+      btn.click();
+    });
+    await pg.waitForTimeout(300);
+    check('ฟอร์มมีเช็คลิสต์', await pg.$('#f_items .todo-row') !== null);
+    const rowCount = await pg.$$eval('#f_items .todo-row', e => e.length);
+    check('เช็คลิสต์มีงานเดิมครบ', rowCount > 0, 'ได้ ' + rowCount + ' แถว');
+    check('แต่ละงานเลือกประเภทของตัวเองได้',
+      (await pg.$$eval('#f_items .todo-row select', e => e.length)) === rowCount);
+    check('ตัวเลือกประเภทงานมาจากระบบจริง',
+      (await pg.$$eval('#f_items .todo-row:first-child select option', e => e.length)) > 5);
+
+    // เพิ่ม/ลบงานในฟอร์ม
+    await pg.evaluate(() => { addTodo(); setTodo(FORM.todo.length - 1, 'name', 'เปลี่ยนหลอดไฟ'); });
+    await pg.waitForTimeout(120);
+    check('เพิ่มงานในฟอร์มได้',
+      (await pg.$$eval('#f_items .todo-row', e => e.length)) === rowCount + 1);
+    check('งานใหม่ยังไม่ติ๊ก', await pg.evaluate(() => FORM.todo[FORM.todo.length - 1].done) === false);
+
+    await pg.evaluate(() => setTodo(FORM.todo.length - 1, 'category', 'ระบบไฟฟ้า'));
+    check('เลือกประเภทงานรายข้อได้',
+      await pg.evaluate(() => FORM.todo[FORM.todo.length - 1].category) === 'ระบบไฟฟ้า');
+
+    check('แปลงเป็นข้อความสำหรับเก็บลงชีตได้ถูกรูปแบบ',
+      await pg.evaluate(() => formatTodoText(FORM.todo).split('\n').pop()) === '[ ] เปลี่ยนหลอดไฟ | ระบบไฟฟ้า');
+
+    // อ่านค่าจากฟอร์มด้วยเส้นทางเดียวกับตอนกดบันทึกจริง ๆ
+    const saved = await pg.evaluate(() => {
+      try {
+        return readForm(FORM.specs, 'repair').then(
+          function(o){ return { ok: true, items: o.items }; },
+          function(e){ return { ok: false, items: String(e && e.message || e) }; });
+      } catch (e) { return { ok: false, items: String(e && e.message || e) }; }
+    });
+    check('กดบันทึกแล้วอ่านเช็คลิสต์ออกมาได้ ไม่พัง', saved.ok, saved.items);
+    check('ค่าที่จะเก็บลงชีตคือเช็คลิสต์ทั้งชุด',
+      saved.ok && saved.items.split('\n').length === rowCount + 1, saved.items);
+
+    await pg.evaluate(() => delTodo(FORM.todo.length - 1));
+    await pg.waitForTimeout(120);
+    check('ลบงานออกจากเช็คลิสต์ได้',
+      (await pg.$$eval('#f_items .todo-row', e => e.length)) === rowCount);
+
+    // ติ๊กในฟอร์มต้องขีดฆ่าให้เห็น
+    await pg.evaluate(() => setTodo(0, 'done', false));
+    await pg.waitForTimeout(120);
+    check('ติ๊กออกแล้วไม่ขีดฆ่า',
+      (await pg.$eval('#f_items .todo-row', e => e.className)).indexOf('done') < 0);
+    await pg.evaluate(() => setTodo(0, 'done', true));
+    await pg.waitForTimeout(120);
+    check('ติ๊กแล้วขีดฆ่า',
+      (await pg.$eval('#f_items .todo-row', e => e.className)).indexOf('done') >= 0);
+
+    // วางทีเดียวหลายงาน
+    await pg.evaluate(() => {
+      FORM.todo = []; redrawTodo();
+      pasteTodo();
+      document.getElementById('todoPasteBox').value = '1.ยาแนวห้องน้ำ 2.เก็บสีผนัง 3.เปลี่ยนก๊อกน้ำ';
+      applyPastedTodo();
+    });
+    await pg.waitForTimeout(200);
+    check('วางแบบ "1.x 2.y" ทีเดียวได้ 3 งาน',
+      (await pg.$$eval('#f_items .todo-row', e => e.length)) === 3);
+    check('ตัดเลขลำดับออกให้',
+      await pg.evaluate(() => FORM.todo[0].name) === 'ยาแนวห้องน้ำ');
+
+    await pg.evaluate(() => closeModal());
+  }
+
   /* ---------- บิลเดียวหลายรายการ (ซื้อออนไลน์) ---------- */
   console.log('\n── กรอกบิลหลายรายการ ──');
   {
@@ -448,11 +534,15 @@ console.log('\n── build/AllInOne.gs ──');
       if (clicked !== 'ok') { check(fn + ': มีปุ่มแก้ไขให้กด', false, clicked); continue; }
       await pg.waitForTimeout(250);
 
-      const got = await pg.evaluate(id => ({
-        title: (document.querySelector('.modal-h h3') || {}).textContent || '',
-        probe: (document.getElementById(id) || {}).value,
-        recId: (FORM.rec || {}).id || ''
-      }), probe);
+      const got = await pg.evaluate(id => {
+        // ช่องธรรมดาอ่านจาก .value ส่วนช่องเช็คลิสต์เป็น <div> อ่านจากข้อความข้างใน
+        var el = document.getElementById(id);
+        return {
+          title: (document.querySelector('.modal-h h3') || {}).textContent || '',
+          probe: !el ? undefined : (el.value !== undefined ? el.value : el.innerText),
+          recId: (FORM.rec || {}).id || ''
+        };
+      }, probe);
 
       check(fn + ': หัวฟอร์มขึ้นว่า "แก้ไข" ไม่ใช่ "เพิ่ม/บันทึก"',
             /แก้ไข|ข้อมูลห้อง/.test(got.title), got.title);

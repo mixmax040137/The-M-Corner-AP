@@ -29,7 +29,9 @@ let pass = 0, fail = 0;
 const check = (n, ok, extra) => { if (ok) { pass++; console.log('  ✓ ' + n); } else { fail++; console.log('  ✗ ' + n + (extra ? '  → ' + extra : '')); } };
 
 (async () => {
-  const b = await chromium.launch();
+  // เครื่องนี้มี chromium ติดตั้งไว้แล้ว ไม่ต้องให้ playwright ไปโหลดใหม่
+  const CHROME = '/opt/pw-browsers/chromium';
+  const b = await chromium.launch(fs.existsSync(CHROME) ? { executablePath: CHROME } : {});
 
   async function openDoc(html, label){
     const file = path.join(OUT, label + '.html');
@@ -47,11 +49,14 @@ const check = (n, ok, extra) => { if (ok) { pass++; console.log('  ✓ ' + n); }
   console.log('\n── รุ่นที่ 1 (ไฟล์ที่เพิ่งประกอบ) ──');
   const g1 = await openDoc(wrap(content), 'gen1');
   check('ไม่มี JS error', g1.errs.length === 0, g1.errs.join(' | '));
-  check('เมนูขึ้นครบ 10 หน้า', await g1.pg.$$eval('.nav-item', e => e.length) === 10);
+  // เทียบกับรายการหน้าจริง ๆ จะได้ไม่ต้องตามแก้ตัวเลขทุกครั้งที่เพิ่มหน้า
+  const navCount = await g1.pg.$$eval('.nav-item', e => e.length);
+  const pageCount = await g1.pg.evaluate(() => PAGES.length);
+  check('เมนูขึ้นครบทุกหน้า (' + pageCount + ')', navCount === pageCount, navCount + '/' + pageCount);
   check('สถานะ = พร้อมบันทึก (ไม่ใช่อ่านอย่างเดียว)',
     !(await g1.pg.$eval('#saveState', e => e.textContent)).includes('ดูอย่างเดียว'));
 
-  const pages = ['dashboard','debtMain','debtSub','purchases','finance','ac','repairs','building','rooms','reports'];
+  const pages = ['dashboard','debtMain','debtSub','purchases','finance','ac','repairs','building','rooms','reports','settings'];
   for (const p of pages) {
     await g1.pg.evaluate(x => go(x), p);
     await g1.pg.waitForTimeout(450);

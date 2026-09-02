@@ -574,6 +574,51 @@ button.sync-pill:active{transform:translateY(1px)}
   .notif-list{flex:1;max-height:none}
 }
 
+/* ============ เช็คลิสต์งานซ่อม ============ */
+/* ---- ในฟอร์ม ---- */
+.todo{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px;background:var(--surface-2)}
+.todo-row{
+  display:grid;grid-template-columns:30px minmax(0,1fr) 190px 34px;
+  gap:7px;align-items:center;margin-bottom:6px;
+}
+.todo-row .inp,.todo-row .sel{padding:6px 9px;font-size:13px}
+.todo-row.done .inp{text-decoration:line-through;color:var(--muted)}
+.todo-check{display:flex;align-items:center;justify-content:center;cursor:pointer}
+.todo-check input{width:17px;height:17px;cursor:pointer;accent-color:var(--ok)}
+.todo-count{margin-left:auto;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.todo-count b{color:var(--ink)}
+
+/* ---- ในตารางรายการ (ติ๊กได้จริง) ---- */
+.todo-view{display:flex;flex-direction:column;gap:2px}
+.todo-bar{height:5px;border-radius:99px;background:var(--line-2);overflow:hidden;margin-bottom:2px}
+.todo-bar>i{display:block;height:100%;border-radius:99px;background:var(--ok);transition:width .35s ease}
+.todo-meta{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;margin-bottom:3px}
+.todo-meta b{color:var(--ink)}
+.todo-line{
+  display:flex;align-items:flex-start;gap:7px;font-size:13px;line-height:1.5;
+  padding:2px 0;cursor:pointer;
+}
+.todo-line input{margin-top:2px;width:15px;height:15px;flex:none;cursor:pointer;accent-color:var(--ok)}
+.todo-line .nm{flex:1;min-width:0;color:var(--ink)}
+.todo-line .cat{flex:none;font-size:10.5px;padding:1px 7px}
+.todo-line.done .nm{text-decoration:line-through;color:var(--faint)}
+.todo-line.locked{cursor:default}
+.todo-line:not(.locked):hover .nm{color:var(--brand)}
+
+@media (max-width:640px){
+  .todo-row{
+    grid-template-columns:30px minmax(0,1fr) 34px;
+    grid-template-areas:'chk name del' '. cat cat';
+    padding:8px;border:1px solid var(--line);border-radius:var(--r-sm);
+    background:var(--surface);margin-bottom:8px;
+  }
+  .todo-check{grid-area:chk;align-self:start;padding-top:5px}
+  .todo-row .inp{grid-area:name}
+  .todo-row .sel{grid-area:cat;width:100%}
+  .todo-row .btn{grid-area:del;align-self:start;justify-self:end;width:34px;padding:6px 0}
+  .todo-count{width:100%;margin:6px 0 0;text-align:right}
+}
+
 @media print{
   .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
   .app{display:block} body{background:#fff}
@@ -915,7 +960,7 @@ function applyReadOnly(root){
 ------------------------------------------------------------------ */
 
 /** คำสั่งที่ทำให้ข้อมูลในชีตเปลี่ยน (ให้ตรงกับ MUTATING_ACTIONS ฝั่งเซิร์ฟเวอร์) */
-var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|rotateToken|backupNow|upload|trash)$/;
+var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|rotateToken|backupNow|upload|trash|toggle)$/;
 
 /**
  * เพิ่งกดบันทึกเอง — หน้าโหลดข้อมูลใหม่ไปแล้วตอนกดบันทึก
@@ -2254,7 +2299,7 @@ ROUTES.repairs = {
     var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
     var head = '<div class="grid g4 mb12">' +
       kpi('งานซ่อม ' + yearLabel, d.totalJobs + ' งาน', 'จาก ' + d.rooms.filter(function(r){return r.count>0;}).length + ' ห้อง', 'accent') +
-      kpi('งานที่ยังไม่เสร็จ', d.openJobs + ' งาน', '', d.openJobs ? 'warn' : 'good') +
+      kpi('งานที่ยังไม่เสร็จ', d.openJobs + ' งาน', d.openTasks ? 'ค้างอยู่ ' + d.openTasks + ' จุด' : '', d.openJobs ? 'warn' : 'good') +
       kpi('ค่าใช้จ่ายรวม', baht(d.totalCost), yearLabel) +
       kpi('ห้องที่ยังไม่เคยซ่อม', d.rooms.filter(function(r){return r.count===0;}).length + ' ห้อง', 'ใน' + yearLabel) +
     '</div>';
@@ -2266,7 +2311,7 @@ ROUTES.repairs = {
     var grid = card('🔧 ภาพรวมงานซ่อมรายห้อง · ' + yearLabel, roomFloors(d.rooms, function(r){
       var cls = r.openCount > 0 ? 's-dgr' : (r.count > 0 ? 's-ok' : 's-info');
       var sub = r.count > 0
-        ? '<b>' + r.count + ' งาน</b>' + (r.openCount ? ' · ค้าง ' + r.openCount : '') + '<br>' + (r.last ? thDateShort(r.last) : '')
+        ? '<b>' + r.count + ' งาน</b>' + (r.openCount ? ' · ค้าง ' + (r.openTasks || r.openCount) + ' จุด' : '') + '<br>' + (r.last ? thDateShort(r.last) : '')
         : 'ไม่มีงานซ่อม';
       return { cls: cls, sub: sub, onclick: 'openRepairRoom(\'' + r.room + '\')' };
     }));
@@ -2285,7 +2330,7 @@ ROUTES.repairs = {
             '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.repairDate) + '</td>' +
             '<td class="fs12">' + esc(x.category || '–') + '</td>' +
-            '<td class="fs13"><div class="clip">' + esc(x.items || '') + '</div></td>' +
+            '<td style="min-width:280px">' + todoListHtml(x) + '</td>' +
             '<td>' + statusBadge(x.status) + (x.priority && x.priority !== 'ปกติ' ? ' ' + statusBadge(x.priority) : '') + '</td>' +
             '<td class="num">' + num(x.cost) + '</td>' +
             '<td>' + thumbsHtml(x.beforeRefs) + '</td>' +
@@ -2301,17 +2346,62 @@ ROUTES.repairs = {
   }
 };
 
+/**
+ * เช็คลิสต์ที่ติ๊กได้จริงจากหน้ารายการ ไม่ต้องเปิดฟอร์ม
+ * ติ๊กปุ๊บบันทึกขึ้นชีตทันที และถ้าติ๊กครบทุกข้อ สถานะจะเปลี่ยนเป็น "เสร็จสิ้น" ให้เอง
+ */
+function todoListHtml(x){
+  var todo = x.todo || [];
+  if (!todo.length) return '<span class="fs13 muted">' + esc(x.items || '–') + '</span>';
+
+  var p = x.progress || { done: 0, total: todo.length, percent: 0 };
+  var locked = !canEdit();
+
+  return '<div class="todo-view">' +
+    '<div class="todo-bar"><i style="width:' + p.percent + '%"></i></div>' +
+    '<div class="todo-meta">เสร็จแล้ว <b>' + p.done + '/' + p.total + '</b> งาน</div>' +
+    todo.map(function(t, i){
+      return '<label class="todo-line' + (t.done ? ' done' : '') + (locked ? ' locked' : '') + '">' +
+        '<input type="checkbox"' + (t.done ? ' checked' : '') + (locked ? ' disabled' : '') +
+          ' onchange="toggleTodo(\'' + esc(x.id) + '\',' + i + ',this.checked,this)">' +
+        '<span class="nm">' + esc(t.name) + '</span>' +
+        (t.category ? '<span class="b mute cat">' + esc(t.category) + '</span>' : '') +
+      '</label>';
+    }).join('') +
+  '</div>';
+}
+
+/**
+ * ติ๊กงานหนึ่งข้อ — อัปเดตหน้าจอทันทีแล้วค่อยบันทึก
+ * ถ้าบันทึกไม่ผ่าน ให้ติ๊กกลับไปเป็นเหมือนเดิม จะได้ไม่เข้าใจผิดว่าบันทึกแล้ว
+ */
+function toggleTodo(id, index, done, box){
+  var line = box.closest('.todo-line');
+  if (line) line.classList.toggle('done', done);
+  box.disabled = true;
+
+  callApi('repair.toggle', { id: id, index: index, done: done }).then(function(){
+    load({ quiet: true });        // ความคืบหน้ากับสถานะอาจเปลี่ยน ซิงก์เงียบ ๆ
+    refreshAlerts();              // งานค้างอาจลดลง ตัวเลขบนเมนูต้องตามด้วย
+  }).catch(function(e){
+    box.checked = !done;
+    if (line) line.classList.toggle('done', !done);
+    box.disabled = false;
+    toast(e.message || e, 'err');
+  });
+}
+
 function openRepairRoom(room){
   var d = S.cache.repairs;
   var r = d.rooms.filter(function(x){ return x.room === room; })[0];
   var body = '<div class="grid g3 mb12">' +
       kpi('งานทั้งหมด', r.count + ' งาน', '') +
-      kpi('ยังไม่เสร็จ', r.openCount + ' งาน', '', r.openCount ? 'warn':'good') +
+      kpi('ยังไม่เสร็จ', r.openCount + ' งาน', r.openTasks ? 'ค้างอยู่ ' + r.openTasks + ' จุด' : '', r.openCount ? 'warn':'good') +
       kpi('ค่าใช้จ่าย', baht(r.cost), '') +
     '</div>' +
     (r.records.length ? '<div class="tl">' + r.records.map(function(x){
       return '<div class="tl-i"><div class="d">' + thDate(x.repairDate || x.bookDate) + ' · ' + esc(x.category||'') + ' ' + statusBadge(x.status) + '</div>' +
-        '<div class="t">' + esc(x.items || '') + '</div>' +
+        '<div class="t">' + todoListHtml(x) + '</div>' +
         (x.technician ? '<div class="fs12 muted">ช่าง: ' + esc(x.technician) + '</div>' : '') +
         (x.cost ? '<div class="fs12 muted">ค่าใช้จ่าย ' + baht(x.cost) + '</div>' : '') +
         '<div class="mt8">' + thumbsHtml((x.beforeRefs||[]).concat(x.afterRefs||[])) + '</div>' +
@@ -3020,7 +3110,9 @@ var FORM = {
   bucket: 'misc',  // โฟลเดอร์ที่จะเก็บไฟล์แนบใหม่
   ocr: null,       // ผังการเติมค่าจากรูป
   rec: null,       // รายการที่กำลังแก้อยู่ (null = กำลังเพิ่มรายการใหม่)
-  lines: []        // รายการย่อยในบิล (ใช้กับช่องชนิด lines)
+  lines: [],       // รายการย่อยในบิล (ใช้กับช่องชนิด lines)
+  todo: [],        // เช็คลิสต์งานซ่อม (ใช้กับช่องชนิด todo)
+  todoOptions: []  // ตัวเลือกประเภทงานของแต่ละข้อ
 };
 
 /* ---------------- form engine ---------------- */
@@ -3055,6 +3147,11 @@ function fieldsHtml(specs, rec){
         '<div id="' + id + '_preview" class="thumbs mt8"></div>' +
         '<div id="' + id + '_ocr"></div>';
 
+    } else if (f.type === 'todo') {
+      FORM.todo = parseTodoText(v);
+      FORM.todoOptions = f.options || [];
+      inner = '<div id="' + id + '" class="todo">' + todoTableHtml() + '</div>';
+
     } else if (f.type === 'lines') {
       FORM.lines = parseLinesText(v);
       inner = '<div id="' + id + '" class="lines">' + linesTableHtml() + '</div>';
@@ -3080,6 +3177,131 @@ function fieldsHtml(specs, rec){
       inner + (f.hint ? '<div class="hint">' +
         (f.hint.charAt(0) === '<' ? f.hint : esc(f.hint)) + '</div>' : '') + '</div>';
   }).join('') + '</div>';
+}
+
+/* ============================================================
+   เช็คลิสต์งานซ่อม — เข้าซ่อมครั้งเดียวมักซ่อมหลายจุด
+
+   เก็บลงชีตบรรทัดละงาน  [x] ชื่องาน | ประเภทงาน
+   (รูปแบบเดียวกับ parseTodo_ ฝั่งเซิร์ฟเวอร์ — แก้ที่ไหนต้องแก้ให้ตรงกัน)
+   ============================================================ */
+
+function parseTodoText(text){
+  var raw = String(text == null ? '' : text);
+  if (!raw.trim()) return [];
+  var lines = raw.split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+
+  // ของเดิมเขียนรวมบรรทัดเดียวว่า "1.ยาแนว 2.เก็บสีห้อง"
+  if (lines.length === 1 && /\d\s*[.)]/.test(lines[0]) && lines[0].charAt(0) !== '[') {
+    lines = lines[0].split(/\s*\d+\s*[.)]\s*/).map(function(x){ return x.trim(); }).filter(Boolean);
+  }
+
+  return lines.map(function(line){
+    var done = false;
+    var m = line.match(/^\[\s*([xX✓])?\s*\]\s*(.*)$/);
+    if (m) { done = !!m[1]; line = m[2]; }
+    line = line.replace(/^\d+\s*[.)]\s*/, '').trim();
+    var a = line.split('|');
+    return { done: done, name: (a[0] || '').trim(), category: (a[1] || '').trim() };
+  }).filter(function(t){ return t.name; });
+}
+
+function formatTodoText(list){
+  return (list || [])
+    .filter(function(t){ return String(t.name || '').trim(); })
+    .map(function(t){
+      var nm = String(t.name).replace(/\|/g, '/').trim();
+      var ct = String(t.category || '').replace(/\|/g, '/').trim();
+      return '[' + (t.done ? 'x' : ' ') + '] ' + nm + (ct ? ' | ' + ct : '');
+    }).join('\n');
+}
+
+function todoDone(){ return (FORM.todo || []).filter(function(t){ return t.done; }).length; }
+
+function todoTableHtml(){
+  var opts = FORM.todoOptions || [];
+  var rows = (FORM.todo || []).map(function(t, i){
+    return '<div class="todo-row' + (t.done ? ' done' : '') + '">' +
+      '<label class="todo-check" title="' + (t.done ? 'ทำเสร็จแล้ว' : 'ยังไม่ได้ทำ') + '">' +
+        '<input type="checkbox"' + (t.done ? ' checked' : '') + ' onchange="setTodo(' + i + ',\'done\',this.checked)">' +
+      '</label>' +
+      '<input class="inp" placeholder="งานที่ต้องซ่อม" value="' + esc(t.name || '') + '" ' +
+        'oninput="setTodo(' + i + ',\'name\',this.value)">' +
+      '<select class="sel" onchange="setTodo(' + i + ',\'category\',this.value)">' +
+        '<option value="">— ประเภทงาน —</option>' +
+        opts.map(function(o){
+          return '<option value="' + esc(o) + '"' + (o === t.category ? ' selected' : '') + '>' + esc(o) + '</option>';
+        }).join('') +
+      '</select>' +
+      '<button type="button" class="btn sm dgr" title="เอางานนี้ออก" onclick="delTodo(' + i + ')">×</button>' +
+    '</div>';
+  }).join('');
+
+  var n = (FORM.todo || []).length, d = todoDone();
+  return (rows || '<div class="hint" style="padding:8px 2px">ยังไม่มีงาน — กด “เพิ่มงาน” เพื่อใส่ทีละจุดที่ต้องซ่อม</div>') +
+    '<div class="row mt8">' +
+      '<button type="button" class="btn sm" onclick="addTodo()">+ เพิ่มงาน</button>' +
+      '<button type="button" class="btn sm" onclick="pasteTodo()">📋 วางทีเดียวหลายงาน</button>' +
+      (n ? '<div class="todo-count">เสร็จแล้ว <b>' + d + '/' + n + '</b> งาน</div>' : '') +
+    '</div>';
+}
+
+function redrawTodo(){
+  var box = document.getElementById('f_items');
+  if (!box) return;
+  box.innerHTML = todoTableHtml();
+}
+
+function setTodo(i, key, val){
+  if (!FORM.todo[i]) return;
+  FORM.todo[i][key] = (key === 'done') ? !!val : val;
+  if (key === 'done') { redrawTodo(); return; }   // ติ๊กแล้ววาดใหม่ให้ขีดฆ่าเห็นชัด
+  var c = document.querySelector('#f_items .todo-count b');
+  if (c) c.textContent = todoDone() + '/' + FORM.todo.length;
+}
+
+function addTodo(){
+  FORM.todo.push({ done: false, name: '', category: '' });
+  redrawTodo();
+  var inputs = document.querySelectorAll('#f_items .todo-row .inp');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+}
+
+function delTodo(i){
+  FORM.todo.splice(i, 1);
+  redrawTodo();
+}
+
+/** วางรายการที่ต้องซ่อมทีเดียวหลายบรรทัด แล้วให้ระบบแยกให้ */
+function pasteTodo(){
+  var box = document.getElementById('todoPasteWrap');
+  if (box) { box.hidden = !box.hidden; if (!box.hidden) document.getElementById('todoPasteBox').focus(); return; }
+
+  var host = document.getElementById('f_items');
+  if (!host) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'todoPasteWrap';
+  wrap.className = 'mt8';
+  wrap.innerHTML =
+    '<textarea class="ta" id="todoPasteBox" style="min-height:110px" ' +
+      'placeholder="ยาแนวห้องน้ำ&#10;เก็บสีห้อง&#10;เปลี่ยนก๊อกน้ำล้างจาน"></textarea>' +
+    '<div class="hint mt8">บรรทัดละหนึ่งงาน · หรือพิมพ์รวมบรรทัดเดียวแบบ “1.ยาแนว 2.เก็บสีห้อง” ก็ได้<br>' +
+      'ใส่ประเภทงานทีหลังจากช่องข้าง ๆ แต่ละงาน</div>' +
+    '<div class="row mt8">' +
+      '<button type="button" class="btn sm pri" onclick="applyPastedTodo()">เพิ่มเข้ารายการ</button>' +
+      '<button type="button" class="btn sm" onclick="document.getElementById(\'todoPasteWrap\').hidden=true">ปิด</button>' +
+    '</div>';
+  host.appendChild(wrap);
+  document.getElementById('todoPasteBox').focus();
+}
+
+function applyPastedTodo(){
+  var text = (document.getElementById('todoPasteBox') || {}).value || '';
+  var added = parseTodoText(text);
+  if (!added.length) return toast('ไม่พบงานที่อ่านได้', 'err');
+  FORM.todo = (FORM.todo || []).filter(function(t){ return String(t.name || '').trim(); }).concat(added);
+  redrawTodo();
+  toast('เพิ่มให้ ' + added.length + ' งาน', 'ok');
 }
 
 /* ============================================================
@@ -3321,6 +3543,8 @@ function readForm(specs, bucket){
           out[f.key] = (FORM.keep[f.key] || []).concat(refs.map(function(r){ return r.url; }));
         })
       );
+    } else if (f.type === 'todo') {
+      out[f.key] = formatTodoText(FORM.todo);
     } else if (f.type === 'lines') {
       out[f.key] = formatLinesText(FORM.lines);
     } else if (f.type === 'number' || f.type === 'money') {
@@ -3768,9 +3992,12 @@ function formRepair(rec){
     onDelete: delRepair,
     fields: [
       { key:'room',       label:'ห้อง', type:'select', options:roomOptions(), required:true, blank:false },
-      { key:'category',   label:'ประเภทงาน', type:'select', options:opt('repairCategories') },
-      { key:'items',      label:'รายการที่ต้องซ่อมแซม', type:'textarea', required:true, full:true,
-        ph:'เช่น 1.ยาแนว 2.เก็บสีห้อง 3.เปลี่ยนก๊อกน้ำล้างจาน' },
+      { key:'category',   label:'ประเภทงานหลักของใบนี้', type:'select', options:opt('repairCategories'),
+        hint:'เว้นว่างได้ — ระบบใช้ประเภทที่พบบ่อยที่สุดในเช็คลิสต์ให้เอง' },
+      { key:'items',      label:'รายการที่ต้องซ่อม (ติ๊กเมื่อทำเสร็จ)', type:'todo', required:true, full:true,
+        options: opt('repairCategories'),
+        hint:'เข้าซ่อมครั้งเดียวมักซ่อมหลายจุด ใส่แยกทีละงานและเลือกประเภทของแต่ละงานได้ · ' +
+             'ติ๊กครบทุกงานแล้วระบบจะเปลี่ยนสถานะเป็น “เสร็จสิ้น” ให้เอง' },
       { key:'reportDate', label:'วันที่แจ้ง', type:'date' },
       { key:'bookDate',   label:'วันนัดซ่อมแซม', type:'date' },
       { key:'repairDate', label:'วันเข้าซ่อมแซม', type:'date', hint:'กรอกเมื่อซ่อมเสร็จแล้ว' },

@@ -41,6 +41,19 @@ const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(n);
   if (sh && ss.deleteSheet) ss.deleteSheet(sh);
 });
+// เขียนรายการงานซ่อมกลับเป็นข้อความแบบชีตเดิม "1.ยาแนว 2.เก็บสีห้อง"
+// ให้ตัวแปลงมีของเก่าจริง ๆ ให้แปลง ไม่ใช่แปลงของที่เป็นเช็คลิสต์อยู่แล้ว
+{
+  const rr = readRows_(SHEETS.ROOM_REPAIRS).map((r, i) => {
+    const names = parseTodo_(r.items).map(t => t.name);
+    r.items = names.length
+      ? names.map((n, k) => (k + 1) + '.' + n).join(' ')
+      : '(ไม่ได้ระบุรายการ)';       // แถวที่ชีตเดิมไม่ได้ระบุรายการ
+    return r;
+  });
+  rewriteSheet_(SHEETS.ROOM_REPAIRS, rr);
+}
+
 props_().setProperty('SCHEMA_VERSION', '3');
 props_().deleteProperty('FIRST_ADMIN_PASSWORD');
 
@@ -63,6 +76,7 @@ const snapshot = () => ({
 });
 
 const before = snapshot();
+const oldStyleItems = readRows_(SHEETS.ROOM_REPAIRS).filter(r => /^\d+\./.test(String(r.items))).length;
 const tokenBefore = getSetting_('admin_token', '');
 const viewBefore = getSetting_('view_token', '');
 setSetting_('ac_cycle_months', '4');            // ค่าที่ผู้ใช้เคยปรับเอง ต้องไม่ถูกทับ
@@ -89,6 +103,22 @@ const after = snapshot();
 ].forEach(([label, k]) =>
   check(label + ' ไม่เปลี่ยน', after[k] === before[k], before[k] + ' → ' + after[k]));
 check('รายการที่ลบไปแล้วไม่กลับมา', after.building === before.building, before.building + ' → ' + after.building);
+
+console.log('\n── งานซ่อมเดิมกลายเป็นเช็คลิสต์ที่ติ๊กได้ ──');
+{
+  const fx = readRows_(SHEETS.ROOM_REPAIRS).map(r => ({ r: r, t: parseTodo_(r.items) }));
+  const subTasks = fx.reduce((n, x) => n + x.t.length, 0);
+  check('ก่อนอัปเกรดเป็นข้อความแบบชีตเดิมจริง', oldStyleItems > 0, oldStyleItems + ' รายการ');
+  check('แตกงานเก่าออกเป็นข้อย่อยแล้ว', subTasks > fx.length, subTasks + ' ข้อ จาก ' + fx.length + ' งาน');
+  check('ไม่เหลือข้อความแบบเก่าแล้ว',
+    fx.every(x => !/^\d+\./.test(String(x.r.items || ''))));
+  check('งานที่ปิดไปแล้วถูกติ๊กครบ',
+    fx.filter(x => x.r.status === 'เสร็จสิ้น' && x.t.length)
+      .every(x => x.t.every(t => t.done)));
+  check('ไม่มีข้อความแทนรายการหลงเหลือเป็นงานค้าง',
+    fx.every(x => x.t.every(t => t.name !== '(ไม่ได้ระบุรายการ)')));
+  check('ชื่องานเดิมไม่หาย', fx.some(x => x.t.some(t => t.name === 'ยาแนว')));
+}
 
 console.log('\n── ของใหม่ต้องมาครบ โดยไม่ทับของเดิม ──');
 check('สร้างชีต Users', !!ss.getSheetByName(SHEETS.USERS));

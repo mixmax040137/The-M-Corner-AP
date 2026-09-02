@@ -440,7 +440,7 @@ ROUTES.repairs = {
     var yearLabel = S.year === 'all' ? 'ทุกปี' : 'ปี ' + S.year;
     var head = '<div class="grid g4 mb12">' +
       kpi('งานซ่อม ' + yearLabel, d.totalJobs + ' งาน', 'จาก ' + d.rooms.filter(function(r){return r.count>0;}).length + ' ห้อง', 'accent') +
-      kpi('งานที่ยังไม่เสร็จ', d.openJobs + ' งาน', '', d.openJobs ? 'warn' : 'good') +
+      kpi('งานที่ยังไม่เสร็จ', d.openJobs + ' งาน', d.openTasks ? 'ค้างอยู่ ' + d.openTasks + ' จุด' : '', d.openJobs ? 'warn' : 'good') +
       kpi('ค่าใช้จ่ายรวม', baht(d.totalCost), yearLabel) +
       kpi('ห้องที่ยังไม่เคยซ่อม', d.rooms.filter(function(r){return r.count===0;}).length + ' ห้อง', 'ใน' + yearLabel) +
     '</div>';
@@ -452,7 +452,7 @@ ROUTES.repairs = {
     var grid = card('🔧 ภาพรวมงานซ่อมรายห้อง · ' + yearLabel, roomFloors(d.rooms, function(r){
       var cls = r.openCount > 0 ? 's-dgr' : (r.count > 0 ? 's-ok' : 's-info');
       var sub = r.count > 0
-        ? '<b>' + r.count + ' งาน</b>' + (r.openCount ? ' · ค้าง ' + r.openCount : '') + '<br>' + (r.last ? thDateShort(r.last) : '')
+        ? '<b>' + r.count + ' งาน</b>' + (r.openCount ? ' · ค้าง ' + (r.openTasks || r.openCount) + ' จุด' : '') + '<br>' + (r.last ? thDateShort(r.last) : '')
         : 'ไม่มีงานซ่อม';
       return { cls: cls, sub: sub, onclick: 'openRepairRoom(\'' + r.room + '\')' };
     }));
@@ -471,7 +471,7 @@ ROUTES.repairs = {
             '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.repairDate) + '</td>' +
             '<td class="fs12">' + esc(x.category || '–') + '</td>' +
-            '<td class="fs13"><div class="clip">' + esc(x.items || '') + '</div></td>' +
+            '<td style="min-width:280px">' + todoListHtml(x) + '</td>' +
             '<td>' + statusBadge(x.status) + (x.priority && x.priority !== 'ปกติ' ? ' ' + statusBadge(x.priority) : '') + '</td>' +
             '<td class="num">' + num(x.cost) + '</td>' +
             '<td>' + thumbsHtml(x.beforeRefs) + '</td>' +
@@ -487,17 +487,62 @@ ROUTES.repairs = {
   }
 };
 
+/**
+ * เช็คลิสต์ที่ติ๊กได้จริงจากหน้ารายการ ไม่ต้องเปิดฟอร์ม
+ * ติ๊กปุ๊บบันทึกขึ้นชีตทันที และถ้าติ๊กครบทุกข้อ สถานะจะเปลี่ยนเป็น "เสร็จสิ้น" ให้เอง
+ */
+function todoListHtml(x){
+  var todo = x.todo || [];
+  if (!todo.length) return '<span class="fs13 muted">' + esc(x.items || '–') + '</span>';
+
+  var p = x.progress || { done: 0, total: todo.length, percent: 0 };
+  var locked = !canEdit();
+
+  return '<div class="todo-view">' +
+    '<div class="todo-bar"><i style="width:' + p.percent + '%"></i></div>' +
+    '<div class="todo-meta">เสร็จแล้ว <b>' + p.done + '/' + p.total + '</b> งาน</div>' +
+    todo.map(function(t, i){
+      return '<label class="todo-line' + (t.done ? ' done' : '') + (locked ? ' locked' : '') + '">' +
+        '<input type="checkbox"' + (t.done ? ' checked' : '') + (locked ? ' disabled' : '') +
+          ' onchange="toggleTodo(\'' + esc(x.id) + '\',' + i + ',this.checked,this)">' +
+        '<span class="nm">' + esc(t.name) + '</span>' +
+        (t.category ? '<span class="b mute cat">' + esc(t.category) + '</span>' : '') +
+      '</label>';
+    }).join('') +
+  '</div>';
+}
+
+/**
+ * ติ๊กงานหนึ่งข้อ — อัปเดตหน้าจอทันทีแล้วค่อยบันทึก
+ * ถ้าบันทึกไม่ผ่าน ให้ติ๊กกลับไปเป็นเหมือนเดิม จะได้ไม่เข้าใจผิดว่าบันทึกแล้ว
+ */
+function toggleTodo(id, index, done, box){
+  var line = box.closest('.todo-line');
+  if (line) line.classList.toggle('done', done);
+  box.disabled = true;
+
+  callApi('repair.toggle', { id: id, index: index, done: done }).then(function(){
+    load({ quiet: true });        // ความคืบหน้ากับสถานะอาจเปลี่ยน ซิงก์เงียบ ๆ
+    refreshAlerts();              // งานค้างอาจลดลง ตัวเลขบนเมนูต้องตามด้วย
+  }).catch(function(e){
+    box.checked = !done;
+    if (line) line.classList.toggle('done', !done);
+    box.disabled = false;
+    toast(e.message || e, 'err');
+  });
+}
+
 function openRepairRoom(room){
   var d = S.cache.repairs;
   var r = d.rooms.filter(function(x){ return x.room === room; })[0];
   var body = '<div class="grid g3 mb12">' +
       kpi('งานทั้งหมด', r.count + ' งาน', '') +
-      kpi('ยังไม่เสร็จ', r.openCount + ' งาน', '', r.openCount ? 'warn':'good') +
+      kpi('ยังไม่เสร็จ', r.openCount + ' งาน', r.openTasks ? 'ค้างอยู่ ' + r.openTasks + ' จุด' : '', r.openCount ? 'warn':'good') +
       kpi('ค่าใช้จ่าย', baht(r.cost), '') +
     '</div>' +
     (r.records.length ? '<div class="tl">' + r.records.map(function(x){
       return '<div class="tl-i"><div class="d">' + thDate(x.repairDate || x.bookDate) + ' · ' + esc(x.category||'') + ' ' + statusBadge(x.status) + '</div>' +
-        '<div class="t">' + esc(x.items || '') + '</div>' +
+        '<div class="t">' + todoListHtml(x) + '</div>' +
         (x.technician ? '<div class="fs12 muted">ช่าง: ' + esc(x.technician) + '</div>' : '') +
         (x.cost ? '<div class="fs12 muted">ค่าใช้จ่าย ' + baht(x.cost) + '</div>' : '') +
         '<div class="mt8">' + thumbsHtml((x.beforeRefs||[]).concat(x.afterRefs||[])) + '</div>' +

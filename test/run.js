@@ -412,7 +412,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 73);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 74);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
@@ -955,6 +955,103 @@ console.log('\n── 21. ศูนย์แจ้งเตือน ──');
   global.Session.getActiveUser = () => ({ getEmail: () => '' });
   check('ยังไม่ล็อกอิน ดูการแจ้งเตือนไม่ได้', api('app.alerts', {}).ok, false);
   global.Session.getActiveUser = realOwner;
+}
+
+console.log('\n── 22. เช็คลิสต์งานซ่อม ──');
+{
+  const admKey = getSetting_('admin_token', '');
+
+  // --- อ่านเช็คลิสต์ ---
+  const t = parseTodo_('[x] ยาแนวห้องน้ำ | ระบบน้ำ/สุขภัณฑ์\n[ ] เก็บสีห้อง | สี/ผนัง/ฝ้า');
+  check('แยกได้ 2 งาน', t.length, 2);
+  check('อ่านสถานะติ๊กถูก', [t[0].done, t[1].done], [true, false]);
+  check('แยกชื่องานกับประเภทงานออกจากกัน', [t[0].name, t[0].category], ['ยาแนวห้องน้ำ', 'ระบบน้ำ/สุขภัณฑ์']);
+  check('เขียนกลับได้รูปแบบเดิม', formatTodo_(t),
+    '[x] ยาแนวห้องน้ำ | ระบบน้ำ/สุขภัณฑ์\n[ ] เก็บสีห้อง | สี/ผนัง/ฝ้า');
+  check('อ่าน-เขียนวนกลับได้เท่าเดิม', parseTodo_(formatTodo_(t)), t);
+
+  // --- ของเดิมต้องอ่านได้ ไม่ต้องพิมพ์ใหม่ ---
+  const old = parseTodo_('1.ยาแนว 2.เก็บสีห้อง 3.เก็บสีเฟอร์นิเจอร์');
+  check('ข้อความเดิมแบบ "1.x 2.y" แตกเป็นรายการได้', old.length, 3);
+  check('ตัดเลขลำดับออกให้', old.map(x => x.name), ['ยาแนว', 'เก็บสีห้อง', 'เก็บสีเฟอร์นิเจอร์']);
+  check('ของเดิมยังไม่ติ๊ก', old.every(x => x.done === false), true);
+  check('แบบหลายบรรทัดเปล่า ๆ ก็อ่านได้', parseTodo_('ทาสี\nล้างแอร์').length, 2);
+  check('ช่องว่างได้ array ว่าง', parseTodo_(''), []);
+  check('| ในชื่องานไม่ทำโครงสร้างพัง',
+    parseTodo_(formatTodo_([{done:false, name:'เปลี่ยนท่อ | 4 หุน', category:'ระบบน้ำ/สุขภัณฑ์'}]))[0].name,
+    'เปลี่ยนท่อ / 4 หุน');
+
+  // --- ความคืบหน้า ---
+  check('นับความคืบหน้าถูก', todoStats_(t), { total: 2, done: 1, pending: 1, percent: 50 });
+  check('ไม่มีงานเลย ไม่หารด้วยศูนย์', todoStats_([]).percent, 0);
+
+  // --- สถานะเดินหน้าตามเช็คลิสต์ แต่ไม่ถอยหลัง ---
+  check('ติ๊กครบ → เสร็จสิ้น', statusFromTodo_('กำลังซ่อม', { total:3, done:3, pending:0 }), 'เสร็จสิ้น');
+  check('ติ๊กบางส่วน → กำลังซ่อม', statusFromTodo_('รอดำเนินการ', { total:3, done:1, pending:2 }), 'กำลังซ่อม');
+  check('ยังไม่ติ๊กเลย → คงสถานะเดิม', statusFromTodo_('นัดหมายแล้ว', { total:3, done:0, pending:3 }), 'นัดหมายแล้ว');
+  check('ยกเลิกแล้วไม่ถูกเปลี่ยน', statusFromTodo_('ยกเลิก', { total:2, done:2, pending:0 }), 'ยกเลิก');
+  check('ติ๊กออกจากใบที่ปิดแล้ว → กลับมากำลังซ่อม',
+    statusFromTodo_('เสร็จสิ้น', { total:3, done:2, pending:1 }, true), 'กำลังซ่อม');
+  check('กดบันทึกเอง ระบบไม่ดึงสถานะที่ผู้ใช้เลือกไว้ถอยหลัง',
+    statusFromTodo_('เสร็จสิ้น', { total:3, done:0, pending:3 }), 'เสร็จสิ้น');
+
+  // --- บันทึกจริงผ่าน api ---
+  const r = api('repair.save', { _key: admKey, record: {
+    room: '311', reportDate: '2026-02-10',
+    items: 'ยาแนวห้องน้ำ | ระบบน้ำ/สุขภัณฑ์\nเก็บสีห้อง | สี/ผนัง/ฝ้า\nเปลี่ยนก๊อกน้ำ | ระบบน้ำ/สุขภัณฑ์'
+  }});
+  check('บันทึกงานซ่อมหลายจุดได้', r.ok, true);
+  let saved = findRow_(SHEETS.ROOM_REPAIRS, r.data.id);
+  check('เก็บเป็นเช็คลิสต์รูปแบบมาตรฐาน', saved.items.split('\n').length, 3);
+  check('ทุกบรรทัดมีช่องติ๊ก', saved.items.split('\n').every(l => l.indexOf('[') === 0), true);
+  check('ประเภทงานของทั้งใบ ใช้ตัวที่พบบ่อยสุด', saved.category, 'ระบบน้ำ/สุขภัณฑ์');
+  check('ยังไม่ติ๊กอะไร สถานะยังเป็นรอดำเนินการ', saved.status, 'รอดำเนินการ');
+
+  // --- ติ๊กทีละงานจากหน้ารายการ ---
+  const t1 = api('repair.toggle', { _key: admKey, id: r.data.id, index: 0, done: true });
+  check('ติ๊กงานแรกได้', t1.ok, true);
+  check('ติ๊กแล้วความคืบหน้าขยับ', t1.data.progress.done, 1);
+  check('ติ๊กบางส่วนแล้วสถานะเป็นกำลังซ่อม', findRow_(SHEETS.ROOM_REPAIRS, r.data.id).status, 'กำลังซ่อม');
+
+  api('repair.toggle', { _key: admKey, id: r.data.id, index: 1, done: true });
+  const t3 = api('repair.toggle', { _key: admKey, id: r.data.id, index: 2, done: true });
+  check('ติ๊กครบทุกงานแล้วสถานะเป็นเสร็จสิ้นเอง',
+    findRow_(SHEETS.ROOM_REPAIRS, r.data.id).status, 'เสร็จสิ้น');
+  check('ความคืบหน้าเต็ม 100%', t3.data.progress.percent, 100);
+
+  // ติ๊กกลับ ต้องกลับมาเป็นกำลังซ่อม
+  api('repair.toggle', { _key: admKey, id: r.data.id, index: 1, done: false });
+  check('ติ๊กออกแล้วกลับมากำลังซ่อม', findRow_(SHEETS.ROOM_REPAIRS, r.data.id).status, 'กำลังซ่อม');
+
+  check('ติ๊กรายการที่ไม่มีอยู่ ถูกปฏิเสธ',
+    api('repair.toggle', { _key: admKey, id: r.data.id, index: 99, done: true }).ok, false);
+  check('ติ๊กงานที่ไม่มีอยู่ ถูกปฏิเสธ',
+    api('repair.toggle', { _key: admKey, id: 'ไม่มีจริง', index: 0, done: true }).ok, false);
+
+  // --- หน้าเว็บต้องได้เช็คลิสต์ที่แตกแล้ว ---
+  const inList = api('repair.list', { _key: admKey, year: 'all', room: 'all', status: 'all' })
+    .data.filter(x => x.id === r.data.id)[0];
+  check('ส่งเช็คลิสต์ไปให้หน้าเว็บ', inList.todo.length, 3);
+  check('ส่งความคืบหน้าไปด้วย', inList.progress.done, 2);
+  check('แต่ละงานมีประเภทของตัวเอง', inList.todo[0].category, 'ระบบน้ำ/สุขภัณฑ์');
+
+  // --- ภาพรวมรายห้องต้องได้เช็คลิสต์เหมือนกัน (หน้าซ่อมแซมตามห้องอ่านจากตรงนี้) ---
+  const mx = api('repair.matrix', { _key: admKey, year: 'all' }).data;
+  const inMx = [].concat.apply([], mx.rooms.map(x => x.records)).filter(x => x.id === r.data.id)[0];
+  check('ภาพรวมรายห้องส่งเช็คลิสต์ไปด้วย', inMx.todo.length, 3);
+  check('ภาพรวมรายห้องส่งความคืบหน้าไปด้วย', inMx.progress.done, 2);
+  check('นับจุดที่ยังค้างของทั้งปีได้', typeof mx.openTasks, 'number');
+  check('ห้องนั้นนับจุดที่ยังค้างได้',
+    mx.rooms.filter(x => x.room === '311')[0].openTasks, 1);
+
+  // --- คนที่ดูอย่างเดียวติ๊กไม่ได้ ---
+  setSetting_('share_link_enabled', 'เปิด');
+  check('คนที่เปิดดูอย่างเดียวติ๊กไม่ได้',
+    api('repair.toggle', { _key: getSetting_('view_token', ''), id: r.data.id, index: 0, done: false }).ok, false);
+  setSetting_('share_link_enabled', 'ปิด');
+
+  api('repair.delete', { _key: admKey, id: r.data.id });
+  check('ลบแล้วจำนวนงานกลับเท่าเดิม', readRows_(SHEETS.ROOM_REPAIRS).length, 42);
 }
 
 console.log('\n════════════════════════════');

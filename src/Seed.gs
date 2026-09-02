@@ -452,11 +452,19 @@ function seedAc_() {
 function seedRoomRepairs_() {
   var rows = SEED_ROOM_REPAIRS.map(function (r) {
     var room = r[0], year = r[1], date = r[2], items = r[3];
+
+    // ชีตเดิมเขียนรวมบรรทัดเดียวว่า "1.ยาแนว 2.เก็บสีห้อง" — เก็บเป็นเช็คลิสต์เลย
+    // งานเก่าทั้งหมดซ่อมจบไปแล้ว จึงติ๊กครบทุกข้อ
+    var todo = parseTodo_(items);
+    todo.forEach(function (t) { t.done = true; });
+
     return {
       id: uid_('FIX'), room: room, year: year,
       reportDate: '', bookDate: date, repairDate: date,
       category: guessRepairCategory_(items),
-      items: items || '(ไม่ได้ระบุรายการ)',
+      // ชีตเดิมบางแถวไม่ได้ระบุรายการ — ปล่อยว่างไว้ ไม่ใส่ข้อความแทน
+      // ไม่งั้นข้อความนั้นจะกลายเป็นงานค้างหนึ่งข้อในเช็คลิสต์
+      items: todo.length ? formatTodo_(todo) : '',
       priority: 'ปกติ', status: 'เสร็จสิ้น', technician: '', cost: null,
       photosBefore: [], photosAfter: [],
       note: date ? 'นำเข้าจากชีตเดิม' : 'นำเข้าจากชีตเดิม (ชีตเดิมระบุเฉพาะปี ไม่มีวันที่)',

@@ -276,7 +276,10 @@ function costPerRoom_(year) {
   var purchases = listPurchases_(year, {});
 
   var map = {};
-  ROOMS.forEach(function (r) {
+  // รวมห้องที่โผล่ในข้อมูลแต่ยังไม่อยู่ในทะเบียนด้วย ไม่งั้นค่าใช้จ่ายของห้องนั้นหายไปเฉย ๆ
+  // ส่วนรายการซื้อของที่ไม่ได้ระบุห้อง (ของส่วนกลาง) ไม่นับเข้าห้องไหน เหมือนเดิม
+  var roomList = roomsInPlay_(repairs, ac, purchases.filter(function (p) { return p.room; }));
+  roomList.forEach(function (r) {
     map[r] = { room: r, floor: floorOf_(r), repair: 0, ac: 0, purchase: 0, total: 0, jobs: 0 };
   });
   repairs.forEach(function (r) {
@@ -293,7 +296,7 @@ function costPerRoom_(year) {
     map[p.room].purchase += toNumber_(p.price) || 0;
   });
 
-  var rows = ROOMS.map(function (r) {
+  var rows = roomList.map(function (r) {
     var x = map[r];
     x.total = round2_(x.repair + x.ac + x.purchase);
     x.repair = round2_(x.repair); x.ac = round2_(x.ac); x.purchase = round2_(x.purchase);

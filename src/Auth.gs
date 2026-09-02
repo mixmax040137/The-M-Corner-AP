@@ -100,11 +100,6 @@ function whoAmI(payload) {
   };
 }
 
-function currentUserEmail_() {
-  try { return Session.getActiveUser().getEmail() || ''; }
-  catch (e) { return ''; }
-}
-
 function ownerEmail_() {
   try {
     var o = getSpreadsheet_().getOwner();

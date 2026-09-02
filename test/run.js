@@ -1054,6 +1054,47 @@ console.log('\n── 22. เช็คลิสต์งานซ่อม ─�
   check('ลบแล้วจำนวนงานกลับเท่าเดิม', readRows_(SHEETS.ROOM_REPAIRS).length, 42);
 }
 
+console.log('\n── 23. ห้องที่ยังไม่ได้ลงทะเบียน ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  // เพิ่มห้องใหม่ ปรับเลขห้อง หรือพิมพ์เลขห้องผิด — ของเดิมจะยังนับในยอดรวม
+  // แต่หายไปจากช่องห้อง ทำให้ตัวเลขไม่ลงกันและกดเข้าไปดูงานนั้นไม่ได้
+  const r = api('repair.save', { _key: admKey,
+    record: { room: '999', items: '[ ] ทดสอบห้องนอกทะเบียน', bookDate: '2026-01-01', cost: 1500 } });
+  check('บันทึกงานซ่อมของห้องนอกทะเบียนได้', r.ok, true);
+
+  const m = repairMatrix_('all');
+  check('ห้องนอกทะเบียนโผล่ในภาพรวมงานซ่อม', m.rooms.some(x => x.room === '999'), true);
+  check('ผลรวมช่องห้องเท่ากับยอดรวมทั้งปี',
+    m.rooms.reduce((a, x) => a + x.count, 0), m.totalJobs);
+
+  const a = api('ac.save', { _key: admKey,
+    record: { room: '998', bookDate: '2026-02-01', serviceDate: '2026-02-01', cost: 600 } });
+  check('ห้องนอกทะเบียนโผล่ในตารางล้างแอร์', acMatrix_('all').rooms.some(x => x.room === '998'), true);
+
+  const cp = api('report.costPerRoom', { _key: admKey, year: 'all' }).data;
+  const row = cp.rooms.filter(x => x.room === '999')[0];
+  check('ค่าใช้จ่ายของห้องนอกทะเบียนไม่หายจากรายงาน', row ? row.total : 'ไม่มีแถวห้อง 999', 1500);
+
+  api('repair.delete', { _key: admKey, id: r.data.id });
+  api('ac.delete', { _key: admKey, id: a.data.id });
+  check('ลบข้อมูลแล้วห้องนั้นหายไปด้วย', repairMatrix_('all').rooms.some(x => x.room === '999'), false);
+  check('ห้องในทะเบียนยังอยู่ครบ 24 ห้อง', repairMatrix_('all').rooms.length, 24);
+}
+
+console.log('\n── 24. วันที่ที่ไม่มีอยู่จริง ──');
+{
+  // new Date(2026,1,31) ไม่ error แต่เลื่อนไปเป็น 3 มี.ค. เงียบ ๆ
+  // ในสมุดบัญชีคือยอดไปโผล่ผิดเดือนโดยไม่มีใครรู้
+  check('31 ก.พ. แบบ ISO ถูกปฏิเสธ', toIsoDate_('2026-02-31'), '');
+  check('31/02 แบบไทยถูกปฏิเสธ', toIsoDate_('31/02/2569'), '');
+  check('29 ก.พ. ปีที่ไม่ใช่อธิกสุรทิน ถูกปฏิเสธ', toIsoDate_('29/02/2569'), '');
+  check('29 ก.พ. ปีอธิกสุรทิน ผ่าน', toIsoDate_('29/02/2567'), '2024-02-29');
+  check('31 ธ.ค. ผ่าน', toIsoDate_('2026-12-31'), '2026-12-31');
+  check('วันสุดท้ายของเดือน 30 วัน ผ่าน', toIsoDate_('30/04/2569'), '2026-04-30');
+  check('31 เม.ย. ถูกปฏิเสธ', toIsoDate_('31/04/2569'), '');
+}
+
 console.log('\n════════════════════════════');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

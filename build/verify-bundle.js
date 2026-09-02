@@ -87,6 +87,8 @@ console.log('\n── build/AllInOne.gs ──');
     put('report.costPerRoom', { year });
   });
   put('room.list', {}); put('report.upcoming', { days: 90 });
+  // หน้ารายละเอียดรายห้อง — เดิมไม่มี fixture ให้ หน้านี้จึงไม่เคยถูกทดสอบเลย
+  ['111', '212', '514'].forEach(room => { put('room.profile', { room }); put('asset.list', { room }); });
   put('backup.sheets', {}); put('share.links', {}); put('backup.history', {});
   // ใส่ค่าลับจำลอง เพื่อพิสูจน์ว่ามันไม่หลุดไปโผล่ในหน้าเว็บ
   const SECRET_PROBE = 'DOORCODE-999888-PROBE';
@@ -323,6 +325,54 @@ console.log('\n── build/AllInOne.gs ──');
   }
 
   /* ---------- เช็คลิสต์งานซ่อม ---------- */
+  console.log('\n── หน้ารายละเอียดห้อง + ทะเบียนทรัพย์สิน ──');
+  await pg.evaluate(() => go('rooms'));
+  await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 8000 });
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => openRoom('111'));
+  await pg.waitForTimeout(500);
+
+  check('เปิดหน้ารายละเอียดห้องได้',
+    /ห้อง 111/.test(await pg.evaluate(() => (document.querySelector('.modal-h h3') || {}).textContent || '')));
+  check('มีตารางทรัพย์สินในห้อง',
+    (await pg.evaluate(() => document.getElementById('modalRoot').innerText)).includes('ทรัพย์สินในห้อง'));
+  check('มีปุ่มเพิ่มทรัพย์สิน',
+    await pg.evaluate(() => !!document.querySelector('[onclick*="formAsset({room"]')));
+  // ปุ่มดินสอต้องส่ง object ของทรัพย์สินชิ้นนั้นเข้าไป ไม่ใช่ปุ่ม "+ เพิ่ม" ที่ส่งแค่ห้อง
+  const pencil = () => document.querySelectorAll('[onclick]').length &&
+    [].slice.call(document.querySelectorAll('[onclick]'))
+      .filter(function(e){ var o = e.getAttribute('onclick') || '';
+        return o.indexOf('formAsset({') >= 0 && o.indexOf('id') >= 0; })[0];
+  check('ทรัพย์สินแต่ละชิ้นแก้ไขได้', await pg.evaluate(`(${pencil})()`) !== undefined);
+
+  await pg.evaluate(`(${pencil})().click()`);
+  await pg.waitForTimeout(300);
+  const asset = await pg.evaluate(() => ({
+    id: (FORM.rec || {}).id || '',
+    name: (document.getElementById('f_name') || {}).value || '',
+    room: (document.getElementById('f_room') || {}).value || '',
+    del: !!document.getElementById('fDel')
+  }));
+  check('แก้ทรัพย์สิน: จำรหัสเดิมไว้ (ไม่สร้างใหม่)', !!asset.id, JSON.stringify(asset));
+  check('แก้ทรัพย์สิน: ข้อมูลเดิมถูกเติมลงฟอร์ม', !!asset.name, asset.name);
+  check('แก้ทรัพย์สิน: ห้องถูกเลือกไว้ให้', asset.room === '111', asset.room);
+  check('แก้ทรัพย์สิน: มีปุ่มลบให้', asset.del);
+  await pg.evaluate(() => closeModal());
+
+  await pg.evaluate(() => formAsset({ room: '111' }));
+  await pg.waitForTimeout(250);
+  const freshAsset = await pg.evaluate(() => ({
+    id: (FORM.rec || {}).id || '',
+    room: (document.getElementById('f_room') || {}).value || '',
+    status: (document.getElementById('f_status') || {}).value || '',
+    del: !!document.getElementById('fDel')
+  }));
+  check('เพิ่มทรัพย์สินใหม่: ไม่มีรหัสเดิมติดมา', !freshAsset.id, freshAsset.id);
+  check('เพิ่มทรัพย์สินใหม่: ห้องกับสถานะตั้งให้แล้ว',
+    freshAsset.room === '111' && freshAsset.status === 'ใช้งานปกติ', JSON.stringify(freshAsset));
+  check('เพิ่มทรัพย์สินใหม่: ไม่มีปุ่มลบ', !freshAsset.del);
+  await pg.evaluate(() => closeModal());
+
   console.log('\n── เช็คลิสต์งานซ่อม ──');
   {
     await pg.evaluate(() => go('repairs'));

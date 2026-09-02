@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-02 09:50 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-02 10:32 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.0.0',
+  VERSION: '1.1.0',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -552,6 +552,19 @@ function toNumber_(v) {
   return isNaN(n) ? null : n;
 }
 
+/**
+ * สร้าง Date จากปี/เดือน/วัน แล้วตรวจว่าวันนั้นมีอยู่จริง
+ *
+ * new Date(2026, 1, 31) ไม่ error แต่เลื่อนไปเป็น 3 มี.ค. เงียบ ๆ
+ * พิมพ์ผิดเป็น 31/02 จึงกลายเป็นรายการของเดือนมีนาคมโดยไม่มีใครรู้
+ * ซึ่งในสมุดบัญชีคือยอดไปโผล่ผิดเดือน — ไม่มีวันนั้นก็ต้องบอกว่าไม่มี
+ */
+function mkDate_(y, mo, d) {
+  var out = new Date(y, mo - 1, d);
+  if (out.getFullYear() !== y || out.getMonth() !== mo - 1 || out.getDate() !== d) return null;
+  return out;
+}
+
 /** รับได้ทั้ง Date, 'YYYY-MM-DD', 'DD/MM/YY', 'DD/MM/YYYY' (ค.ศ. หรือ พ.ศ.) */
 function toDate_(v) {
   if (!v && v !== 0) return null;
@@ -562,7 +575,7 @@ function toDate_(v) {
   if (!s) return null;
 
   var m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (m) return mkDate_(Number(m[1]), Number(m[2]), Number(m[3]));
 
   m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/);
   if (m) {
@@ -574,7 +587,7 @@ function toDate_(v) {
     var d = a, mo = b;
     if (b > 12 && a <= 12) { d = b; mo = a; }
     if (mo > 12 || d > 31) return null;
-    return new Date(y, mo - 1, d);
+    return mkDate_(y, mo, d);
   }
   var parsed = new Date(s);
   return isNaN(parsed.getTime()) ? null : parsed;
@@ -639,13 +652,36 @@ function round2_(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+/**
+ * รายชื่อห้องที่ต้องแสดงผล = ทะเบียนห้อง + ห้องที่โผล่ในข้อมูลแต่ไม่อยู่ในทะเบียน
+ *
+ * ถ้าใช้ ROOMS ตรง ๆ ห้องที่ยังไม่ได้ลงทะเบียน (เพิ่มห้องใหม่ ปรับเลขห้อง
+ * หรือพิมพ์เลขห้องผิด) จะหายไปจากภาพรวมทั้งที่ยังถูกนับรวมในยอดรวม
+ * ตัวเลขจึงไม่ลงกันและงานนั้นก็กดเข้าไปดูไม่ได้เลย
+ *
+ * @param {...Array} lists รายการข้อมูลที่มีคอลัมน์ room
+ */
+function roomsInPlay_() {
+  var seen = {}, out = [];
+  ROOMS.forEach(function (r) { seen[String(r)] = true; out.push(String(r)); });
+  for (var i = 0; i < arguments.length; i++) {
+    (arguments[i] || []).forEach(function (r) {
+      var room = String((r && r.room) != null ? r.room : r).trim();
+      if (!room || seen[room]) return;
+      seen[room] = true;
+      out.push(room);
+    });
+  }
+  return out;
+}
+
 /* ---------- Log ---------- */
 
 function logActivity_(action, target, detail) {
   try {
     insertRow_(SHEETS.LOG, {
       at: new Date(),
-      user: currentUserEmail_(),
+      user: currentUserEmail_() || 'ไม่ทราบผู้ใช้',
       action: action,
       target: target,
       detail: typeof detail === 'string' ? detail : JSON.stringify(detail || {})
@@ -655,9 +691,16 @@ function logActivity_(action, target, detail) {
   }
 }
 
+/**
+ * อีเมลของคนที่กำลังใช้งาน — คืนค่าว่างถ้าไม่รู้
+ *
+ * ต้องเป็นค่าว่าง ไม่ใช่คำแทนอย่าง 'unknown' เพราะ resolveActor_ เอาค่านี้
+ * ไปเทียบกับอีเมลเจ้าของชีต ถ้าคืนคำแทนที่ทั้งสองฝั่งบังเอิญตรงกัน
+ * คนที่ไม่ได้ล็อกอินจะกลายเป็นผู้ดูแลทันที — ไม่รู้ต้องแปลว่าไม่ผ่าน
+ */
 function currentUserEmail_() {
-  try { return Session.getActiveUser().getEmail() || 'unknown'; }
-  catch (e) { return 'unknown'; }
+  try { return Session.getActiveUser().getEmail() || ''; }
+  catch (e) { return ''; }
 }
 
 /** 'YYYY-MM-DD' -> '26 เม.ย. 2569' (ใช้ในข้อความแจ้งเตือน/อีเมล) */
@@ -1511,11 +1554,6 @@ function whoAmI(payload) {
     via: actor.via,
     label: actor.role === ROLE.NONE ? 'ยังไม่ได้เข้าสู่ระบบ' : actor.role
   };
-}
-
-function currentUserEmail_() {
-  try { return Session.getActiveUser().getEmail() || ''; }
-  catch (e) { return ''; }
 }
 
 function ownerEmail_() {
@@ -4213,14 +4251,11 @@ function acMatrix_(year) {
   var today = todayIso_();
 
   var byRoom = {};
-  ROOMS.forEach(function (r) { byRoom[r] = []; });
-  all.forEach(function (r) {
-    var room = String(r.room);
-    if (!byRoom[room]) byRoom[room] = [];
-    byRoom[room].push(r);
-  });
+  var roomList = roomsInPlay_(all);
+  roomList.forEach(function (r) { byRoom[r] = []; });
+  all.forEach(function (r) { byRoom[String(r.room)].push(r); });
 
-  var rows = ROOMS.map(function (room) {
+  var rows = roomList.map(function (room) {
     var list = byRoom[room].slice().sort(function (a, b) {
       return String(b.serviceDate || b.bookDate || '').localeCompare(String(a.serviceDate || a.bookDate || ''));
     });
@@ -4348,14 +4383,11 @@ function repairMatrix_(year) {
     : all;
 
   var byRoom = {};
-  ROOMS.forEach(function (r) { byRoom[r] = []; });
-  scope.forEach(function (r) {
-    var room = String(r.room);
-    if (!byRoom[room]) byRoom[room] = [];
-    byRoom[room].push(r);
-  });
+  var roomList = roomsInPlay_(scope);
+  roomList.forEach(function (r) { byRoom[r] = []; });
+  scope.forEach(function (r) { byRoom[String(r.room)].push(r); });
 
-  var rooms = ROOMS.map(function (room) {
+  var rooms = roomList.map(function (room) {
     var list = byRoom[room].sort(function (a, b) {
       return String(b.repairDate || b.bookDate || '').localeCompare(String(a.repairDate || a.bookDate || ''));
     });
@@ -4602,8 +4634,10 @@ function roomProfile_(room) {
                detail: r.note || '', status: r.status, cost: r.cost, photos: r.photoRefs, id: r.id };
     }))
     .concat(repairs.map(function (r) {
+      // ส่งเช็คลิสต์ไปเป็นรายการ ไม่ใช่ข้อความดิบ ไม่งั้นในไทม์ไลน์จะเห็นเป็น "[x] ยาแนว [x] เก็บสี"
       return { date: r.repairDate || r.bookDate || r.reportDate, type: 'ซ่อมแซม', title: r.category || 'งานซ่อม',
-               detail: r.items || '', status: r.status, cost: r.cost,
+               detail: '', todo: r.todo || [], progress: r.progress || null,
+               status: r.status, cost: r.cost,
                photos: (r.afterRefs || []).concat(r.beforeRefs || []), id: r.id };
     }))
     .concat(purchases.map(function (p) {
@@ -5041,7 +5075,10 @@ function costPerRoom_(year) {
   var purchases = listPurchases_(year, {});
 
   var map = {};
-  ROOMS.forEach(function (r) {
+  // รวมห้องที่โผล่ในข้อมูลแต่ยังไม่อยู่ในทะเบียนด้วย ไม่งั้นค่าใช้จ่ายของห้องนั้นหายไปเฉย ๆ
+  // ส่วนรายการซื้อของที่ไม่ได้ระบุห้อง (ของส่วนกลาง) ไม่นับเข้าห้องไหน เหมือนเดิม
+  var roomList = roomsInPlay_(repairs, ac, purchases.filter(function (p) { return p.room; }));
+  roomList.forEach(function (r) {
     map[r] = { room: r, floor: floorOf_(r), repair: 0, ac: 0, purchase: 0, total: 0, jobs: 0 };
   });
   repairs.forEach(function (r) {
@@ -5058,7 +5095,7 @@ function costPerRoom_(year) {
     map[p.room].purchase += toNumber_(p.price) || 0;
   });
 
-  var rows = ROOMS.map(function (r) {
+  var rows = roomList.map(function (r) {
     var x = map[r];
     x.total = round2_(x.repair + x.ac + x.purchase);
     x.repair = round2_(x.repair); x.ac = round2_(x.ac); x.purchase = round2_(x.purchase);
@@ -5135,7 +5172,7 @@ var API_ROUTES = {
         warrantyAlertDays: Number(getSetting_('warranty_alert_days', 30)),
         overdueAlertDays: Number(getSetting_('overdue_alert_days', 7)),
         buildingName: getSetting_('building_name', APP.NAME),
-        refreshSeconds: Number(getSetting_('refresh_seconds', 25)),
+        refreshSeconds: Number(getSetting_('refresh_seconds', 300)),
         theme: getSetting_('theme', 'ตามเครื่อง'),
         startPage: getSetting_('start_page', 'แดชบอร์ด'),
         currency: getSetting_('currency', 'บาท'),

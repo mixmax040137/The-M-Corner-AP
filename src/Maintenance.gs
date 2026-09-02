@@ -62,14 +62,11 @@ function acMatrix_(year) {
   var today = todayIso_();
 
   var byRoom = {};
-  ROOMS.forEach(function (r) { byRoom[r] = []; });
-  all.forEach(function (r) {
-    var room = String(r.room);
-    if (!byRoom[room]) byRoom[room] = [];
-    byRoom[room].push(r);
-  });
+  var roomList = roomsInPlay_(all);
+  roomList.forEach(function (r) { byRoom[r] = []; });
+  all.forEach(function (r) { byRoom[String(r.room)].push(r); });
 
-  var rows = ROOMS.map(function (room) {
+  var rows = roomList.map(function (room) {
     var list = byRoom[room].slice().sort(function (a, b) {
       return String(b.serviceDate || b.bookDate || '').localeCompare(String(a.serviceDate || a.bookDate || ''));
     });
@@ -197,14 +194,11 @@ function repairMatrix_(year) {
     : all;
 
   var byRoom = {};
-  ROOMS.forEach(function (r) { byRoom[r] = []; });
-  scope.forEach(function (r) {
-    var room = String(r.room);
-    if (!byRoom[room]) byRoom[room] = [];
-    byRoom[room].push(r);
-  });
+  var roomList = roomsInPlay_(scope);
+  roomList.forEach(function (r) { byRoom[r] = []; });
+  scope.forEach(function (r) { byRoom[String(r.room)].push(r); });
 
-  var rooms = ROOMS.map(function (room) {
+  var rooms = roomList.map(function (room) {
     var list = byRoom[room].sort(function (a, b) {
       return String(b.repairDate || b.bookDate || '').localeCompare(String(a.repairDate || a.bookDate || ''));
     });
@@ -451,8 +445,10 @@ function roomProfile_(room) {
                detail: r.note || '', status: r.status, cost: r.cost, photos: r.photoRefs, id: r.id };
     }))
     .concat(repairs.map(function (r) {
+      // ส่งเช็คลิสต์ไปเป็นรายการ ไม่ใช่ข้อความดิบ ไม่งั้นในไทม์ไลน์จะเห็นเป็น "[x] ยาแนว [x] เก็บสี"
       return { date: r.repairDate || r.bookDate || r.reportDate, type: 'ซ่อมแซม', title: r.category || 'งานซ่อม',
-               detail: r.items || '', status: r.status, cost: r.cost,
+               detail: '', todo: r.todo || [], progress: r.progress || null,
+               status: r.status, cost: r.cost,
                photos: (r.afterRefs || []).concat(r.beforeRefs || []), id: r.id };
     }))
     .concat(purchases.map(function (p) {

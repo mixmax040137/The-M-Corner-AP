@@ -68,6 +68,47 @@ if (/include\(/.test(html)) throw new Error('ยังมี include() ตกค
   }
 }
 
+/* ---------- กันชื่อฟังก์ชันซ้ำข้ามไฟล์ .gs ----------
+   ไฟล์ .gs ทุกไฟล์อยู่ใน global scope เดียวกันเหมือนกัน และลำดับโหลด
+   ในโปรเจกต์ Apps Script จริงไม่เหมือนลำดับที่เรารวมไฟล์ที่นี่
+   ตัวไหนทับตัวไหนจึงเดาไม่ได้ ต้องไม่ให้มีชื่อซ้ำตั้งแต่แรก
+   เคยเกิดขึ้นจริง: currentUserEmail_() มีสองตัวที่คืนค่าต่างกัน
+   ตัวหนึ่งคืน '' อีกตัวคืน 'unknown' ซึ่งตัวหลังถูกเอาไปเทียบกับ
+   อีเมลเจ้าของชีตในการตรวจสิทธิ์
+--------------------------------------------------- */
+{
+  const seen = {}, dup = [];
+  GS_ORDER.forEach(name => {
+    const re = /^function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
+    let m;
+    while ((m = re.exec(read(path.join(SRC, name)))) !== null) {
+      if (seen[m[1]]) dup.push(m[1] + ' — ประกาศทั้งใน ' + seen[m[1]] + ' และ ' + name);
+      else seen[m[1]] = name;
+    }
+  });
+  if (dup.length) {
+    throw new Error('ชื่อฟังก์ชันซ้ำข้ามไฟล์ .gs (ตัวหลังจะทับตัวแรกเงียบ ๆ):\n  ' + dup.join('\n  '));
+  }
+}
+
+/* ---------- กันชื่อตัวเลือกที่ไม่มีอยู่จริง ----------
+   opt('ชื่อ') อ่านจาก app.bootstrap ถ้าพิมพ์ชื่อผิดจะได้ [] เงียบ ๆ
+   ช่อง select ก็จะว่างเปล่าโดยไม่มี error ให้เห็น
+   เคยเกิดขึ้นจริง: opt('rooms') — รายชื่อห้องอยู่นอก schema จึงได้ค่าว่าง
+---------------------------------------------------- */
+{
+  const api = read(path.join(SRC, 'Api.gs'));
+  const block = api.slice(api.indexOf('schema: {'), api.indexOf('settings: {'));
+  const keys = new Set([...block.matchAll(/^\s*(\w+):/gm)].map(m => m[1]));
+  const all = ['App', 'Auth', 'Views', 'Settings', 'Forms']
+    .map(n => read(path.join(SRC, 'ui', n + '.html'))).join('\n');
+  const bad = [...new Set([...all.matchAll(/opt\('([^']+)'\)/g)].map(m => m[1]))]
+    .filter(k => !keys.has(k));
+  if (bad.length) {
+    throw new Error('opt() เรียกชื่อตัวเลือกที่ app.bootstrap ไม่ได้ส่งมา: ' + bad.join(', '));
+  }
+}
+
 /* ---------- กันฟังก์ชันที่ถูกเรียกแต่ไม่มีตัวจริง ----------
    จับกรณีลบฟังก์ชันทิ้งแล้วลืมแก้ที่เรียก — ตรวจเฉพาะชื่อที่ขึ้นต้นด้วย form/del
    ซึ่งเป็นปุ่มที่ผู้ใช้กดจริงในตาราง

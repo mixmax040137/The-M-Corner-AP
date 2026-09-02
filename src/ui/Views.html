@@ -663,16 +663,29 @@ function openRoom(room){
         '<button class="btn sm" onclick="closeModal();formRepair({room:\'' + room + '\'})">+ แจ้งซ่อม</button>' +
         '<button class="btn sm" onclick="closeModal();formAc({room:\'' + room + '\'})">+ ล้างแอร์</button>' +
       '</div>' +
-      (p.assets.length ? '<div class="card mb12"><div class="card-h"><h3>ทรัพย์สินในห้อง</h3></div><div class="card-b">' +
-        '<div class="tw"><table class="t" style="min-width:auto"><thead><tr><th>ทรัพย์สิน</th><th>ยี่ห้อ/รุ่น</th><th>ติดตั้ง</th><th>สถานะ</th></tr></thead><tbody>' +
-        p.assets.map(function(a){
-          return '<tr><td>' + esc(a.name) + '</td><td class="fs12">' + esc(a.brand||'–') + '</td>' +
-                 '<td class="fs12">' + thDate(a.installDate) + '</td><td>' + statusBadge(a.status) + '</td></tr>';
-        }).join('') + '</tbody></table></div></div></div>' : '') +
+      '<div class="card mb12"><div class="card-h"><h3>ทรัพย์สินในห้อง</h3>' +
+        '<button class="btn sm" onclick=\'closeModal();formAsset({room:"' + esc(room) + '"})\'>+ เพิ่มทรัพย์สิน</button>' +
+      '</div><div class="card-b">' +
+        (p.assets.length
+          ? '<div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
+            '<th>ทรัพย์สิน</th><th>ยี่ห้อ/รุ่น</th><th>ติดตั้ง</th><th>ประกันถึง</th><th>สถานะ</th><th></th></tr></thead><tbody>' +
+            p.assets.map(function(a){
+              return '<tr><td><b>' + esc(a.name) + '</b>' +
+                       (a.serial ? '<br><span class="fs12 muted">S/N ' + esc(a.serial) + '</span>' : '') + '</td>' +
+                     '<td class="fs12">' + esc(a.brand||'–') + '</td>' +
+                     '<td class="fs12">' + thDate(a.installDate) + '</td>' +
+                     '<td class="fs12">' + (a.warrantyEnd ? thDate(a.warrantyEnd) : '–') + '</td>' +
+                     '<td>' + statusBadge(a.status) + '</td>' +
+                     '<td class="t-actions"><button class="btn icon sm" title="แก้ไข" ' +
+                       'onclick=\'closeModal();formAsset(' + attr(a) + ')\'>✏️</button></td></tr>';
+            }).join('') + '</tbody></table></div>'
+          : '<div class="empty">ยังไม่ได้บันทึกทรัพย์สินของห้องนี้</div>') +
+      '</div></div>' +
       '<h3 class="fs13 mb8">ประวัติทั้งหมด (' + p.timeline.length + ')</h3>' +
       (p.timeline.length ? '<div class="tl">' + p.timeline.map(function(e){
         return '<div class="tl-i"><div class="d">' + thDate(e.date) + ' · ' + esc(e.type) + ' ' + statusBadge(e.status) + '</div>' +
           '<div class="t">' + esc(e.title) + '</div>' +
+          (e.todo && e.todo.length ? todoListHtml(e) : '') +
           (e.detail ? '<div class="fs12 muted">' + esc(e.detail) + '</div>' : '') +
           (e.cost ? '<div class="fs12 muted">' + baht(e.cost) + '</div>' : '') +
           (e.photos && e.photos.length ? '<div class="mt8">' + thumbsHtml(e.photos) + '</div>' : '') +

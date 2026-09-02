@@ -210,6 +210,19 @@ function toNumber_(v) {
   return isNaN(n) ? null : n;
 }
 
+/**
+ * สร้าง Date จากปี/เดือน/วัน แล้วตรวจว่าวันนั้นมีอยู่จริง
+ *
+ * new Date(2026, 1, 31) ไม่ error แต่เลื่อนไปเป็น 3 มี.ค. เงียบ ๆ
+ * พิมพ์ผิดเป็น 31/02 จึงกลายเป็นรายการของเดือนมีนาคมโดยไม่มีใครรู้
+ * ซึ่งในสมุดบัญชีคือยอดไปโผล่ผิดเดือน — ไม่มีวันนั้นก็ต้องบอกว่าไม่มี
+ */
+function mkDate_(y, mo, d) {
+  var out = new Date(y, mo - 1, d);
+  if (out.getFullYear() !== y || out.getMonth() !== mo - 1 || out.getDate() !== d) return null;
+  return out;
+}
+
 /** รับได้ทั้ง Date, 'YYYY-MM-DD', 'DD/MM/YY', 'DD/MM/YYYY' (ค.ศ. หรือ พ.ศ.) */
 function toDate_(v) {
   if (!v && v !== 0) return null;
@@ -220,7 +233,7 @@ function toDate_(v) {
   if (!s) return null;
 
   var m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (m) return mkDate_(Number(m[1]), Number(m[2]), Number(m[3]));
 
   m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/);
   if (m) {
@@ -232,7 +245,7 @@ function toDate_(v) {
     var d = a, mo = b;
     if (b > 12 && a <= 12) { d = b; mo = a; }
     if (mo > 12 || d > 31) return null;
-    return new Date(y, mo - 1, d);
+    return mkDate_(y, mo, d);
   }
   var parsed = new Date(s);
   return isNaN(parsed.getTime()) ? null : parsed;
@@ -297,13 +310,36 @@ function round2_(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+/**
+ * รายชื่อห้องที่ต้องแสดงผล = ทะเบียนห้อง + ห้องที่โผล่ในข้อมูลแต่ไม่อยู่ในทะเบียน
+ *
+ * ถ้าใช้ ROOMS ตรง ๆ ห้องที่ยังไม่ได้ลงทะเบียน (เพิ่มห้องใหม่ ปรับเลขห้อง
+ * หรือพิมพ์เลขห้องผิด) จะหายไปจากภาพรวมทั้งที่ยังถูกนับรวมในยอดรวม
+ * ตัวเลขจึงไม่ลงกันและงานนั้นก็กดเข้าไปดูไม่ได้เลย
+ *
+ * @param {...Array} lists รายการข้อมูลที่มีคอลัมน์ room
+ */
+function roomsInPlay_() {
+  var seen = {}, out = [];
+  ROOMS.forEach(function (r) { seen[String(r)] = true; out.push(String(r)); });
+  for (var i = 0; i < arguments.length; i++) {
+    (arguments[i] || []).forEach(function (r) {
+      var room = String((r && r.room) != null ? r.room : r).trim();
+      if (!room || seen[room]) return;
+      seen[room] = true;
+      out.push(room);
+    });
+  }
+  return out;
+}
+
 /* ---------- Log ---------- */
 
 function logActivity_(action, target, detail) {
   try {
     insertRow_(SHEETS.LOG, {
       at: new Date(),
-      user: currentUserEmail_(),
+      user: currentUserEmail_() || 'ไม่ทราบผู้ใช้',
       action: action,
       target: target,
       detail: typeof detail === 'string' ? detail : JSON.stringify(detail || {})
@@ -313,9 +349,16 @@ function logActivity_(action, target, detail) {
   }
 }
 
+/**
+ * อีเมลของคนที่กำลังใช้งาน — คืนค่าว่างถ้าไม่รู้
+ *
+ * ต้องเป็นค่าว่าง ไม่ใช่คำแทนอย่าง 'unknown' เพราะ resolveActor_ เอาค่านี้
+ * ไปเทียบกับอีเมลเจ้าของชีต ถ้าคืนคำแทนที่ทั้งสองฝั่งบังเอิญตรงกัน
+ * คนที่ไม่ได้ล็อกอินจะกลายเป็นผู้ดูแลทันที — ไม่รู้ต้องแปลว่าไม่ผ่าน
+ */
 function currentUserEmail_() {
-  try { return Session.getActiveUser().getEmail() || 'unknown'; }
-  catch (e) { return 'unknown'; }
+  try { return Session.getActiveUser().getEmail() || ''; }
+  catch (e) { return ''; }
 }
 
 /** 'YYYY-MM-DD' -> '26 เม.ย. 2569' (ใช้ในข้อความแจ้งเตือน/อีเมล) */

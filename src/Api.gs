@@ -55,7 +55,7 @@ var API_ROUTES = {
         warrantyAlertDays: Number(getSetting_('warranty_alert_days', 30)),
         overdueAlertDays: Number(getSetting_('overdue_alert_days', 7)),
         buildingName: getSetting_('building_name', APP.NAME),
-        refreshSeconds: Number(getSetting_('refresh_seconds', 25)),
+        refreshSeconds: Number(getSetting_('refresh_seconds', 300)),
         theme: getSetting_('theme', 'ตามเครื่อง'),
         startPage: getSetting_('start_page', 'แดชบอร์ด'),
         currency: getSetting_('currency', 'บาท'),

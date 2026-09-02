@@ -26,7 +26,7 @@ check('สร้างครบ 13 ชีต', Object.keys(SHEETS).length === 13
 check('รายการซื้อ 94 รายการ', readRows_(SHEETS.PURCHASES).length === 94);
 check('ยอดชำระหนี้ 5,049,654', Math.round(debtSummary_('หนี้หลัก', 'all').paid) === 5049654);
 check('รายรับ-รายจ่าย 32 รายการ', readRows_(SHEETS.FINANCE).length === 32);
-check('มีคำสั่ง API ครบ 72 คำสั่ง', Object.keys(API_ROUTES).length === 72);
+check('มีคำสั่ง API ครบ 73 คำสั่ง', Object.keys(API_ROUTES).length === 73);
 check('มีบัญชีผู้ดูแลคนแรกให้ล็อกอิน', !!findUser_('admin'), true);
 const adminKey = getSetting_('admin_token', ''), viewKey = getSetting_('view_token', '');
 check('มีกุญแจผู้ดูแลและกุญแจแชร์', !!(adminKey && viewKey && adminKey !== viewKey), true);
@@ -93,6 +93,7 @@ console.log('\n── build/AllInOne.gs ──');
   setSetting_('door_code', SECRET_PROBE);
   setSetting_('admin_code', SECRET_PROBE + '-ADMIN');
   put('settings.list', {}); put('auth.devices', {}); put('user.list', {});
+  put('app.alerts', {});
 
   // auth.me ต้องตอบว่าล็อกอินแล้ว ไม่งั้นหน้าเว็บจะค้างอยู่ที่หน้าล็อกอิน
   // คำตอบปลอมของคำสั่งที่ "บันทึกข้อมูล" ไว้ทดสอบว่าหน้าเว็บจดรุ่นข้อมูลใหม่หลังบันทึก
@@ -623,6 +624,110 @@ console.log('\n── build/AllInOne.gs ──');
 
     check('หน้าตัวบอกสถานะไม่มี JS error', errs6.length === 0, errs6.join(' | '));
     await p6.close();
+  }
+
+  /* ---------- ตัวเลขบนเมนู + กล่องแจ้งเตือน ---------- */
+  console.log('\n── ศูนย์แจ้งเตือน ──');
+  {
+    const p7 = await b.newPage({ viewport: { width: 1300, height: 950 } });
+    const errs7 = [];
+    p7.on('pageerror', e => errs7.push(e.message));
+    await p7.goto('file://' + file);
+    await p7.waitForTimeout(1200);
+
+    const real = api('app.alerts', { _key: adminKey }).data;
+
+    check('ดึงข้อมูลแจ้งเตือนมาแล้วตอนเปิดระบบ',
+      await p7.evaluate(() => (ALERTS.items || []).length) === real.items.length);
+
+    // ตัวเลขบนเมนูต้องขึ้นครบทุกโมดูลที่มีงานค้าง ไม่ใช่แค่ 2 โมดูลเดิม
+    const badges = await p7.evaluate(() => {
+      var o = {};
+      document.querySelectorAll('.nav-item .badge').forEach(function(el){
+        if (el.style.display !== 'none') o[el.id.replace('badge-','')] = el.textContent;
+      });
+      return o;
+    });
+    ['repairs','ac','building'].forEach(function(m){
+      if (real.counts[m] > 0) {
+        check('เมนู "' + m + '" มีตัวเลขงานค้าง ' + real.counts[m],
+          badges[m] === String(real.counts[m]), JSON.stringify(badges[m]));
+      }
+    });
+    check('โมดูลที่ไม่มีงานค้าง ไม่ขึ้นตัวเลข',
+      await p7.evaluate(() => {
+        setBadge('rooms', 0);
+        return document.getElementById('badge-rooms').style.display === 'none';
+      }));
+    check('ตัวเลขเกิน 99 ย่อเป็น 99+',
+      await p7.evaluate(() => { setBadge('rooms', 150); return document.getElementById('badge-rooms').textContent; }) === '99+');
+    await p7.evaluate(() => paintBadges());
+
+    // ตัวเลขต้องอัปเดตได้แม้อยู่หน้าอื่น (ของเดิมอัปเดตแค่ตอนอยู่หน้าแดชบอร์ด)
+    await p7.evaluate(() => go('purchases'));
+    await p7.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+    const liveOnOther = await p7.evaluate(async () => {
+      document.getElementById('badge-ac').textContent = '999';
+      await refreshAlerts();
+      return document.getElementById('badge-ac').textContent;
+    });
+    check('อยู่หน้าอื่นตัวเลขก็ยังอัปเดตได้',
+      liveOnOther === String(real.counts.ac || ''), liveOnOther);
+
+    // กระดิ่งและกล่องแจ้งเตือน
+    check('มีกระดิ่งบนแถบหัว', await p7.$('#bellBtn') !== null);
+    if (real.total > 0) {
+      check('กระดิ่งมีตัวเลขบอกจำนวนเรื่อง',
+        (await p7.$eval('.bell-dot', e => e.textContent)) === String(real.total > 99 ? '99+' : real.total));
+    }
+
+    await p7.click('#bellBtn');
+    await p7.waitForTimeout(250);
+    check('กดกระดิ่งแล้วกล่องเปิด', await p7.$('#notifPanel') !== null);
+    const panelText = await p7.$eval('#notifPanel', e => e.innerText);
+    check('กล่องมีหัวข้อ "การแจ้งเตือน"', panelText.includes('การแจ้งเตือน'));
+    if (real.total > 0) {
+      check('กล่องแสดงรายการจริง', (await p7.$$eval('.notif-item', e => e.length)) > 0);
+      check('รายการจัดกลุ่มตามประเภทงาน', (await p7.$$eval('.notif-sec', e => e.length)) > 0);
+      check('รายการมีสีบอกความสำคัญ',
+        await p7.$$eval('.notif-item', els => els.every(e => /l-(danger|warn|info)/.test(e.className))));
+    }
+
+    // กดที่รายการต้องพาไปหน้าที่เกี่ยวข้องและปิดกล่อง
+    if (real.total > 0) {
+      const jumped = await p7.evaluate(async () => {
+        var it = document.querySelector('.notif-item');
+        var mod = it.getAttribute('onclick').match(/'([^']+)'/)[1];
+        it.click();
+        await new Promise(r => setTimeout(r, 400));
+        return { page: S.page, closed: !document.getElementById('notifPanel'), want: mod };
+      });
+      check('กดรายการแล้วพาไปหน้าที่เกี่ยวข้อง', jumped.page === jumped.want, jumped.page + ' ควรเป็น ' + jumped.want);
+      check('กดแล้วกล่องปิดเอง', jumped.closed === true);
+    }
+
+    // กดข้างนอกต้องปิด
+    await p7.click('#bellBtn');
+    await p7.waitForTimeout(200);
+    await p7.click('#pageTitle');
+    await p7.waitForTimeout(200);
+    check('กดข้างนอกกล่องแล้วปิด', await p7.$('#notifPanel') === null);
+
+    // ไม่มีงานค้างต้องขึ้นข้อความให้สบายใจ ไม่ใช่กล่องเปล่า
+    // (เปิดกล่องก่อน แล้วค่อยล้างข้อมูล เพราะการเปิดจะดึงของล่าสุดมาทับ)
+    await p7.evaluate(() => toggleNotif());
+    await p7.waitForTimeout(250);
+    await p7.evaluate(() => {
+      ALERTS = { counts: {}, items: [], total: 0, urgent: 0, at: '' };
+      paintBell(); renderNotifPanel();
+    });
+    await p7.waitForTimeout(150);
+    check('ไม่มีงานค้าง → ขึ้นว่า "ไม่มีงานค้าง"',
+      (await p7.$eval('#notifPanel', e => e.innerText)).includes('ไม่มีงานค้าง'));
+    check('ไม่มีงานค้าง → กระดิ่งไม่มีตัวเลข', await p7.$('.bell-dot') === null);
+
+    check('หน้าศูนย์แจ้งเตือนไม่มี JS error', errs7.length === 0, errs7.join(' | '));
+    await p7.close();
   }
 
   console.log('\n════════════════════════════');

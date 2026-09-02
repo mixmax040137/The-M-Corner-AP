@@ -15,16 +15,8 @@ function dashboard_(year) {
   var bld = buildingSummary_(y);
   var fin = financeSummary_(y);
 
-  var openRepairs = listRoomRepairs_('all', 'all', 'all').filter(function (r) {
-    return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก';
-  });
-  var overdueDays = Number(getSetting_('overdue_alert_days', 7)) || 7;
-  var overdueRepairs = openRepairs.filter(function (r) {
-    var ref = r.bookDate || r.reportDate;
-    if (!ref) return false;
-    var d = daysBetween_(ref, today);
-    return d !== null && d > overdueDays;
-  });
+  var openRepairs = openRepairs_();
+  var overdueRepairs = overdueRepairs_(openRepairs, today);
 
   var rooms = readRows_(SHEETS.ROOMS);
   var occupied = rooms.filter(function (r) { return r.status === 'มีผู้เช่า'; }).length;
@@ -82,6 +74,66 @@ function dashboard_(year) {
     spendThisYear: spendThisYear,
     upcoming: upcomingSchedule_(60),
     alerts: buildAlerts_(overdueRepairs, ac, bld, today)
+  };
+}
+
+/** งานซ่อมที่ยังไม่ปิด (ทุกปี) */
+function openRepairs_() {
+  return listRoomRepairs_('all', 'all', 'all').filter(function (r) {
+    return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก';
+  });
+}
+
+/** งานซ่อมที่ค้างเกินกำหนดที่ตั้งไว้ */
+function overdueRepairs_(openList, today) {
+  var overdueDays = Number(getSetting_('overdue_alert_days', 7)) || 7;
+  return (openList || []).filter(function (r) {
+    var ref = r.bookDate || r.reportDate;
+    if (!ref) return false;
+    var d = daysBetween_(ref, today);
+    return d !== null && d > overdueDays;
+  });
+}
+
+/**
+ * ศูนย์แจ้งเตือน — ใช้กับตัวเลขบนเมนูและกล่องแจ้งเตือนบนแถบหัว
+ *
+ * ตั้งใจให้เบากว่า dashboard_() มาก เพราะหน้าเว็บเรียกบ่อย
+ * (ตอนเปิดระบบ · หลังกดบันทึกทุกครั้ง · ทุกรอบตรวจข้อมูล)
+ * จึงคิดเฉพาะสิ่งที่ต้องใช้จริง ไม่แตะยอดหนี้ ยอดซื้อ หรือกราฟรายเดือน
+ *
+ * @return {{counts:Object, total:number, items:Array}}
+ */
+function alertCenter_() {
+  var today = todayIso_();
+  var y = String(new Date().getFullYear());
+
+  var open = openRepairs_();
+  var overdue = overdueRepairs_(open, today);
+  var ac = acMatrix_(y);
+  var bld = buildingSummary_(y);
+
+  var items = buildAlerts_(overdue, ac, bld, today);
+
+  // ตัวเลขบนเมนู = "จำนวนงานที่ยังค้างอยู่" ของแต่ละโมดูล
+  // ไม่ใช่จำนวนการแจ้งเตือน เพราะผู้ใช้อ่านว่า "ยังเหลืองานกี่ชิ้น"
+  var counts = {
+    repairs: open.length,
+    ac: ac.roomsPending.length,
+    building: bld.openCount || 0,
+    purchases: expiringWarranties_().length
+  };
+
+  var byModule = {};
+  items.forEach(function (a) { byModule[a.module] = (byModule[a.module] || 0) + 1; });
+
+  return {
+    counts: counts,
+    alertsByModule: byModule,
+    total: items.length,
+    urgent: items.filter(function (a) { return a.level === 'danger'; }).length,
+    items: items.slice(0, 40),
+    at: nowStamp_()
   };
 }
 

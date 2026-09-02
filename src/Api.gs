@@ -73,6 +73,9 @@ var API_ROUTES = {
   'app.version': function () { return { version: dataVersion_() }; },
 
   'app.dashboard': function (p) { return dashboard_(p.year); },
+
+  /** เบา — หน้าเว็บเรียกบ่อยเพื่ออัปเดตตัวเลขบนเมนูและกล่องแจ้งเตือน */
+  'app.alerts': function () { return alertCenter_(); },
   'app.search': function (p) { return globalSearch_(p.q); },
 
   /* ---------- หนี้ (ใช้ร่วมกันทั้งหนี้หลักและหนี้รอง) ---------- */

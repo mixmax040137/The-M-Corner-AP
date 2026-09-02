@@ -83,9 +83,9 @@ ROUTES.dashboard = {
           '<button class="btn sm" onclick="go(\'building\')">ดูทั้งหมด →</button>') +
       '</div>';
   },
-  after: function(d){
-    setBadge('repairs', d.repairs.openJobs);
-    setBadge('ac', d.ac.roomsPending);
+  after: function(){
+    // ตัวเลขบนเมนูอัปเดตจากศูนย์แจ้งเตือน (refreshAlerts) ทุกหน้า ไม่ใช่เฉพาะหน้านี้
+    refreshAlerts();
   }
 };
 
@@ -109,13 +109,6 @@ function debtMini(x, page){
          '<div class="pmeta"><span>คงเหลือ <b>' + baht(x.remaining) + '</b></span>' +
          '<span>ยอดหนี้ทั้งหมด <b>' + baht(x.total) + '</b></span></div>' +
          '<div class="fs12 muted mt8">ชำระในปีที่เลือก: <b>' + baht(x.thisYear) + '</b></div>';
-}
-
-function setBadge(page, n){
-  var el = document.getElementById('badge-' + page);
-  if (!el) return;
-  if (n > 0) { el.textContent = n; el.style.display = ''; }
-  else el.style.display = 'none';
 }
 
 /* ============================================================

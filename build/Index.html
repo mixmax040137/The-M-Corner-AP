@@ -509,6 +509,71 @@ button.sync-pill:active{transform:translateY(1px)}
   .sync-pill{padding:3px 8px;font-size:13px}
 }
 
+/* ============ กระดิ่งแจ้งเตือน + กล่องรายการ ============ */
+.bell-wrap{position:relative;display:inline-flex}
+.btn.bell{position:relative;font-size:15px;line-height:1}
+.bell-dot{
+  position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;
+  background:var(--warn);color:#fff;border-radius:99px;
+  font-size:10.5px;font-weight:700;line-height:17px;text-align:center;
+  box-shadow:0 0 0 2px var(--surface);font-variant-numeric:tabular-nums;
+}
+.bell-dot.urgent{background:var(--danger)}
+
+.notif{
+  position:absolute;top:calc(100% + 8px);right:0;z-index:70;
+  width:min(380px,calc(100vw - 32px));
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh-lg);overflow:hidden;animation:pop .14s ease-out;
+}
+.notif-h{
+  display:flex;align-items:center;gap:8px;padding:11px 14px;
+  border-bottom:1px solid var(--line-2);font-size:14px;
+}
+.notif-h .sp{margin-left:auto;display:flex;align-items:center;gap:7px}
+.notif-list{max-height:min(60vh,440px);overflow-y:auto}
+.notif-sec{
+  padding:9px 14px 4px;font-size:11.5px;font-weight:600;color:var(--muted);
+  background:var(--surface-2);position:sticky;top:0;
+}
+.notif-item{
+  display:block;width:100%;text-align:left;background:0;border:0;cursor:pointer;
+  padding:9px 14px 9px 17px;border-left:3px solid transparent;font:inherit;color:inherit;
+  border-bottom:1px solid var(--line-2);
+}
+.notif-item:hover{background:var(--surface-2)}
+.notif-item .tt{font-size:13px;font-weight:500;color:var(--ink);line-height:1.45}
+.notif-item .dd{font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.5}
+.notif-item.l-danger{border-left-color:var(--danger)}
+.notif-item.l-warn{border-left-color:var(--warn)}
+.notif-item.l-info{border-left-color:var(--info)}
+.notif-more{
+  display:block;width:100%;text-align:left;padding:7px 14px 9px 17px;
+  background:0;border:0;cursor:pointer;font:inherit;font-size:12px;color:var(--brand);
+  border-bottom:1px solid var(--line-2);
+}
+.notif-more:hover{text-decoration:underline}
+.notif-empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.7}
+.notif-empty .big{font-size:30px;margin-bottom:6px}
+.notif-f{
+  padding:9px 14px;border-top:1px solid var(--line-2);
+  font-size:11.5px;color:var(--faint);background:var(--surface-2);
+}
+
+/* ตัวเลขบนเมนูซ้าย — ให้เด่นขึ้นเมื่อมีงานค้าง */
+.nav-item .badge{
+  background:var(--warn);color:#fff;font-weight:700;font-variant-numeric:tabular-nums;
+}
+.nav-item.on .badge{background:rgba(255,255,255,.28);color:#fff}
+
+@media (max-width:720px){
+  .notif{
+    position:fixed;top:auto;left:8px;right:8px;bottom:8px;width:auto;
+    max-height:72vh;display:flex;flex-direction:column;
+  }
+  .notif-list{flex:1;max-height:none}
+}
+
 @media print{
   .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
   .app{display:block} body{background:#fff}
@@ -539,6 +604,7 @@ button.sync-pill:active{transform:translateY(1px)}
       </div>
       <div class="top-right">
         <span id="liveDot"></span>
+        <span id="bellWrap" class="bell-wrap"></span>
         <button class="btn icon" id="themeBtn" title="สลับธีม" onclick="cycleTheme()">🌗</button>
         <input class="inp w-auto" id="searchBox" placeholder="🔎 ค้นหาทั้งระบบ…" style="width:180px"
                oninput="onSearch(this.value)" autocomplete="off">
@@ -680,6 +746,7 @@ function bootNow(){
     // ธีมของเครื่องนี้ชนะเสมอ ถ้ายังไม่เคยตั้งค่อยใช้ของระบบ
     applyTheme(currentTheme());
     go(startPage(b));
+    refreshAlerts();
     startPolling(b.settings && b.settings.refreshSeconds);
   }).catch(function(e){
     document.getElementById('view').innerHTML =
@@ -858,7 +925,10 @@ var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|
 function markSelfChange(){
   S.selfChangeUntil = Date.now() + 120000;
   clearTimeout(S.syncTimer);
-  S.syncTimer = setTimeout(syncVersion, 1500);
+  S.syncTimer = setTimeout(function(){
+    syncVersion();
+    refreshAlerts();     // งานค้างอาจเพิ่มหรือลดจากสิ่งที่เพิ่งบันทึกไป
+  }, 1500);
 }
 
 function syncVersion(){
@@ -1000,10 +1070,154 @@ function startPolling(seconds){
 
       // ซิงก์เงียบ ๆ ไม่ล้างหน้า ไม่เด้งกลับไปบนสุด
       load({ quiet: true });
+      refreshAlerts();
     }).catch(function(e){
       syncSet(isOfflineError(e) ? 'offline' : 'error', (e && e.message) || String(e));
     });
   }, sec * 1000);
+}
+
+/* ---------------- ศูนย์แจ้งเตือน ----------------
+
+   ตัวเลขบนเมนู (เช่น 6 หลัง "ล้างแอร์") กับกล่องแจ้งเตือนบนแถบหัว
+   ใช้ข้อมูลชุดเดียวกันจากคำสั่ง app.alerts ซึ่งเบากว่าแดชบอร์ดมาก
+
+   อัปเดตเมื่อ: เปิดระบบ · หลังกดบันทึก/ลบทุกครั้ง · ทุกรอบตรวจข้อมูล
+   เดิมตัวเลขนี้อัปเดตตอนเปิดหน้าแดชบอร์ดอย่างเดียว
+   ไปอยู่หน้าอื่นแล้วตัวเลขจึงค้างอยู่ที่ค่าเก่า
+------------------------------------------------------------------ */
+
+var ALERTS = { counts: {}, items: [], total: 0, urgent: 0, at: '' };
+
+function refreshAlerts(){
+  return callApi('app.alerts').then(function(a){
+    ALERTS = a || ALERTS;
+    paintBadges();
+    paintBell();
+    if (document.getElementById('notifPanel')) renderNotifPanel();   // เปิดค้างอยู่ ให้อัปเดตตาม
+    return a;
+  }).catch(function(){ /* เน็ตสะดุด ไว้รอบหน้า */ });
+}
+
+/** ตัวเลขบนเมนูซ้าย — บอกจำนวนงานที่ยังค้างอยู่ของแต่ละโมดูล */
+function paintBadges(){
+  var c = ALERTS.counts || {};
+  PAGES.forEach(function(p){ setBadge(p.id, c[p.id] || 0); });
+}
+
+function setBadge(page, n){
+  var el = document.getElementById('badge-' + page);
+  if (!el) return;
+  if (n > 0) {
+    el.textContent = n > 99 ? '99+' : n;
+    el.style.display = '';
+    el.title = 'ยังค้างอยู่ ' + n + ' รายการ';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+/* ---- กระดิ่งบนแถบหัว ---- */
+
+function paintBell(){
+  var wrap = document.getElementById('bellWrap');
+  if (!wrap) return;
+
+  // วาดเฉพาะตัวปุ่ม ห้ามเขียนทับทั้ง bellWrap
+  // เพราะกล่องแจ้งเตือนที่เปิดค้างอยู่ก็เป็นลูกของ bellWrap เหมือนกัน
+  var slot = document.getElementById('bellSlot');
+  if (!slot) {
+    slot = document.createElement('span');
+    slot.id = 'bellSlot';
+    wrap.insertBefore(slot, wrap.firstChild);
+  }
+
+  var n = ALERTS.total || 0;
+  var urgent = ALERTS.urgent || 0;
+  slot.innerHTML =
+    '<button class="btn icon bell" id="bellBtn" onclick="toggleNotif()" ' +
+      'title="' + (n ? 'มี ' + n + ' เรื่องที่ต้องดู' : 'ไม่มีงานค้าง') + '" ' +
+      'aria-label="การแจ้งเตือน">🔔' +
+      (n ? '<span class="bell-dot' + (urgent ? ' urgent' : '') + '">' + (n > 99 ? '99+' : n) + '</span>' : '') +
+    '</button>';
+}
+
+function toggleNotif(){
+  if (document.getElementById('notifPanel')) return closeNotif();
+  var wrap = document.getElementById('bellWrap');
+  if (!wrap) return;
+  var panel = document.createElement('div');
+  panel.id = 'notifPanel';
+  panel.className = 'notif';
+  wrap.appendChild(panel);
+  renderNotifPanel();
+  setTimeout(function(){ document.addEventListener('click', notifOutside, true); }, 0);
+  refreshAlerts();                      // เปิดทีไรก็ดึงของล่าสุดมาให้ด้วย
+}
+
+function closeNotif(){
+  var p = document.getElementById('notifPanel');
+  if (p) p.remove();
+  document.removeEventListener('click', notifOutside, true);
+}
+
+function notifOutside(e){
+  var wrap = document.getElementById('bellWrap');
+  if (wrap && !wrap.contains(e.target)) closeNotif();
+}
+
+var NOTIF_GROUPS = [
+  { module:'repairs',   ic:'🔧', label:'งานซ่อมค้าง' },
+  { module:'ac',        ic:'❄️', label:'ล้างแอร์ถึงกำหนด' },
+  { module:'building',  ic:'🏢', label:'งานตึกส่วนกลาง' },
+  { module:'purchases', ic:'🛡️', label:'ประกันใกล้หมด' },
+  { module:'finance',   ic:'🧾', label:'บิลรายเดือน' }
+];
+
+function renderNotifPanel(){
+  var panel = document.getElementById('notifPanel');
+  if (!panel) return;
+  var items = ALERTS.items || [];
+
+  var head = '<div class="notif-h"><b>การแจ้งเตือน</b>' +
+    '<span class="sp">' +
+      (items.length ? '<span class="b ' + (ALERTS.urgent ? 'dgr' : 'warn') + '">' + items.length + ' เรื่อง</span>' : '') +
+      '<button class="btn sm icon" title="ดึงข้อมูลล่าสุด" onclick="refreshAlerts()">↻</button>' +
+    '</span></div>';
+
+  if (!items.length) {
+    panel.innerHTML = head +
+      '<div class="notif-empty"><div class="big">✅</div>ไม่มีงานค้าง<br>' +
+      '<span class="fs12 faint">ทุกอย่างเรียบร้อยดี</span></div>';
+    return;
+  }
+
+  // จัดกลุ่มตามโมดูล เรียงตามลำดับที่ผู้ใช้สนใจก่อน
+  var body = '';
+  NOTIF_GROUPS.forEach(function(g){
+    var list = items.filter(function(a){ return a.module === g.module; });
+    if (!list.length) return;
+    body += '<div class="notif-sec">' + g.ic + ' ' + esc(g.label) + ' (' + list.length + ')</div>';
+    list.slice(0, 8).forEach(function(a){
+      body += '<button class="notif-item l-' + esc(a.level) + '" onclick="gotoAlert(\'' + esc(a.module) + '\')">' +
+        '<div class="tt">' + esc(a.title) + '</div>' +
+        (a.detail ? '<div class="dd">' + esc(a.detail) + '</div>' : '') +
+      '</button>';
+    });
+    if (list.length > 8) {
+      body += '<button class="notif-more" onclick="gotoAlert(\'' + esc(g.module) + '\')">' +
+        'ดูอีก ' + (list.length - 8) + ' รายการ →</button>';
+    }
+  });
+
+  panel.innerHTML = head + '<div class="notif-list">' + body + '</div>' +
+    '<div class="notif-f">อัปเดตเมื่อ ' + esc(String(ALERTS.at || '').slice(11, 16) || '–') + ' น. · ' +
+    '<a href="javascript:void(0)" onclick="closeNotif();go(\'dashboard\')">ดูทั้งหมดในแดชบอร์ด →</a></div>';
+}
+
+function gotoAlert(module){
+  closeNotif();
+  go(module === 'debt' ? 'debtMain' : module);
 }
 
 /* ---------------- format helpers ---------------- */
@@ -1683,9 +1897,9 @@ ROUTES.dashboard = {
           '<button class="btn sm" onclick="go(\'building\')">ดูทั้งหมด →</button>') +
       '</div>';
   },
-  after: function(d){
-    setBadge('repairs', d.repairs.openJobs);
-    setBadge('ac', d.ac.roomsPending);
+  after: function(){
+    // ตัวเลขบนเมนูอัปเดตจากศูนย์แจ้งเตือน (refreshAlerts) ทุกหน้า ไม่ใช่เฉพาะหน้านี้
+    refreshAlerts();
   }
 };
 
@@ -1709,13 +1923,6 @@ function debtMini(x, page){
          '<div class="pmeta"><span>คงเหลือ <b>' + baht(x.remaining) + '</b></span>' +
          '<span>ยอดหนี้ทั้งหมด <b>' + baht(x.total) + '</b></span></div>' +
          '<div class="fs12 muted mt8">ชำระในปีที่เลือก: <b>' + baht(x.thisYear) + '</b></div>';
-}
-
-function setBadge(page, n){
-  var el = document.getElementById('badge-' + page);
-  if (!el) return;
-  if (n > 0) { el.textContent = n; el.style.display = ''; }
-  else el.style.display = 'none';
 }
 
 /* ============================================================

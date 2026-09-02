@@ -67,6 +67,7 @@ ${css}
       <div><h1 id="pageTitle">ภาพรวม</h1><div class="sub" id="pageSub"></div></div>
       <div class="top-right">
         <span id="saveState"></span>
+        <span id="bellWrap" class="bell-wrap"></span>
         <button class="btn icon" id="themeBtn" title="สลับธีม" onclick="cycleTheme()">🌗</button>
         <input class="inp w-auto" id="searchBox" placeholder="🔎 ค้นหา…" style="width:150px"
                oninput="onSearch(this.value)" autocomplete="off">

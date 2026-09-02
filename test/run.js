@@ -412,7 +412,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 72);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 73);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
@@ -892,6 +892,69 @@ console.log('\n── 20. บิลเดียวหลายรายการ
   api('purchase.delete', { _key: admKey, id: r.data.id });
   api('purchase.delete', { _key: admKey, id: plain.data.id });
   check('ลบแล้วจำนวนรายการกลับเท่าเดิม', readRows_(SHEETS.PURCHASES).length, 94);
+}
+
+console.log('\n── 21. ศูนย์แจ้งเตือน ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  const r = api('app.alerts', { _key: admKey });
+  check('เรียกศูนย์แจ้งเตือนได้', r.ok, true);
+
+  const a = r.data;
+  check('มีตัวเลขงานค้างของทุกโมดูลที่ต้องมี',
+    ['repairs', 'ac', 'building', 'purchases'].every(k => typeof a.counts[k] === 'number'), true);
+  check('ตัวเลขไม่ติดลบ', Object.keys(a.counts).every(k => a.counts[k] >= 0), true);
+  check('รวมจำนวนเรื่องที่ต้องดูได้', typeof a.total === 'number' && a.total >= 0, true);
+  check('มีเวลาที่คำนวณล่าสุด', typeof a.at === 'string' && a.at.length > 0, true);
+
+  // ตัวเลขต้องตรงกับข้อมูลจริง ไม่ใช่ตัวเลขลอย ๆ
+  const openNow = listRoomRepairs_('all', 'all', 'all')
+    .filter(x => x.status !== 'เสร็จสิ้น' && x.status !== 'ยกเลิก').length;
+  check('งานซ่อมค้างตรงกับข้อมูลจริง', a.counts.repairs, openNow);
+  check('ล้างแอร์ค้างตรงกับตารางล้างแอร์',
+    a.counts.ac, acMatrix_(String(new Date().getFullYear())).roomsPending.length);
+  check('งานตึกค้างตรงกับสรุปงานตึก',
+    a.counts.building, buildingSummary_(String(new Date().getFullYear())).openCount || 0);
+
+  // แจ้งเตือนแต่ละรายการต้องมีข้อมูลพอให้หน้าเว็บพาไปถูกที่
+  if (a.items.length) {
+    check('ทุกการแจ้งเตือนบอกได้ว่าอยู่โมดูลไหน', a.items.every(x => !!x.module), true);
+    check('ทุกการแจ้งเตือนมีหัวข้อ', a.items.every(x => !!x.title), true);
+    check('ทุกการแจ้งเตือนมีระดับความสำคัญ',
+      a.items.every(x => ['danger', 'warn', 'info'].indexOf(x.level) >= 0), true);
+    check('เรียงเรื่องด่วนไว้บนสุด',
+      a.items.filter(x => x.level === 'danger').length === 0 || a.items[0].level === 'danger', true);
+  }
+
+  // เพิ่มงานซ่อมค้างหนึ่งงาน ตัวเลขต้องขยับตาม (นี่คือหัวใจของ "อัปเดตสด")
+  const before = api('app.alerts', { _key: admKey }).data.counts.repairs;
+  const added = api('repair.save', { _key: admKey, record: {
+    room: '311', items: 'ทดสอบงานค้าง', status: 'รอดำเนินการ', reportDate: '2026-01-05'
+  }});
+  check('เพิ่มงานซ่อมได้', added.ok, true);
+  check('ตัวเลขงานค้างเพิ่มขึ้นทันที',
+    api('app.alerts', { _key: admKey }).data.counts.repairs, before + 1);
+
+  // ปิดงานแล้วตัวเลขต้องลดลง
+  api('repair.save', { _key: admKey, record: Object.assign(
+    findRow_(SHEETS.ROOM_REPAIRS, added.data.id), { status: 'เสร็จสิ้น' }) });
+  check('ปิดงานแล้วตัวเลขลดลง',
+    api('app.alerts', { _key: admKey }).data.counts.repairs, before);
+
+  api('repair.delete', { _key: admKey, id: added.data.id });
+  check('ลบแล้วกลับมาเท่าเดิม', api('app.alerts', { _key: admKey }).data.counts.repairs, before);
+
+  // คนที่เปิดดูอย่างเดียวก็ต้องเห็นการแจ้งเตือนได้ (เป็นแค่การอ่าน)
+  setSetting_('share_link_enabled', 'เปิด');
+  check('ผู้ที่เปิดดูอย่างเดียวดูการแจ้งเตือนได้',
+    api('app.alerts', { _key: getSetting_('view_token', '') }).ok, true);
+  setSetting_('share_link_enabled', 'ปิด');
+
+  // ต้องปลอมเป็นคนนอกก่อน ไม่งั้นทางลัด "เจ้าของชีตเข้าได้เสมอ" จะให้ผ่าน
+  const realOwner = global.Session.getActiveUser;
+  global.Session.getActiveUser = () => ({ getEmail: () => '' });
+  check('ยังไม่ล็อกอิน ดูการแจ้งเตือนไม่ได้', api('app.alerts', {}).ok, false);
+  global.Session.getActiveUser = realOwner;
 }
 
 console.log('\n════════════════════════════');

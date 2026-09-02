@@ -109,6 +109,7 @@ function bootNow(){
     // ธีมของเครื่องนี้ชนะเสมอ ถ้ายังไม่เคยตั้งค่อยใช้ของระบบ
     applyTheme(currentTheme());
     go(startPage(b));
+    refreshAlerts();
     startPolling(b.settings && b.settings.refreshSeconds);
   }).catch(function(e){
     document.getElementById('view').innerHTML =
@@ -287,7 +288,10 @@ var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|
 function markSelfChange(){
   S.selfChangeUntil = Date.now() + 120000;
   clearTimeout(S.syncTimer);
-  S.syncTimer = setTimeout(syncVersion, 1500);
+  S.syncTimer = setTimeout(function(){
+    syncVersion();
+    refreshAlerts();     // งานค้างอาจเพิ่มหรือลดจากสิ่งที่เพิ่งบันทึกไป
+  }, 1500);
 }
 
 function syncVersion(){
@@ -429,10 +433,154 @@ function startPolling(seconds){
 
       // ซิงก์เงียบ ๆ ไม่ล้างหน้า ไม่เด้งกลับไปบนสุด
       load({ quiet: true });
+      refreshAlerts();
     }).catch(function(e){
       syncSet(isOfflineError(e) ? 'offline' : 'error', (e && e.message) || String(e));
     });
   }, sec * 1000);
+}
+
+/* ---------------- ศูนย์แจ้งเตือน ----------------
+
+   ตัวเลขบนเมนู (เช่น 6 หลัง "ล้างแอร์") กับกล่องแจ้งเตือนบนแถบหัว
+   ใช้ข้อมูลชุดเดียวกันจากคำสั่ง app.alerts ซึ่งเบากว่าแดชบอร์ดมาก
+
+   อัปเดตเมื่อ: เปิดระบบ · หลังกดบันทึก/ลบทุกครั้ง · ทุกรอบตรวจข้อมูล
+   เดิมตัวเลขนี้อัปเดตตอนเปิดหน้าแดชบอร์ดอย่างเดียว
+   ไปอยู่หน้าอื่นแล้วตัวเลขจึงค้างอยู่ที่ค่าเก่า
+------------------------------------------------------------------ */
+
+var ALERTS = { counts: {}, items: [], total: 0, urgent: 0, at: '' };
+
+function refreshAlerts(){
+  return callApi('app.alerts').then(function(a){
+    ALERTS = a || ALERTS;
+    paintBadges();
+    paintBell();
+    if (document.getElementById('notifPanel')) renderNotifPanel();   // เปิดค้างอยู่ ให้อัปเดตตาม
+    return a;
+  }).catch(function(){ /* เน็ตสะดุด ไว้รอบหน้า */ });
+}
+
+/** ตัวเลขบนเมนูซ้าย — บอกจำนวนงานที่ยังค้างอยู่ของแต่ละโมดูล */
+function paintBadges(){
+  var c = ALERTS.counts || {};
+  PAGES.forEach(function(p){ setBadge(p.id, c[p.id] || 0); });
+}
+
+function setBadge(page, n){
+  var el = document.getElementById('badge-' + page);
+  if (!el) return;
+  if (n > 0) {
+    el.textContent = n > 99 ? '99+' : n;
+    el.style.display = '';
+    el.title = 'ยังค้างอยู่ ' + n + ' รายการ';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+/* ---- กระดิ่งบนแถบหัว ---- */
+
+function paintBell(){
+  var wrap = document.getElementById('bellWrap');
+  if (!wrap) return;
+
+  // วาดเฉพาะตัวปุ่ม ห้ามเขียนทับทั้ง bellWrap
+  // เพราะกล่องแจ้งเตือนที่เปิดค้างอยู่ก็เป็นลูกของ bellWrap เหมือนกัน
+  var slot = document.getElementById('bellSlot');
+  if (!slot) {
+    slot = document.createElement('span');
+    slot.id = 'bellSlot';
+    wrap.insertBefore(slot, wrap.firstChild);
+  }
+
+  var n = ALERTS.total || 0;
+  var urgent = ALERTS.urgent || 0;
+  slot.innerHTML =
+    '<button class="btn icon bell" id="bellBtn" onclick="toggleNotif()" ' +
+      'title="' + (n ? 'มี ' + n + ' เรื่องที่ต้องดู' : 'ไม่มีงานค้าง') + '" ' +
+      'aria-label="การแจ้งเตือน">🔔' +
+      (n ? '<span class="bell-dot' + (urgent ? ' urgent' : '') + '">' + (n > 99 ? '99+' : n) + '</span>' : '') +
+    '</button>';
+}
+
+function toggleNotif(){
+  if (document.getElementById('notifPanel')) return closeNotif();
+  var wrap = document.getElementById('bellWrap');
+  if (!wrap) return;
+  var panel = document.createElement('div');
+  panel.id = 'notifPanel';
+  panel.className = 'notif';
+  wrap.appendChild(panel);
+  renderNotifPanel();
+  setTimeout(function(){ document.addEventListener('click', notifOutside, true); }, 0);
+  refreshAlerts();                      // เปิดทีไรก็ดึงของล่าสุดมาให้ด้วย
+}
+
+function closeNotif(){
+  var p = document.getElementById('notifPanel');
+  if (p) p.remove();
+  document.removeEventListener('click', notifOutside, true);
+}
+
+function notifOutside(e){
+  var wrap = document.getElementById('bellWrap');
+  if (wrap && !wrap.contains(e.target)) closeNotif();
+}
+
+var NOTIF_GROUPS = [
+  { module:'repairs',   ic:'🔧', label:'งานซ่อมค้าง' },
+  { module:'ac',        ic:'❄️', label:'ล้างแอร์ถึงกำหนด' },
+  { module:'building',  ic:'🏢', label:'งานตึกส่วนกลาง' },
+  { module:'purchases', ic:'🛡️', label:'ประกันใกล้หมด' },
+  { module:'finance',   ic:'🧾', label:'บิลรายเดือน' }
+];
+
+function renderNotifPanel(){
+  var panel = document.getElementById('notifPanel');
+  if (!panel) return;
+  var items = ALERTS.items || [];
+
+  var head = '<div class="notif-h"><b>การแจ้งเตือน</b>' +
+    '<span class="sp">' +
+      (items.length ? '<span class="b ' + (ALERTS.urgent ? 'dgr' : 'warn') + '">' + items.length + ' เรื่อง</span>' : '') +
+      '<button class="btn sm icon" title="ดึงข้อมูลล่าสุด" onclick="refreshAlerts()">↻</button>' +
+    '</span></div>';
+
+  if (!items.length) {
+    panel.innerHTML = head +
+      '<div class="notif-empty"><div class="big">✅</div>ไม่มีงานค้าง<br>' +
+      '<span class="fs12 faint">ทุกอย่างเรียบร้อยดี</span></div>';
+    return;
+  }
+
+  // จัดกลุ่มตามโมดูล เรียงตามลำดับที่ผู้ใช้สนใจก่อน
+  var body = '';
+  NOTIF_GROUPS.forEach(function(g){
+    var list = items.filter(function(a){ return a.module === g.module; });
+    if (!list.length) return;
+    body += '<div class="notif-sec">' + g.ic + ' ' + esc(g.label) + ' (' + list.length + ')</div>';
+    list.slice(0, 8).forEach(function(a){
+      body += '<button class="notif-item l-' + esc(a.level) + '" onclick="gotoAlert(\'' + esc(a.module) + '\')">' +
+        '<div class="tt">' + esc(a.title) + '</div>' +
+        (a.detail ? '<div class="dd">' + esc(a.detail) + '</div>' : '') +
+      '</button>';
+    });
+    if (list.length > 8) {
+      body += '<button class="notif-more" onclick="gotoAlert(\'' + esc(g.module) + '\')">' +
+        'ดูอีก ' + (list.length - 8) + ' รายการ →</button>';
+    }
+  });
+
+  panel.innerHTML = head + '<div class="notif-list">' + body + '</div>' +
+    '<div class="notif-f">อัปเดตเมื่อ ' + esc(String(ALERTS.at || '').slice(11, 16) || '–') + ' น. · ' +
+    '<a href="javascript:void(0)" onclick="closeNotif();go(\'dashboard\')">ดูทั้งหมดในแดชบอร์ด →</a></div>';
+}
+
+function gotoAlert(module){
+  closeNotif();
+  go(module === 'debt' ? 'debtMain' : module);
 }
 
 /* ---------------- format helpers ---------------- */

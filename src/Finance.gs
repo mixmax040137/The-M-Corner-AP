@@ -133,7 +133,7 @@ function missingBills_() {
   rows.forEach(function (r) { have[r.kind] = true; });
   var expect = ['รายรับค่าเช่า', 'ค่าไฟฟ้า', 'ค่าน้ำประปา', 'ค่าอินเทอร์เน็ต'];
   return {
-    year: y, month: m, label: TH_MONTH_NAMES[m - 1] + ' ' + (y + 543),
+    year: y, month: m, label: TH_MONTH_NAMES[m - 1] + ' ' + displayYear_(y),
     missing: expect.filter(function (k) { return !have[k]; })
   };
 }

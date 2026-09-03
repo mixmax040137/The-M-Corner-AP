@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-03 04:16 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-03 07:21 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.3.1',
+  VERSION: '1.4.0',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -292,7 +292,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 7;
+var SCHEMA_VERSION = 8;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -324,7 +324,7 @@ var DEFAULT_SETTINGS = [
   { key: 'theme',           label: 'ธีมสีหน้าจอ',              value: 'ตามเครื่อง', note: 'ตามเครื่อง = สลับสว่าง/มืดตามระบบของอุปกรณ์' },
   { key: 'accent',          label: 'สีเน้นของระบบ',            value: 'ฟ้าคราม', note: '' },
   { key: 'number_format',   label: 'รูปแบบตัวเลขเงิน',          value: '1,234.56', note: '' },
-  { key: 'date_format',     label: 'รูปแบบปีที่แสดง',           value: 'พ.ศ. (2569)', note: 'มีผลกับการแสดงผลเท่านั้น ข้อมูลในชีตยังเก็บเป็น ค.ศ. เสมอ' },
+  { key: 'date_format',     label: 'รูปแบบปีที่แสดง',           value: 'ค.ศ. (2026)', note: 'ข้อมูลในชีตเก็บเป็น ค.ศ. เสมอ ตรงนี้เลือกได้ว่าจะให้หน้าจอแสดงปีแบบไหน' },
   { key: 'start_page',      label: 'หน้าแรกเมื่อเปิดระบบ',       value: 'แดชบอร์ด', note: '' },
   { key: 'due_soon_days',   label: 'เตือนก่อนถึงกำหนดชำระ (วัน)', value: '5', note: '' },
   { key: 'notify_email',    label: 'อีเมลรับสรุปแจ้งเตือน',      value: '', note: 'เว้นว่าง = ส่งเข้าอีเมลเจ้าของชีต' },
@@ -726,12 +726,27 @@ function currentUserEmail_() {
   catch (e) { return ''; }
 }
 
-/** 'YYYY-MM-DD' -> '26 เม.ย. 2569' (ใช้ในข้อความแจ้งเตือน/อีเมล) */
+/** 'YYYY-MM-DD' -> '26 เม.ย. 2026' (ใช้ในข้อความแจ้งเตือน/อีเมล) */
 var TH_MONTHS_ = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+/**
+ * แปลงปี ค.ศ. เป็นปีที่จะแสดงบนหน้าจอ ตามที่ตั้งไว้ในหน้าตั้งค่า
+ *
+ * ข้อมูลในชีตเก็บเป็น ค.ศ. เสมอ ไม่ว่าจะตั้งค่าเป็นอะไร
+ * ตรงนี้แปลงตอนแสดงผลเท่านั้น จะได้ไม่มีทางที่ข้อมูลจริงเพี้ยนไป
+ */
+function displayYear_(ceYear) {
+  return useBuddhistYear_() ? Number(ceYear) + 543 : Number(ceYear);
+}
+
+function useBuddhistYear_() {
+  return String(getSetting_('date_format', 'ค.ศ. (2026)')).indexOf('พ.ศ.') === 0;
+}
+
 function thDate_(v) {
   var d = toDate_(v);
   if (!d) return '–';
-  return d.getDate() + ' ' + TH_MONTHS_[d.getMonth()] + ' ' + (d.getFullYear() + 543);
+  return d.getDate() + ' ' + TH_MONTHS_[d.getMonth()] + ' ' + displayYear_(d.getFullYear());
 }
 
 
@@ -2312,37 +2327,37 @@ var SEED_DEBTS = [
 
 /** รายการโอนใช้หนี้หลัก (จากชีตเดิม) */
 var SEED_DEBT_PAYMENTS = [
-  { payDate: "2022-04-14", amount: 1104641, installment: "3/2565" },
-  { payDate: "2022-04-14", amount: 309000, installment: "4/2565" },
-  { payDate: "2018-04-23", amount: 1278000, installment: "2562" },
-  { payDate: "2022-05-18", amount: 100000, installment: "2565" },
-  { payDate: "2022-06-10", amount: 100000, installment: "2565" },
-  { payDate: "2023-04-19", amount: 98000, installment: "2566" },
-  { payDate: "2023-04-26", amount: 100013, installment: "2566" },
-  { payDate: "2023-05-14", amount: 90000, installment: "2566" },
-  { payDate: "2024-03-06", amount: 60000, installment: "3/2567" },
-  { payDate: "2024-04-26", amount: 70000, installment: "4/2567" },
-  { payDate: "2024-07-16", amount: 80000, installment: "6/2567" },
-  { payDate: "2024-09-05", amount: 160000, installment: "8/2567" },
-  { payDate: "2024-09-16", amount: 80000, installment: "9/2567" },
-  { payDate: "2024-10-18", amount: 80000, installment: "10/2567" },
-  { payDate: "2024-11-26", amount: 80000, installment: "11/2567" },
-  { payDate: "2024-12-20", amount: 80000, installment: "12/2567" },
-  { payDate: "2025-01-21", amount: 80000, installment: "01/2568" },
-  { payDate: "2025-01-20", amount: 80000, installment: "02/2568" },
-  { payDate: "2025-05-20", amount: 80000, installment: "05/2568" },
-  { payDate: "2025-06-20", amount: 80000, installment: "06/2568" },
-  { payDate: "2025-08-07", amount: 80000, installment: "07/2568" },
-  { payDate: "2025-08-20", amount: 80000, installment: "08/2568" },
-  { payDate: "2025-09-20", amount: 80000, installment: "09/2568" },
-  { payDate: "2025-10-25", amount: 80000, installment: "10/2568" },
-  { payDate: "2025-12-25", amount: 80000, installment: "12/2568" },
-  { payDate: "2026-01-21", amount: 80000, installment: "1/2569" },
-  { payDate: "2026-03-13", amount: 80000, installment: "3/2569" },
-  { payDate: "2026-04-20", amount: 50000, installment: "4/2569" },
-  { payDate: "2026-05-19", amount: 80000, installment: "5/2569" },
-  { payDate: "2026-06-15", amount: 70000, installment: "6/2569" },
-  { payDate: "2026-07-13", amount: 70000, installment: "7/2569" },
+  { payDate: "2022-04-14", amount: 1104641, installment: "3/2022" },
+  { payDate: "2022-04-14", amount: 309000, installment: "4/2022" },
+  { payDate: "2018-04-23", amount: 1278000, installment: "2019" },
+  { payDate: "2022-05-18", amount: 100000, installment: "2022" },
+  { payDate: "2022-06-10", amount: 100000, installment: "2022" },
+  { payDate: "2023-04-19", amount: 98000, installment: "2023" },
+  { payDate: "2023-04-26", amount: 100013, installment: "2023" },
+  { payDate: "2023-05-14", amount: 90000, installment: "2023" },
+  { payDate: "2024-03-06", amount: 60000, installment: "3/2024" },
+  { payDate: "2024-04-26", amount: 70000, installment: "4/2024" },
+  { payDate: "2024-07-16", amount: 80000, installment: "6/2024" },
+  { payDate: "2024-09-05", amount: 160000, installment: "8/2024" },
+  { payDate: "2024-09-16", amount: 80000, installment: "9/2024" },
+  { payDate: "2024-10-18", amount: 80000, installment: "10/2024" },
+  { payDate: "2024-11-26", amount: 80000, installment: "11/2024" },
+  { payDate: "2024-12-20", amount: 80000, installment: "12/2024" },
+  { payDate: "2025-01-21", amount: 80000, installment: "01/2025" },
+  { payDate: "2025-01-20", amount: 80000, installment: "02/2025" },
+  { payDate: "2025-05-20", amount: 80000, installment: "05/2025" },
+  { payDate: "2025-06-20", amount: 80000, installment: "06/2025" },
+  { payDate: "2025-08-07", amount: 80000, installment: "07/2025" },
+  { payDate: "2025-08-20", amount: 80000, installment: "08/2025" },
+  { payDate: "2025-09-20", amount: 80000, installment: "09/2025" },
+  { payDate: "2025-10-25", amount: 80000, installment: "10/2025" },
+  { payDate: "2025-12-25", amount: 80000, installment: "12/2025" },
+  { payDate: "2026-01-21", amount: 80000, installment: "1/2026" },
+  { payDate: "2026-03-13", amount: 80000, installment: "3/2026" },
+  { payDate: "2026-04-20", amount: 50000, installment: "4/2026" },
+  { payDate: "2026-05-19", amount: 80000, installment: "5/2026" },
+  { payDate: "2026-06-15", amount: 70000, installment: "6/2026" },
+  { payDate: "2026-07-13", amount: 70000, installment: "7/2026" },
   { payDate: "2026-10-08", amount: 30000, installment: "" },
 ];
 
@@ -2958,7 +2973,7 @@ function missingBills_() {
   rows.forEach(function (r) { have[r.kind] = true; });
   var expect = ['รายรับค่าเช่า', 'ค่าไฟฟ้า', 'ค่าน้ำประปา', 'ค่าอินเทอร์เน็ต'];
   return {
-    year: y, month: m, label: TH_MONTH_NAMES[m - 1] + ' ' + (y + 543),
+    year: y, month: m, label: TH_MONTH_NAMES[m - 1] + ' ' + displayYear_(y),
     missing: expect.filter(function (k) { return !have[k]; })
   };
 }
@@ -2987,6 +3002,7 @@ function runMigrations_() {
   if (from < 4) done.push(migrateV4Users_());
   if (from < 5) done.push(migrateV5RefreshRate_());
   if (from < 7) done.push(migrateV7RepairTodo_());
+  if (from < 8) done.push(migrateV8ChristianYear_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -3326,6 +3342,52 @@ function migrateV7RepairTodo_() {
   rewriteSheet_(name, rows);
   applyFormatting_(name);
   return 'งานซ่อมห้อง: แปลงเป็นเช็คลิสต์ ' + changed + ' รายการ';
+}
+
+/**
+ * รุ่น 8 — แสดงปีเป็น ค.ศ. ให้ตรงกับปีที่เก็บในชีตและปฏิทินสากล
+ *
+ * ข้อมูลในชีตเก็บเป็น ค.ศ. มาตลอดอยู่แล้ว (2026-01-19) ไม่มีอะไรต้องแปลง
+ * ที่เป็น พ.ศ. คือหน้าจอเท่านั้น — และช่องตั้งค่า "รูปแบบปีที่แสดง"
+ * ก็มีมาตั้งแต่แรกแต่ไม่มีโค้ดไหนอ่านค่ามันเลย กดเปลี่ยนแล้วไม่มีอะไรเกิดขึ้น
+ *
+ * รุ่นนี้ทำให้ช่องนั้นใช้งานได้จริง และตั้งค่าเดิมของทุกเครื่องเป็น ค.ศ.
+ * ใครอยากกลับไปใช้ พ.ศ. ก็เลือกได้เองในหน้าตั้งค่า
+ */
+function migrateV8ChristianYear_() {
+  var before = getSetting_('date_format', '');
+  setSetting_('date_format', 'ค.ศ. (2026)');
+
+  // ช่อง "งวดที่" ของรายการโอนใช้หนี้เป็นช่องข้อความ ชีตเดิมกรอกเป็น พ.ศ. ไว้
+  // เช่น "7/2569" หรือ "2565" — อันนี้เป็นข้อมูลจริง ไม่ใช่แค่การแสดงผล จึงต้องแปลง
+  var name = SHEETS.DEBT_PAYMENTS;
+  var rows = readRows_(name);
+  var changed = 0;
+  rows.forEach(function (r) {
+    var next = installmentToCE_(r.installment);
+    if (next !== String(r.installment == null ? '' : r.installment)) { r.installment = next; changed++; }
+  });
+  if (changed) rewriteSheet_(name, rows.map(function (r) {
+    var out = {};
+    SCHEMA[name].forEach(function (c) { out[c.key] = r[c.key]; });
+    return out;
+  }));
+
+  return 'ปีที่แสดง: ' + (before || '(ยังไม่เคยตั้ง)') + ' → ค.ศ. · แปลงช่องงวดที่ ' + changed + ' รายการ';
+}
+
+/**
+ * "7/2569" -> "7/2026" และ "2565" -> "2022"
+ *
+ * ผูกกับทั้งข้อความพอดี ไม่ใช่ค้นหาเลขลอย ๆ ตรงกลาง
+ * เพราะมีชื่อร้านอย่าง "ฟาฮาน่า แมทเทรส 2560 จำกัด" และรหัสรายการ
+ * อย่าง "BUY-MTL6QOVE2531" ที่มีเลขคล้ายปีอยู่ข้างใน ห้ามไปแตะ
+ */
+function installmentToCE_(text) {
+  var raw = String(text == null ? '' : text).trim();
+  var m = raw.match(/^(\d{1,2}\/)?(25\d{2})$/);
+  if (!m) return raw;
+  return (m[1] || '') + (Number(m[2]) - 543);
 }
 
 /**
@@ -5201,6 +5263,7 @@ var API_ROUTES = {
         refreshSeconds: Number(getSetting_('refresh_seconds', 300)),
         theme: getSetting_('theme', 'ตามเครื่อง'),
         startPage: getSetting_('start_page', 'แดชบอร์ด'),
+        dateFormat: getSetting_('date_format', 'ค.ศ. (2026)'),
         currency: getSetting_('currency', 'บาท'),
         defaultDueDay: Number(getSetting_('default_due_day', 20)),
         ocrEnabled: String(getSetting_('ocr_enabled', 'เปิด')).indexOf('เปิด') === 0,

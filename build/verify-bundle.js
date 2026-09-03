@@ -330,6 +330,48 @@ console.log('\n── build/AllInOne.gs ──');
   }
 
   /* ---------- เช็คลิสต์งานซ่อม ---------- */
+  console.log('\n── ปี ค.ศ. ทั้งระบบ ──');
+  {
+    await pg.evaluate(() => { S.year = '2026'; go('repairs'); });
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 9000 });
+    await pg.waitForTimeout(300);
+
+    check('หน้าเว็บได้รับค่ารูปแบบปีมาด้วย',
+      await pg.evaluate(() => (S.boot.settings || {}).dateFormat) === 'ค.ศ. (2026)');
+    check('วันที่แสดงเป็น ค.ศ.', await pg.evaluate(() => thDate('2026-04-26')) === '26 เม.ย. 2026',
+      await pg.evaluate(() => thDate('2026-04-26')));
+    check('วันที่แบบสั้นก็เป็น ค.ศ.', await pg.evaluate(() => thDateShort('2026-04-26')) === '26/4/26',
+      await pg.evaluate(() => thDateShort('2026-04-26')));
+    check('ช่องเลือกปีไม่มีคำว่า พ.ศ.',
+      !(await pg.evaluate(() => document.getElementById('yearSel').innerText)).includes('พ.ศ.'));
+
+    // ไล่ทุกหน้าว่าไม่มีปี พ.ศ. โผล่ (ยกเว้นหน้าตั้งค่าที่มีชื่อตัวเลือก "พ.ศ. (2569)" อยู่)
+    const leftover = [];
+    for (const p of await pg.evaluate(() => PAGES.map(x => x.id))) {
+      if (p === 'settings') continue;
+      await pg.evaluate(x => { S.year = 'all'; go(x); }, p);
+      await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 9000 }).catch(() => {});
+      await pg.waitForTimeout(110);
+      const hits = await pg.evaluate(() => {
+        const t = document.getElementById('view').innerText;
+        // ชื่อร้าน "ฟาฮาน่า แมทเทรส 2560 จำกัด" เป็นชื่อบริษัท ไม่ใช่ปี จึงข้ามไป
+        return (t.replace(/ฟาฮาน่า[^\n]*/g, '').match(/(?<![\d,.])(25[4-9]\d|260\d)(?![\d,.])/g) || []);
+      });
+      if (hits.length) leftover.push(p + ': ' + [...new Set(hits)].join(','));
+    }
+    check('ไม่มีปี พ.ศ. โผล่ในหน้าไหนเลย', leftover.length === 0, leftover.join(' | '));
+
+    // สลับกลับเป็น พ.ศ. ได้จริง (ตัวเลือกในหน้าตั้งค่าต้องใช้งานได้ ไม่ใช่ปุ่มหลอก)
+    const be = await pg.evaluate(() => {
+      S.boot.settings.dateFormat = 'พ.ศ. (2569)';
+      syncYearOptions([2026]);
+      return { d: thDate('2026-04-26'), opt: document.getElementById('yearSel').innerText };
+    });
+    check('เลือก พ.ศ. แล้ววันที่เปลี่ยนตามจริง', be.d === '26 เม.ย. 2569', be.d);
+    check('เลือก พ.ศ. แล้วช่องเลือกปีเปลี่ยนตาม', be.opt.includes('2569'), be.opt);
+    await pg.evaluate(() => { S.boot.settings.dateFormat = 'ค.ศ. (2026)'; syncYearOptions([2026, 2025]); });
+  }
+
   console.log('\n── ปีที่หน้านั้นไม่มีข้อมูล ──');
   {
     // แต่ละหน้ามีช่วงปีไม่เท่ากัน ถ้าปีที่ค้างอยู่ไม่มีในหน้าใหม่ ระบบจะปรับปีให้

@@ -1139,7 +1139,9 @@ function syncYearOptions(years){
   if (list.indexOf(cur) < 0) list.unshift(cur);
   var html = '<option value="all">ทุกปี</option>';
   list.forEach(function(y){
-    html += '<option value="' + y + '">ปี ' + y + ' (พ.ศ. ' + (Number(y)+543) + ')</option>';
+    // ค่าใน option เป็น ค.ศ. เสมอ (ทั้งระบบใช้ปีนี้อ้างอิง) ส่วนข้อความแล้วแต่ที่ตั้งไว้
+    html += '<option value="' + y + '">ปี ' + displayYear(y) +
+            (useBuddhistYear() ? ' (ค.ศ. ' + y + ')' : '') + '</option>';
   });
   sel.innerHTML = html;
   if (list.indexOf(Number(S.year)) < 0 && S.year !== 'all') S.year = String(cur);
@@ -1504,17 +1506,30 @@ function num(n){ return n==null||n==='' ? '–' : money(n); }
 
 /** 2026-04-26 -> 26 เม.ย. 2569 */
 var TH_MON = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+/**
+ * ปีที่จะแสดงบนหน้าจอ — ข้อมูลเก็บเป็น ค.ศ. เสมอ
+ * ตรงนี้แปลงตอนแสดงผลอย่างเดียว ตามที่เลือกไว้ในหน้าตั้งค่า
+ * ค่าตั้งต้นคือ ค.ศ. ให้ตรงกับปีที่เก็บในชีตและปฏิทินสากล
+ */
+function useBuddhistYear(){
+  var f = (S.boot && S.boot.settings && S.boot.settings.dateFormat) || 'ค.ศ. (2026)';
+  return String(f).indexOf('พ.ศ.') === 0;
+}
+function displayYear(ce){
+  return useBuddhistYear() ? Number(ce) + 543 : Number(ce);
+}
+
 function thDate(iso){
   if (!iso) return '–';
   var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return esc(iso);
-  return Number(m[3]) + ' ' + TH_MON[Number(m[2])-1] + ' ' + (Number(m[1])+543);
+  return Number(m[3]) + ' ' + TH_MON[Number(m[2])-1] + ' ' + displayYear(m[1]);
 }
 function thDateShort(iso){
   if (!iso) return '–';
   var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return esc(iso);
-  return Number(m[3]) + '/' + Number(m[2]) + '/' + String(Number(m[1])+543).slice(2);
+  return Number(m[3]) + '/' + Number(m[2]) + '/' + String(displayYear(m[1])).slice(2);
 }
 function daysAgo(iso){
   if (!iso) return null;
@@ -2318,7 +2333,8 @@ function renderDebt(d){
       var cum = y.cumulative != null ? y.cumulative : 0;
       var p = d.totalDebt ? (cum / d.totalDebt * 100) : 0;
       return '<tr onclick="setYearFromTable(' + y.year + ')" style="cursor:pointer">' +
-        '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
+        '<td><b>' + displayYear(y.year) + '</b>' +
+          (useBuddhistYear() ? ' <span class="faint fs12">/ ' + y.year + '</span>' : '') + '</td>' +
         '<td class="num">' + money(y.principal) + '</td>' +
         '<td class="num">' + (y.interest ? money(y.interest) : '–') + '</td>' +
         '<td class="num"><b>' + money(y.principal + y.interest) + '</b></td>' +
@@ -3094,7 +3110,8 @@ ROUTES.finance = {
         '<th>ปี</th><th class="num">รายรับ</th><th class="num">รายจ่าย</th><th class="num">คงเหลือ</th></tr></thead><tbody>' +
         d.byYear.map(function(y){
           return '<tr onclick="setYearFromTable(' + y.year + ')" style="cursor:pointer">' +
-            '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
+            '<td><b>' + displayYear(y.year) + '</b>' +
+          (useBuddhistYear() ? ' <span class="faint fs12">/ ' + y.year + '</span>' : '') + '</td>' +
             '<td class="num">' + money(y.income) + '</td><td class="num">' + money(y.expense) + '</td>' +
             '<td class="num"><b style="color:' + (y.net>=0?'var(--ok)':'var(--danger)') + '">' + money(y.net) + '</b></td></tr>';
         }).join('') + '</tbody></table></div>' : '<div class="empty">ยังไม่มีข้อมูล</div>', '', true);

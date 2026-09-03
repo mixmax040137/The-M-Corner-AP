@@ -120,6 +120,23 @@ console.log('\n── งานซ่อมเดิมกลายเป็น�
   check('ชื่องานเดิมไม่หาย', fx.some(x => x.t.some(t => t.name === 'ยาแนว')));
 }
 
+console.log('\n── ปีเปลี่ยนเป็น ค.ศ. โดยยอดเงินไม่ขยับ ──');
+{
+  const fmt = getSetting_('date_format', '');
+  check('ตั้งค่าแสดงปีเป็น ค.ศ. ให้แล้ว', fmt === 'ค.ศ. (2026)', fmt);
+  const pays = readRows_(SHEETS.DEBT_PAYMENTS);
+  const stillBE = pays.filter(r => /^(\d{1,2}\/)?25\d{2}$/.test(String(r.installment || '')));
+  check('ไม่มีช่องงวดไหนเป็น พ.ศ. เหลืออยู่', stillBE.length === 0,
+    stillBE.map(r => r.installment).join(', '));
+  const filled = pays.filter(r => String(r.installment || '').trim());
+  check('ช่องงวดยังมีค่าอยู่ ไม่ได้ถูกล้างทิ้ง', filled.length > 0, filled.length + ' รายการ');
+  const d = String(readRows_(SHEETS.FINANCE)[0].date).slice(0, 4);
+  check('วันที่ในชีตยังเป็น ค.ศ. เหมือนเดิม', d === '2026', d);
+  const paid = Math.round(debtSummary_('หนี้หลัก', 'all').paid);
+  check('ยอดชำระหนี้หลักไม่ขยับหลังแปลงปี', paid === before.mainPaid,
+    before.mainPaid + ' → ' + paid);
+}
+
 console.log('\n── ของใหม่ต้องมาครบ โดยไม่ทับของเดิม ──');
 check('สร้างชีต Users', !!ss.getSheetByName(SHEETS.USERS));
 check('สร้างชีต Sessions', !!ss.getSheetByName(SHEETS.SESSIONS));

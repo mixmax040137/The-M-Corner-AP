@@ -119,7 +119,9 @@ console.log('\n── 4c. ย้ายข้อมูลจากโครงเ
     byId['PAY-D'].note.indexOf('เดิมบันทึกเป็นค่าธรรมเนียม') >= 0, true);
 
   check('คอลัมน์อื่นไม่เลื่อน: วันที่', byId['PAY-A'].payDate, '2026-01-21');
-  check('คอลัมน์อื่นไม่เลื่อน: งวด', byId['PAY-A'].installment, '1/2569');
+  // ค่าเดิมในกรณีทดสอบคือ "1/2569" — ตัวย้ายรุ่น 8 แปลงปีเป็น ค.ศ. ให้ด้วย
+  // ยังอยู่คอลัมน์เดิม (นี่คือสิ่งที่ข้อนี้ตรวจ) แค่ปีเปลี่ยนหน่วย
+  check('คอลัมน์อื่นไม่เลื่อน: งวด (แปลงเป็น ค.ศ. แล้ว)', byId['PAY-A'].installment, '1/2026');
   check('คอลัมน์อื่นไม่เลื่อน: ช่องทาง', byId['PAY-B'].channel, 'โอน QR');
   check('คอลัมน์อื่นไม่เลื่อน: หมายเหตุ', byId['PAY-B'].note, 'ดอกเบี้ยป้าตา');
   check('คอลัมน์อื่นไม่เลื่อน: บัญชี', byId['PAY-B'].ledger, 'หนี้รอง');
@@ -1132,6 +1134,38 @@ console.log('\n── 25. วันที่ที่กรอกมาแล้
     Math.round(s.byMonth.reduce((a, m) => a + m.income, 0)), Math.round(s.income));
   check('ยอดรายจ่ายรวมทั้งปี = ผลรวมรายเดือน',
     Math.round(s.byMonth.reduce((a, m) => a + m.expense, 0)), Math.round(s.expense));
+}
+
+console.log('\n── 26. ปี ค.ศ. ทั้งระบบ ──');
+{
+  // ข้อมูลในชีตเก็บเป็น ค.ศ. เสมอ ไม่ว่าจะตั้งค่าแสดงผลเป็นอะไร
+  check('ค่าตั้งต้นคือ ค.ศ.', getSetting_('date_format', ''), 'ค.ศ. (2026)');
+  check('วันที่ในชีตเป็น ค.ศ.', readRows_(SHEETS.FINANCE)[0].date.slice(0, 4), '2026');
+  check('คอลัมน์ปีเป็น ค.ศ.', readRows_(SHEETS.FINANCE)[0].year, 2026);
+
+  check('แสดงวันที่เป็น ค.ศ.', thDate_('2026-04-26'), '26 เม.ย. 2026');
+  setSetting_('date_format', 'พ.ศ. (2569)');
+  check('สลับเป็น พ.ศ. แล้วแสดงตาม', thDate_('2026-04-26'), '26 เม.ย. 2569');
+  check('สลับแล้วข้อมูลในชีตไม่ขยับ', readRows_(SHEETS.FINANCE)[0].date.slice(0, 4), '2026');
+  setSetting_('date_format', 'ค.ศ. (2026)');
+  check('สลับกลับได้', thDate_('2026-04-26'), '26 เม.ย. 2026');
+
+  // ช่อง "งวดที่" เป็นข้อความอิสระ ชีตเดิมกรอกเป็น พ.ศ. ไว้ ต้องแปลงจริง
+  check('แปลง "7/2569" เป็น ค.ศ.', installmentToCE_('7/2569'), '7/2026');
+  check('แปลง "2565" เป็น ค.ศ.', installmentToCE_('2565'), '2022');
+  check('ค.ศ. อยู่แล้ว ไม่แปลงซ้ำ', installmentToCE_('12/2026'), '12/2026');
+  check('ช่องว่างไม่พัง', installmentToCE_(''), '');
+  // ต้องไม่ไปแตะเลขที่บังเอิญคล้ายปี
+  check('ชื่อร้านที่มีเลขคล้ายปี ไม่ถูกแปลง',
+    installmentToCE_('ร้าน ฟาฮาน่า แมทเทรส 2560 จำกัด'), 'ร้าน ฟาฮาน่า แมทเทรส 2560 จำกัด');
+  check('รหัสรายการที่มีเลขคล้ายปี ไม่ถูกแปลง',
+    installmentToCE_('BUY-MTL6QOVE2531'), 'BUY-MTL6QOVE2531');
+
+  const pays = readRows_(SHEETS.DEBT_PAYMENTS);
+  check('ไม่มีงวดไหนเป็น พ.ศ. เหลืออยู่',
+    pays.filter(function (r) { return /^(\d{1,2}\/)?25\d{2}$/.test(String(r.installment || '')); }).length, 0);
+  check('ช่องงวดยังมีค่าอยู่ครบ ไม่ได้ถูกล้างทิ้ง',
+    pays.filter(function (r) { return String(r.installment || '').trim(); }).length > 30, true);
 }
 
 console.log('\n════════════════════════════');

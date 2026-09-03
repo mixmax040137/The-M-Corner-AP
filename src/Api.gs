@@ -58,6 +58,7 @@ var API_ROUTES = {
         refreshSeconds: Number(getSetting_('refresh_seconds', 300)),
         theme: getSetting_('theme', 'ตามเครื่อง'),
         startPage: getSetting_('start_page', 'แดชบอร์ด'),
+        dateFormat: getSetting_('date_format', 'ค.ศ. (2026)'),
         currency: getSetting_('currency', 'บาท'),
         defaultDueDay: Number(getSetting_('default_due_day', 20)),
         ocrEnabled: String(getSetting_('ocr_enabled', 'เปิด')).indexOf('เปิด') === 0,

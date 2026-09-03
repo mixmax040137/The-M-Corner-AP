@@ -17,6 +17,7 @@ function runMigrations_() {
   if (from < 4) done.push(migrateV4Users_());
   if (from < 5) done.push(migrateV5RefreshRate_());
   if (from < 7) done.push(migrateV7RepairTodo_());
+  if (from < 8) done.push(migrateV8ChristianYear_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -356,6 +357,52 @@ function migrateV7RepairTodo_() {
   rewriteSheet_(name, rows);
   applyFormatting_(name);
   return 'งานซ่อมห้อง: แปลงเป็นเช็คลิสต์ ' + changed + ' รายการ';
+}
+
+/**
+ * รุ่น 8 — แสดงปีเป็น ค.ศ. ให้ตรงกับปีที่เก็บในชีตและปฏิทินสากล
+ *
+ * ข้อมูลในชีตเก็บเป็น ค.ศ. มาตลอดอยู่แล้ว (2026-01-19) ไม่มีอะไรต้องแปลง
+ * ที่เป็น พ.ศ. คือหน้าจอเท่านั้น — และช่องตั้งค่า "รูปแบบปีที่แสดง"
+ * ก็มีมาตั้งแต่แรกแต่ไม่มีโค้ดไหนอ่านค่ามันเลย กดเปลี่ยนแล้วไม่มีอะไรเกิดขึ้น
+ *
+ * รุ่นนี้ทำให้ช่องนั้นใช้งานได้จริง และตั้งค่าเดิมของทุกเครื่องเป็น ค.ศ.
+ * ใครอยากกลับไปใช้ พ.ศ. ก็เลือกได้เองในหน้าตั้งค่า
+ */
+function migrateV8ChristianYear_() {
+  var before = getSetting_('date_format', '');
+  setSetting_('date_format', 'ค.ศ. (2026)');
+
+  // ช่อง "งวดที่" ของรายการโอนใช้หนี้เป็นช่องข้อความ ชีตเดิมกรอกเป็น พ.ศ. ไว้
+  // เช่น "7/2569" หรือ "2565" — อันนี้เป็นข้อมูลจริง ไม่ใช่แค่การแสดงผล จึงต้องแปลง
+  var name = SHEETS.DEBT_PAYMENTS;
+  var rows = readRows_(name);
+  var changed = 0;
+  rows.forEach(function (r) {
+    var next = installmentToCE_(r.installment);
+    if (next !== String(r.installment == null ? '' : r.installment)) { r.installment = next; changed++; }
+  });
+  if (changed) rewriteSheet_(name, rows.map(function (r) {
+    var out = {};
+    SCHEMA[name].forEach(function (c) { out[c.key] = r[c.key]; });
+    return out;
+  }));
+
+  return 'ปีที่แสดง: ' + (before || '(ยังไม่เคยตั้ง)') + ' → ค.ศ. · แปลงช่องงวดที่ ' + changed + ' รายการ';
+}
+
+/**
+ * "7/2569" -> "7/2026" และ "2565" -> "2022"
+ *
+ * ผูกกับทั้งข้อความพอดี ไม่ใช่ค้นหาเลขลอย ๆ ตรงกลาง
+ * เพราะมีชื่อร้านอย่าง "ฟาฮาน่า แมทเทรส 2560 จำกัด" และรหัสรายการ
+ * อย่าง "BUY-MTL6QOVE2531" ที่มีเลขคล้ายปีอยู่ข้างใน ห้ามไปแตะ
+ */
+function installmentToCE_(text) {
+  var raw = String(text == null ? '' : text).trim();
+  var m = raw.match(/^(\d{1,2}\/)?(25\d{2})$/);
+  if (!m) return raw;
+  return (m[1] || '') + (Number(m[2]) - 543);
 }
 
 /**

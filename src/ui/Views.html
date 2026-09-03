@@ -197,7 +197,8 @@ function renderDebt(d){
       var cum = y.cumulative != null ? y.cumulative : 0;
       var p = d.totalDebt ? (cum / d.totalDebt * 100) : 0;
       return '<tr onclick="setYearFromTable(' + y.year + ')" style="cursor:pointer">' +
-        '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
+        '<td><b>' + displayYear(y.year) + '</b>' +
+          (useBuddhistYear() ? ' <span class="faint fs12">/ ' + y.year + '</span>' : '') + '</td>' +
         '<td class="num">' + money(y.principal) + '</td>' +
         '<td class="num">' + (y.interest ? money(y.interest) : '–') + '</td>' +
         '<td class="num"><b>' + money(y.principal + y.interest) + '</b></td>' +
@@ -973,7 +974,8 @@ ROUTES.finance = {
         '<th>ปี</th><th class="num">รายรับ</th><th class="num">รายจ่าย</th><th class="num">คงเหลือ</th></tr></thead><tbody>' +
         d.byYear.map(function(y){
           return '<tr onclick="setYearFromTable(' + y.year + ')" style="cursor:pointer">' +
-            '<td><b>' + y.year + '</b> <span class="faint fs12">/ ' + (y.year+543) + '</span></td>' +
+            '<td><b>' + displayYear(y.year) + '</b>' +
+          (useBuddhistYear() ? ' <span class="faint fs12">/ ' + y.year + '</span>' : '') + '</td>' +
             '<td class="num">' + money(y.income) + '</td><td class="num">' + money(y.expense) + '</td>' +
             '<td class="num"><b style="color:' + (y.net>=0?'var(--ok)':'var(--danger)') + '">' + money(y.net) + '</b></td></tr>';
         }).join('') + '</tbody></table></div>' : '<div class="empty">ยังไม่มีข้อมูล</div>', '', true);

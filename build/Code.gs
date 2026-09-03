@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-03 03:42 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-03 04:16 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.3.0',
+  VERSION: '1.3.1',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -591,6 +591,29 @@ function toDate_(v) {
   }
   var parsed = new Date(s);
   return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * ตรวจวันที่ที่ผู้ใช้กรอกมา แล้วคืนเป็น 'YYYY-MM-DD'
+ *
+ * ถ้าอ่านไม่ออกต้องบอกกลับไปเลย ห้ามเก็บเป็นค่าว่างเงียบ ๆ
+ * เพราะแถวนั้นจะยังถูกนับในยอดรวมของปี (ปีถูกเดาจากค่าสำรอง)
+ * แต่ไม่โผล่ในเดือนไหนเลย ทำให้ตัวเลขสรุปกับกราฟไม่ตรงกัน
+ * โดยที่เจ้าของหอไม่มีทางรู้ว่าหายไปไหน
+ *
+ * @param {*} value ค่าที่กรอกมา
+ * @param {string} label ชื่อช่อง ใช้ในข้อความบอกผู้ใช้
+ * @param {boolean=} required ต้องกรอกหรือไม่
+ */
+function cleanDate_(value, label, required) {
+  var raw = String(value == null ? '' : value).trim();
+  if (!raw) {
+    if (required) throw new Error('กรุณาระบุ' + label);
+    return '';
+  }
+  var d = toDate_(raw);
+  if (!d) throw new Error(label + 'ไม่ถูกต้อง: "' + raw + '" — ไม่มีวันนี้อยู่จริง');
+  return toIsoDate_(d);
 }
 
 /** Date -> 'YYYY-MM-DD' (โซนเวลาไทย) */
@@ -2897,9 +2920,10 @@ function financeSummary_(year) {
 }
 
 function saveFinance_(obj) {
+  obj.date = cleanDate_(obj.date, 'วันที่', true);
   var d = toDate_(obj.date);
-  obj.year = (d ? d.getFullYear() : null) || obj.year || new Date().getFullYear();
-  obj.month = (d ? d.getMonth() + 1 : null) || obj.month || null;
+  obj.year = d.getFullYear();
+  obj.month = d.getMonth() + 1;
   obj.flow = isIncome_(obj.kind) ? 'รายรับ' : 'รายจ่าย';
   obj.updatedAt = new Date();
 
@@ -3888,7 +3912,8 @@ function deleteDebt_(id) {
 
 function saveDebtPayment_(obj) {
   var now = new Date();
-  obj.year = yearOf_(obj.payDate) || obj.year || new Date().getFullYear();
+  obj.payDate = cleanDate_(obj.payDate, 'วันที่ชำระ', true);
+  obj.year = yearOf_(obj.payDate);
   obj.ledger = obj.ledger || LEDGER_MAIN;
   // "รวมที่โอน" คิดให้เองเสมอ เพื่อให้ตรงกับสลิปและกันกรอกไม่ตรงกัน
   obj.principal = toNumber_(obj.principal) || 0;
@@ -4136,7 +4161,8 @@ function billOf_(p) {
 }
 
 function savePurchase_(obj) {
-  obj.year = yearOf_(obj.buyDate) || obj.year || new Date().getFullYear();
+  obj.buyDate = cleanDate_(obj.buyDate, 'วันที่ซื้อ', true);
+  obj.year = yearOf_(obj.buyDate);
   if (obj.buyDate && obj.warrantyMonths) {
     obj.warrantyEnd = toIsoDate_(addMonths_(obj.buyDate, obj.warrantyMonths));
   }

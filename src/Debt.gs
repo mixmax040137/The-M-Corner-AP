@@ -339,7 +339,8 @@ function deleteDebt_(id) {
 
 function saveDebtPayment_(obj) {
   var now = new Date();
-  obj.year = yearOf_(obj.payDate) || obj.year || new Date().getFullYear();
+  obj.payDate = cleanDate_(obj.payDate, 'วันที่ชำระ', true);
+  obj.year = yearOf_(obj.payDate);
   obj.ledger = obj.ledger || LEDGER_MAIN;
   // "รวมที่โอน" คิดให้เองเสมอ เพื่อให้ตรงกับสลิปและกันกรอกไม่ตรงกัน
   obj.principal = toNumber_(obj.principal) || 0;

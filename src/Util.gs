@@ -251,6 +251,29 @@ function toDate_(v) {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/**
+ * ตรวจวันที่ที่ผู้ใช้กรอกมา แล้วคืนเป็น 'YYYY-MM-DD'
+ *
+ * ถ้าอ่านไม่ออกต้องบอกกลับไปเลย ห้ามเก็บเป็นค่าว่างเงียบ ๆ
+ * เพราะแถวนั้นจะยังถูกนับในยอดรวมของปี (ปีถูกเดาจากค่าสำรอง)
+ * แต่ไม่โผล่ในเดือนไหนเลย ทำให้ตัวเลขสรุปกับกราฟไม่ตรงกัน
+ * โดยที่เจ้าของหอไม่มีทางรู้ว่าหายไปไหน
+ *
+ * @param {*} value ค่าที่กรอกมา
+ * @param {string} label ชื่อช่อง ใช้ในข้อความบอกผู้ใช้
+ * @param {boolean=} required ต้องกรอกหรือไม่
+ */
+function cleanDate_(value, label, required) {
+  var raw = String(value == null ? '' : value).trim();
+  if (!raw) {
+    if (required) throw new Error('กรุณาระบุ' + label);
+    return '';
+  }
+  var d = toDate_(raw);
+  if (!d) throw new Error(label + 'ไม่ถูกต้อง: "' + raw + '" — ไม่มีวันนี้อยู่จริง');
+  return toIsoDate_(d);
+}
+
 /** Date -> 'YYYY-MM-DD' (โซนเวลาไทย) */
 function toIsoDate_(v) {
   var d = toDate_(v);

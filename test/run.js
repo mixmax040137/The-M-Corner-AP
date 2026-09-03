@@ -1095,6 +1095,45 @@ console.log('\n── 24. วันที่ที่ไม่มีอยู่
   check('31 เม.ย. ถูกปฏิเสธ', toIsoDate_('31/04/2569'), '');
 }
 
+console.log('\n── 25. วันที่ที่กรอกมาแล้วอ่านไม่ออก ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  // เดิมบันทึกผ่านโดยเก็บวันที่เป็นค่าว่าง แถวนั้นจึงถูกนับในยอดรวมของปี
+  // (ปีถูกเดาจากค่าสำรอง) แต่ไม่โผล่ในเดือนไหนเลย ยอดสรุปกับกราฟจึงไม่ตรงกัน
+  const before = financeSummary_('2026');
+  const r = api('finance.save', { _key: admKey,
+    record: { date: '31/02/2569', kind: 'ค่าไฟฟ้า', amount: 9999 } });
+  check('วันที่ที่ไม่มีอยู่จริง ถูกปฏิเสธตั้งแต่ตอนบันทึก', r.ok, false);
+  check('บอกให้รู้ว่าผิดตรงไหน', /ไม่มีวันนี้อยู่จริง/.test(r.error || ''), true);
+  check('ยอดรวมไม่ขยับ', Math.round(financeSummary_('2026').expense), Math.round(before.expense));
+
+  check('วันที่ซื้อที่อ่านไม่ออก ถูกปฏิเสธ',
+    api('purchase.save', { _key: admKey, record: { item: 'ทดสอบ', price: 1, buyDate: '31/04/2569' } }).ok, false);
+  check('วันที่ชำระที่อ่านไม่ออก ถูกปฏิเสธ',
+    api('debt.savePayment', { _key: admKey,
+      record: { ledger: 'หนี้หลัก', payDate: '2026-02-30', principal: 100 } }).ok, false);
+
+  check('ไม่กรอกวันที่เลย ก็ถูกปฏิเสธ',
+    api('finance.save', { _key: admKey, record: { kind: 'ค่าไฟฟ้า', amount: 1 } }).ok, false);
+
+  // วันที่ปกติต้องผ่านเหมือนเดิม
+  const good = api('finance.save', { _key: admKey,
+    record: { date: '15/06/2569', kind: 'ค่าไฟฟ้า', amount: 500 } });
+  check('วันที่แบบไทยปกติยังบันทึกได้', good.ok, true);
+  if (good.ok) {
+    check('แปลงเป็นวันที่สากลให้ถูก', good.data.date, '2026-06-15');
+    check('เดือนถูกเติมให้ถูกต้อง', good.data.month, 6);
+    api('finance.delete', { _key: admKey, id: good.data.id });
+  }
+
+  // ยอดรวมของปีต้องเท่ากับผลรวมรายเดือนเสมอ — กราฟกับตัวเลขสรุปจะได้ไม่ขัดกัน
+  const s = financeSummary_('2026');
+  check('ยอดรายรับรวมทั้งปี = ผลรวมรายเดือน',
+    Math.round(s.byMonth.reduce((a, m) => a + m.income, 0)), Math.round(s.income));
+  check('ยอดรายจ่ายรวมทั้งปี = ผลรวมรายเดือน',
+    Math.round(s.byMonth.reduce((a, m) => a + m.expense, 0)), Math.round(s.expense));
+}
+
 console.log('\n════════════════════════════');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

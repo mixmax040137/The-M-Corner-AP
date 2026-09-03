@@ -1085,7 +1085,17 @@ function load(opts){
 
   return r.load().then(function(data){
     S.cache[S.page] = data;
+
+    // หน้าแต่ละหน้ามีปีให้เลือกไม่เท่ากัน (เช่นซื้อของมีถึงปี 2563 แต่รายรับ-รายจ่ายมีแค่ปีล่าสุด)
+    // ถ้าปีที่ค้างอยู่ไม่มีในหน้านี้ syncYearOptions จะปรับปีให้ — แต่ข้อมูลที่เพิ่งดึงมา
+    // เป็นของปีเก่า ส่วนป้ายกำกับใช้ปีใหม่ กลายเป็นบอกว่า "ยอดซื้อ ปี 2026 = 0 บาท"
+    // ทั้งที่ปีนั้นมียอดจริง — ต้องดึงใหม่ให้ตรงกับปีที่ปรับแล้ว
+    var yearBefore = String(S.year);
     syncYearOptions(data.years || data.available || []);
+    if (String(S.year) !== yearBefore && !opts._retried) {
+      return load({ quiet: quiet, _retried: true });
+    }
+
     view.innerHTML = r.render(data);
     labelCells(view);
     applyReadOnly(view);

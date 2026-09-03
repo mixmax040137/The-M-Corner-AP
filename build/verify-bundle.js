@@ -75,7 +75,12 @@ console.log('\n── build/AllInOne.gs ──');
   // เตรียมคำตอบของทุกคำสั่งไว้ล่วงหน้า (เพราะเบราว์เซอร์คุยกับ Node ตรง ๆ ไม่ได้)
   const fx = {};
   const put = (a, p) => { fx[a + '|' + JSON.stringify(p || {})] = api(a, Object.assign({ _key: adminKey }, p)); };
-  const years = ['all', '2026', '2025'];
+  // ทุกปีที่มีข้อมูลจริง ไม่ใช่แค่ 2-3 ปีล่าสุด — ผู้ใช้เลือกปีไหนก็ได้จากช่องด้านบน
+  // ถ้าเตรียมไว้ไม่ครบ ปีที่เหลือจะไม่เคยถูกทดสอบเลย
+  const years = ['all'].concat(uniqueYears_(readRows_(SHEETS.FINANCE)
+    .concat(readRows_(SHEETS.PURCHASES)).concat(readRows_(SHEETS.ROOM_REPAIRS))
+    .concat(readRows_(SHEETS.AC_SERVICE)).concat(readRows_(SHEETS.DEBT_PAYMENTS)),
+    ['date', 'buyDate', 'repairDate', 'bookDate', 'serviceDate', 'payDate']).map(String));
   put('app.bootstrap', {}); put('app.version', {});
   years.forEach(year => {
     put('app.dashboard', { year });
@@ -325,6 +330,58 @@ console.log('\n── build/AllInOne.gs ──');
   }
 
   /* ---------- เช็คลิสต์งานซ่อม ---------- */
+  console.log('\n── ปีที่หน้านั้นไม่มีข้อมูล ──');
+  {
+    // แต่ละหน้ามีช่วงปีไม่เท่ากัน ถ้าปีที่ค้างอยู่ไม่มีในหน้าใหม่ ระบบจะปรับปีให้
+    // แต่ต้องดึงข้อมูลใหม่ด้วย ไม่ใช่เอาข้อมูลปีเก่ามาโชว์ใต้ป้ายปีใหม่
+    // เคยเกิดขึ้นจริง: หน้าบอก "ยอดซื้อ ปี 2026 = 0 บาท" ทั้งที่ปีนั้นซื้อจริง 28,676 บาท
+    await pg.evaluate(() => { S.year = '2018'; go('purchases'); });
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 9000 });
+    await pg.waitForTimeout(600);
+    const a = await pg.evaluate(() => ({
+      sel: document.getElementById('yearSel').value,
+      dataYear: String((S.cache.purchases || {}).selectedYear),
+      kpi: (document.querySelector('.kpi') || {}).innerText.replace(/\n/g, ' ')
+    }));
+    check('เลือกปีที่หน้านั้นไม่มี แล้วป้ายกับข้อมูลยังตรงกัน', a.sel === a.dataYear,
+      'ช่องบอกปี ' + a.sel + ' แต่ข้อมูลเป็นของปี ' + a.dataYear);
+    check('ยอดที่แสดงเป็นยอดจริงของปีนั้น ไม่ใช่ศูนย์', !/\b0 ฿/.test(a.kpi), a.kpi);
+
+    // สลับข้ามหน้าที่ช่วงปีต่างกัน
+    await pg.evaluate(() => { S.year = '2020'; go('purchases'); });
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 9000 });
+    await pg.waitForTimeout(450);
+    await pg.evaluate(() => go('finance'));
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 9000 });
+    await pg.waitForTimeout(600);
+    const c = await pg.evaluate(() => ({
+      sel: document.getElementById('yearSel').value,
+      dataYear: String((S.cache.finance || {}).year)
+    }));
+    check('สลับข้ามหน้าที่ช่วงปีต่างกัน ป้ายกับข้อมูลยังตรงกัน', c.sel === c.dataYear,
+      'ช่องบอกปี ' + c.sel + ' แต่ข้อมูลเป็นของปี ' + c.dataYear);
+  }
+
+  console.log('\n── ทุกปีในช่องเลือกปี ต้องเปิดได้จริง ──');
+  {
+    const years = await pg.evaluate(() =>
+      [].slice.call(document.getElementById('yearSel').options).map(o => o.value));
+    check('ช่องเลือกปีมีให้เลือกมากกว่า 1 ปี', years.length > 1, years.join(','));
+    const broken = [];
+    for (const y of years) {
+      for (const page of ['finance', 'repairs', 'purchases']) {
+        await pg.evaluate(([p, yr]) => { S.year = yr; go(p); }, [page, y]);
+        await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 9000 }).catch(() => {});
+        await pg.waitForTimeout(90);
+        const t = await pg.evaluate(() => document.getElementById('view').innerText);
+        if (/undefined|NaN|\[object Object\]|โหลดข้อมูลไม่สำเร็จ/.test(t)) broken.push(page + ' ปี ' + y);
+      }
+    }
+    check('ทุกปี × ทุกหน้า เปิดได้ไม่มีค่าเพี้ยน (' + years.length + ' ปี)',
+      broken.length === 0, broken.join(', '));
+    await pg.evaluate(() => { S.year = '2026'; });
+  }
+
   console.log('\n── จอมือถือ (ย่อหน้าต่างลง ไม่ได้โหลดหน้าใหม่) ──');
   await pg.setViewportSize({ width: 390, height: 844 });
   await pg.evaluate(() => { S.year = '2026'; go('finance'); });

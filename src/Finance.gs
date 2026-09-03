@@ -95,9 +95,10 @@ function financeSummary_(year) {
 }
 
 function saveFinance_(obj) {
+  obj.date = cleanDate_(obj.date, 'วันที่', true);
   var d = toDate_(obj.date);
-  obj.year = (d ? d.getFullYear() : null) || obj.year || new Date().getFullYear();
-  obj.month = (d ? d.getMonth() + 1 : null) || obj.month || null;
+  obj.year = d.getFullYear();
+  obj.month = d.getMonth() + 1;
   obj.flow = isIncome_(obj.kind) ? 'รายรับ' : 'รายจ่าย';
   obj.updatedAt = new Date();
 

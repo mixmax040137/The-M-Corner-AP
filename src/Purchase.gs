@@ -212,7 +212,8 @@ function billOf_(p) {
 }
 
 function savePurchase_(obj) {
-  obj.year = yearOf_(obj.buyDate) || obj.year || new Date().getFullYear();
+  obj.buyDate = cleanDate_(obj.buyDate, 'วันที่ซื้อ', true);
+  obj.year = yearOf_(obj.buyDate);
   if (obj.buyDate && obj.warrantyMonths) {
     obj.warrantyEnd = toIsoDate_(addMonths_(obj.buyDate, obj.warrantyMonths));
   }

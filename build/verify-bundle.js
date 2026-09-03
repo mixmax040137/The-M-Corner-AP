@@ -325,6 +325,88 @@ console.log('\n── build/AllInOne.gs ──');
   }
 
   /* ---------- เช็คลิสต์งานซ่อม ---------- */
+  console.log('\n── จอมือถือ (ย่อหน้าต่างลง ไม่ได้โหลดหน้าใหม่) ──');
+  await pg.setViewportSize({ width: 390, height: 844 });
+  await pg.evaluate(() => { S.year = '2026'; go('finance'); });
+  await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 8000 });
+  await pg.waitForTimeout(350);
+
+  check('ย่อหน้าต่างแล้วแถบล่างโผล่เอง ไม่ต้องโหลดใหม่',
+    await pg.evaluate(() => getComputedStyle(document.getElementById('tabBar')).display !== 'none'));
+  check('แท็บสูงพอให้นิ้วกด',
+    await pg.evaluate(() => document.querySelector('.tab').getBoundingClientRect().height) >= 44);
+  check('แท็บมาจากรายการหน้าชุดเดียวกับเมนูข้าง',
+    await pg.evaluate(() => document.querySelectorAll('.tab').length === PAGES.filter(p => p.tab).length + 1));
+  check('เมนูข้างถูกเก็บเป็นลิ้นชัก',
+    await pg.evaluate(() => document.querySelector('.nav').getBoundingClientRect().left < 0));
+  check('ตารางกลายเป็นการ์ดทีละรายการ',
+    await pg.evaluate(() => getComputedStyle(document.querySelector('.t tbody tr')).display) === 'block');
+  check('แต่ละช่องมีชื่อคอลัมน์กำกับ',
+    await pg.evaluate(() => !!document.querySelector('.t tbody td[data-label]')));
+  check('ตารางไม่ล้นจอแนวนอน',
+    await pg.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
+    await pg.evaluate(() => document.documentElement.scrollWidth + ' > ' + document.documentElement.clientWidth));
+  check('ตัวเลขสรุปเรียง 2 ช่องต่อแถว ไม่ใช่ช่องเดียวจนกินทั้งจอ',
+    await pg.evaluate(() => getComputedStyle(document.querySelector('.grid.g4')).gridTemplateColumns.split(' ').length) === 2);
+  check('เนื้อหาเว้นที่ให้แถบล่าง ไม่โดนบัง',
+    await pg.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.content')).paddingBottom)) >= 70);
+  check('ช่องกรอกฟอนต์ 16px (iOS จะได้ไม่ซูมเองตอนแตะ)',
+    await pg.evaluate(() => parseFloat(getComputedStyle(document.getElementById('yearSel')).fontSize)) >= 16);
+
+  // กดแท็บต้องเปลี่ยนหน้าจริง ด้วย go() ตัวเดียวกับเมนูข้าง
+  await pg.evaluate(() => document.getElementById('tab-repairs').click());
+  await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 8000 });
+  await pg.waitForTimeout(300);
+  check('กดแท็บแล้วเปลี่ยนหน้าจริง', await pg.evaluate(() => S.page) === 'repairs');
+  check('แท็บที่เปิดอยู่ถูกไฮไลต์',
+    await pg.evaluate(() => document.getElementById('tab-repairs').classList.contains('on')));
+  check('ตัวเลขงานค้างขึ้นบนแท็บด้วย',
+    await pg.evaluate(() => { const e = document.getElementById('tabbadge-ac'); return !!e && e.style.display !== 'none'; }));
+
+  // หน้าที่ไม่มีแท็บ: ปุ่ม "เพิ่มเติม" ต้องสว่างแทน และรับตัวเลขงานค้างของหน้าพวกนั้นมารวม
+  await pg.evaluate(() => go('purchases'));
+  await pg.waitForTimeout(450);
+  check('หน้าที่ไม่มีแท็บ ปุ่ม "เพิ่มเติม" สว่างแทน',
+    await pg.evaluate(() => document.getElementById('tab-more').classList.contains('on')));
+  check('งานค้างของหน้าที่ไม่มีแท็บ มารวมที่ปุ่มเพิ่มเติม',
+    await pg.evaluate(() => { ALERTS.counts = Object.assign({}, ALERTS.counts, { building: 3 }); paintBadges();
+      const e = document.getElementById('tabbadge-more');
+      return e.style.display !== 'none' && e.textContent === '3'; }));
+
+  await pg.evaluate(() => { document.getElementById('tab-more').click(); });
+  await pg.waitForTimeout(320);
+  check('กดเพิ่มเติมแล้วลิ้นชักเมนูเปิด',
+    await pg.evaluate(() => document.querySelector('.nav').classList.contains('open')));
+  check('ลิ้นชักอยู่เหนือแถบล่าง ไม่โดนทับ',
+    await pg.evaluate(() => Number(getComputedStyle(document.querySelector('.nav')).zIndex) >
+                            Number(getComputedStyle(document.getElementById('tabBar')).zIndex)));
+  await pg.evaluate(() => go('finance'));
+  await pg.waitForTimeout(400);
+  check('เลือกหน้าจากลิ้นชักแล้วลิ้นชักปิดเอง',
+    await pg.evaluate(() => !document.querySelector('.nav').classList.contains('open')));
+
+  // ฟอร์มบนมือถือ
+  await pg.evaluate(() => { const b = document.querySelector('#view [onclick^="formFinance({"]'); if (b) b.click(); });
+  await pg.waitForTimeout(350);
+  check('เปิดฟอร์มจากการ์ดได้ และเป็นการแก้ของเดิม', await pg.evaluate(() => !!(FORM.rec || {}).id));
+  check('ฟอร์มเต็มจอบนมือถือ',
+    await pg.evaluate(() => { const r = document.querySelector('.modal').getBoundingClientRect();
+      return r.width >= innerWidth - 1 && r.height >= innerHeight * 0.9; }));
+  check('ปุ่มบันทึกติดขอบล่าง ไม่ต้องเลื่อนหา',
+    await pg.evaluate(() => getComputedStyle(document.querySelector('.modal-f')).position) === 'sticky');
+  await pg.evaluate(() => closeModal());
+
+  // ขยายกลับ ต้องกลับเป็นหน้าเดสก์ท็อปเหมือนเดิมทันที
+  await pg.setViewportSize({ width: 1280, height: 900 });
+  await pg.waitForTimeout(320);
+  check('ขยายหน้าต่างกลับ แถบล่างหายไปเอง',
+    await pg.evaluate(() => getComputedStyle(document.getElementById('tabBar')).display) === 'none');
+  check('ขยายกลับแล้วเมนูข้างกลับมา',
+    await pg.evaluate(() => document.querySelector('.nav').getBoundingClientRect().left >= 0));
+  check('ขยายกลับแล้วตารางกลับเป็นตาราง',
+    await pg.evaluate(() => getComputedStyle(document.querySelector('.t tbody tr')).display) !== 'block');
+  check('หน้าจอมือถือไม่มี JS error', errs.length === 0, errs.join(' | '));
+
   console.log('\n── กราฟกำไรขาดทุน ──');
   await pg.evaluate(() => { S.year = '2026'; go('finance'); });
   await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 8000 });

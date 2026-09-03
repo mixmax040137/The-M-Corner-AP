@@ -124,6 +124,11 @@ button,input,select,textarea{font:inherit;color:inherit}
 
 .burger{display:none;background:0;border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer}
 
+/* แถบล่างสำหรับมือถือ — ปุ่มชุดเดียวกับเมนูข้าง เรียก go() ตัวเดียวกัน
+   ไม่ใช่หน้าจอคนละชุด จอกว้างซ่อนไว้ จอแคบค่อยโผล่ (ดู media query ท้ายไฟล์)
+   ประกาศไว้ตรงนี้เพราะต้องมาก่อน media query ไม่งั้น display:none จะชนะ */
+.tabbar{display:none}
+
 /* ============ controls ============ */
 .sel,.inp,.ta{
   background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);
@@ -314,6 +319,16 @@ table.t tbody tr:hover{background:var(--surface-2)}
 @media (max-width:900px){
   .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
   .g3{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* แท็บเล็ต/หน้าต่างย่อ: เมนูข้างยังอยู่ ที่เหลือให้แถบหัวเลยแคบ
+   บีบช่องค้นหาลงหน่อยจะได้ไม่ตกบรรทัดจนแถบหัวสูงขึ้นอีกเท่าตัว */
+@media (max-width:1040px){
+  .top-right #searchBox{width:132px!important}
+  .top-right #yearSel{max-width:132px}
+  /* ตัวบอกสถานะเหลือแต่ไอคอน (ข้อความยังอ่านได้จากการชี้ค้าง)
+     กฎเดียวกับที่ใช้บนมือถืออยู่แล้ว แค่ขยับให้เริ่มเร็วขึ้น */
+  .sync-pill .sync-label{display:none}
+  .sync-pill{padding:3px 8px}
 }
 @media (max-width:760px){
   .nav{
@@ -625,6 +640,117 @@ button.sync-pill:active{transform:translateY(1px)}
   .todo-count{width:100%;margin:6px 0 0;text-align:right}
 }
 
+
+/* ==================================================================
+   จอแคบ (มือถือ / แท็บเล็ตแนวตั้ง)
+   ==================================================================
+   ไม่ได้แยกไฟล์หรือแยกเทมเพลตสำหรับมือถือ — HTML ชุดเดียวกันทั้งหมด
+   ตรงนี้เปลี่ยนแค่ "วางตรงไหน" ข้อมูล ปุ่ม ตรรกะ ใช้ร่วมกันหมด
+   ย่อ-ขยายหน้าต่างบนคอมก็สลับได้ทันที และเพิ่มฟีเจอร์ครั้งเดียวได้ทั้งสองแบบ
+------------------------------------------------------------------ */
+@media (max-width:760px){
+
+  /* ---- แถบล่าง: ปุ่มอยู่ระดับนิ้วโป้ง ไม่ต้องเอื้อมไปมุมซ้ายบน ---- */
+  .tabbar{
+    display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;
+    background:var(--surface);border-top:1px solid var(--line);
+    padding-bottom:env(safe-area-inset-bottom);
+    box-shadow:0 -2px 14px rgba(15,23,41,.07);
+  }
+  .tab{
+    flex:1 1 0;min-width:0;min-height:54px;padding:7px 2px 6px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    border:0;background:0;cursor:pointer;color:var(--muted);
+    font-size:10.5px;line-height:1.2;position:relative;
+  }
+  .tab .ic{font-size:18px;line-height:1}
+  .tab .tl{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab.on{color:var(--brand);font-weight:700}
+  .tab.on .ic{transform:translateY(-1px)}
+  .tab .badge{
+    position:absolute;top:3px;left:50%;margin-left:3px;
+    background:var(--warn);color:#fff;border-radius:99px;
+    min-width:16px;height:16px;padding:0 4px;
+    font-size:10px;line-height:16px;font-weight:700;text-align:center;
+    box-shadow:0 0 0 2px var(--surface);
+  }
+  /* เว้นที่ให้แถบล่าง ไม่ให้ทับเนื้อหาบรรทัดสุดท้าย */
+  .content{padding:14px 14px calc(74px + env(safe-area-inset-bottom))}
+  .tabbar ~ .ov,.nav{z-index:60}
+
+  /* ---- แถบหัว: บีบให้เหลือแถวเดียวเท่าที่ไหว ---- */
+  .top{padding:6px 10px;gap:7px;row-gap:6px}
+  .top h1{font-size:15.5px}
+  .top .sub{display:none}          /* คำอธิบายหน้าไปอยู่ในเมนูข้างแล้ว ไม่ต้องซ้ำ */
+  .top-right{gap:6px;width:100%;margin-left:0}
+  .top-right #searchBox{flex:1 1 110px;width:auto!important;min-width:0}
+  .top-right #yearSel{flex:0 1 auto;max-width:42vw}
+  .burger{padding:7px 10px}
+  /* ช่องกรอกบนแถบหัวเตี้ยลง แต่ยังคง 16px กัน iOS ซูมเอง */
+  .top .inp,.top .sel{padding:6px 10px}
+  .top .btn.icon{padding:6px 9px}
+
+  /* ---- ตัวเลขสรุป: 2 ช่องต่อแถว ไม่ใช่ช่องเดียวจนกินทั้งจอ ---- */
+  .g4,.g3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g2{grid-template-columns:1fr}
+  .kpi{padding:11px 12px}
+  .kpi .v{font-size:19px}
+  .kpi .l{font-size:11px}
+  .kpi .s{font-size:10.5px}
+
+  /* ---- ตาราง -> การ์ดทีละรายการ ----
+     ชื่อคอลัมน์มาจาก data-label ที่ labelCells() ติดไว้ให้หลังวาดหน้า
+     จึงใช้ได้กับทุกตารางในระบบโดยไม่ต้องแก้ตารางทีละอัน */
+  .tw{overflow-x:visible}
+  .t{min-width:0!important;display:block;width:100%;border:0}
+  .t thead{display:none}
+  .t tbody{display:block}
+  .t tbody tr{
+    display:block;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r-sm);padding:9px 12px;margin-bottom:8px;
+  }
+  .t tbody tr:last-child{margin-bottom:0}
+  .t tbody td{
+    display:flex;gap:10px;align-items:baseline;
+    padding:3px 0;border:0;text-align:left!important;white-space:normal;
+  }
+  .t tbody td:empty,.t tbody td.cell-empty{display:none}
+  .t tbody td[data-label]::before{
+    content:attr(data-label);flex:0 0 36%;min-width:0;
+    color:var(--muted);font-size:11.5px;font-weight:500;
+  }
+  .t tbody td.num{justify-content:flex-start}
+  .t tbody td.cell-actions{
+    justify-content:flex-end;gap:6px;padding-top:9px;margin-top:6px;
+    border-top:1px solid var(--line-2);
+  }
+  .t tbody tr.row-wide td{display:block;text-align:center!important}
+  .t tbody tr.row-wide td::before{content:none}
+
+  /* ---- ปุ่มต้องกดโดนด้วยนิ้ว ---- */
+  .btn{padding:9px 14px}
+  .btn.sm{padding:7px 11px;font-size:13px}
+  .btn.icon{padding:8px 10px}
+  .chip{padding:7px 14px}
+  .sel,.inp{padding:9px 11px;font-size:16px}   /* 16px กัน iOS ซูมเองตอนแตะช่องกรอก */
+  .t .btn.icon{padding:7px 10px}
+
+  /* ---- กราฟ: ให้เตี้ยลงหน่อย จะได้ไม่กินทั้งจอ ---- */
+  .chart{min-width:460px}
+  .chart-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+  /* ---- กล่องซ้อน: เต็มจอแบบแผ่นเลื่อนขึ้น ปุ่มบันทึกติดขอบล่างเสมอ ---- */
+  .modal-f{position:sticky;bottom:0;background:var(--surface);
+    padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+}
+
+/* จอเล็กมาก (เครื่องเล็ก / ย่อหน้าต่างแคบสุด) */
+@media (max-width:400px){
+  .tab .tl{font-size:9.5px}
+  .kpi .v{font-size:17.5px}
+  .t tbody td[data-label]::before{flex-basis:42%}
+}
+
 @media print{
   .nav,.top-right,.burger,.t-actions,.btn{display:none!important}
   .app{display:block} body{background:#fff}
@@ -666,6 +792,7 @@ button.sync-pill:active{transform:translateY(1px)}
 .ctip .r i{width:12px;height:2px;border-radius:2px;flex:none}
 .ctip .r b{color:var(--ink);font-variant-numeric:tabular-nums;margin-left:auto}
 .ctip .r span{color:var(--muted)}
+
 </style>
 </head>
 <body>
@@ -703,6 +830,10 @@ button.sync-pill:active{transform:translateY(1px)}
       <div class="empty"><div class="big"><span class="spin"></span></div>กำลังเชื่อมต่อระบบ…</div>
     </main>
   </div>
+
+  <!-- แถบล่างสำหรับมือถือ — อยู่ในหน้าเดียวกันนี้เสมอ ไม่ได้แยกไฟล์
+       CSS เป็นตัวตัดสินว่าจอไหนเห็น ย่อ-ขยายหน้าต่างแล้วสลับได้ทันที -->
+  <nav class="tabbar" id="tabBar" aria-label="เมนูหลัก"></nav>
 </div>
 
 <div id="authRoot"></div>
@@ -742,13 +873,13 @@ var S = {
 var ALL_DEBTS = [];
 
 var PAGES = [
-  { id:'dashboard', ic:'📊', label:'ภาพรวม',              sub:'แดชบอร์ดรวมทุกส่วนของหอพัก',        sec:'ภาพรวม' },
+  { id:'dashboard', ic:'📊', label:'ภาพรวม',              sub:'แดชบอร์ดรวมทุกส่วนของหอพัก',        sec:'ภาพรวม', tab:'ภาพรวม' },
   { id:'debtMain',  ic:'💰', label:'รายการสรุปรวม',       sub:'บัญชีโอนใช้หนี้หลักของหอพัก',        sec:'การเงิน' },
   { id:'debtSub',   ic:'🧾', label:'หนี้สิน',              sub:'บัญชีโอนใช้หนี้รองของหอพัก' },
   { id:'purchases', ic:'🛒', label:'รายการซื้อของ',        sub:'ของเข้าหอพัก ราคา ประกัน และสลิป' },
-  { id:'finance',   ic:'📒', label:'รายรับ-รายจ่ายหอ',      sub:'ค่าเช่าที่เก็บได้ · ค่าไฟ · ค่าน้ำ · ค่าเน็ต · ภาษี' },
-  { id:'ac',        ic:'❄️', label:'ล้างแอร์',            sub:'ตารางล้างแอร์รายห้อง 24 ห้อง',      sec:'ซ่อมบำรุง' },
-  { id:'repairs',   ic:'🔧', label:'ซ่อมแซมตามห้อง',      sub:'งานแจ้งซ่อมแยกตามห้อง' },
+  { id:'finance',   ic:'📒', label:'รายรับ-รายจ่ายหอ',      sub:'ค่าเช่าที่เก็บได้ · ค่าไฟ · ค่าน้ำ · ค่าเน็ต · ภาษี', tab:'รายรับ-จ่าย' },
+  { id:'ac',        ic:'❄️', label:'ล้างแอร์',            sub:'ตารางล้างแอร์รายห้อง 24 ห้อง',      sec:'ซ่อมบำรุง', tab:'ล้างแอร์' },
+  { id:'repairs',   ic:'🔧', label:'ซ่อมแซมตามห้อง',      sub:'งานแจ้งซ่อมแยกตามห้อง', tab:'ซ่อมห้อง' },
   { id:'building',  ic:'🏢', label:'ซ่อมแซมตึกโดยรวม',    sub:'งานส่วนกลางของอาคาร' },
   { id:'rooms',     ic:'🚪', label:'ห้องพัก',             sub:'ทะเบียนห้องและประวัติรายห้อง',       sec:'ข้อมูล' },
   { id:'reports',   ic:'📈', label:'รายงาน & สำรองข้อมูล', sub:'ค่าใช้จ่ายรายห้อง · ปฏิทินงาน · ส่งออกข้อมูล' },
@@ -877,6 +1008,28 @@ function renderNav(){
             '</button>';
   });
   document.getElementById('navList').innerHTML = html;
+  renderTabs();
+}
+
+/**
+ * แถบล่างสำหรับมือถือ — ใช้ PAGES ชุดเดียวกับเมนูข้าง และเรียก go() ตัวเดียวกัน
+ * ไม่ได้เป็นหน้าจอคนละชุด เป็นแค่ที่วางปุ่มอีกที่หนึ่งของข้อมูลเดิม
+ * ปุ่มสุดท้ายเปิดลิ้นชักเมนูเดิม จะได้เข้าถึงหน้าที่เหลือได้ครบ
+ */
+function renderTabs(){
+  var bar = document.getElementById('tabBar');
+  if (!bar) return;
+  var html = PAGES.filter(function(p){ return p.tab; }).map(function(p){
+    return '<button class="tab" id="tab-' + p.id + '" onclick="go(\'' + p.id + '\')" aria-label="' + esc(p.label) + '">' +
+             '<span class="ic">' + p.ic + '</span><span class="tl">' + esc(p.tab) + '</span>' +
+             '<span class="badge" id="tabbadge-' + p.id + '" style="display:none"></span>' +
+           '</button>';
+  }).join('');
+  bar.innerHTML = html +
+    '<button class="tab" id="tab-more" onclick="toggleNav()" aria-label="เมนูทั้งหมด">' +
+      '<span class="ic">☰</span><span class="tl">เพิ่มเติม</span>' +
+      '<span class="badge" id="tabbadge-more" style="display:none"></span>' +
+    '</button>';
 }
 
 function go(page){
@@ -889,7 +1042,12 @@ function go(page){
   PAGES.forEach(function(p){
     var el = document.getElementById('nav-' + p.id);
     if (el) el.classList.toggle('on', p.id === page);
+    var tab = document.getElementById('tab-' + p.id);
+    if (tab) tab.classList.toggle('on', p.id === page);
   });
+  // หน้าที่ไม่มีแท็บของตัวเอง ให้ปุ่ม "เพิ่มเติม" สว่างแทน จะได้รู้ว่าอยู่ตรงไหน
+  var more = document.getElementById('tab-more');
+  if (more) more.classList.toggle('on', !PAGES.some(function(p){ return p.tab && p.id === page; }));
   document.getElementById('nav').classList.remove('open');
   removeScrim();
   load();
@@ -929,6 +1087,7 @@ function load(opts){
     S.cache[S.page] = data;
     syncYearOptions(data.years || data.available || []);
     view.innerHTML = r.render(data);
+    labelCells(view);
     applyReadOnly(view);
     if (r.after) r.after(data);
     if (keep) restoreView(keep);
@@ -1193,8 +1352,19 @@ function paintBadges(){
 }
 
 function setBadge(page, n){
-  var el = document.getElementById('badge-' + page);
-  if (!el) return;
+  [document.getElementById('badge-' + page), document.getElementById('tabbadge-' + page)]
+    .forEach(function(el){ if (el) paintBadge(el, n); });
+
+  // งานค้างของหน้าที่ไม่มีแท็บ ให้ไปรวมอยู่ที่ปุ่ม "เพิ่มเติม" ไม่งั้นบนมือถือจะมองไม่เห็นเลย
+  var more = document.getElementById('tabbadge-more');
+  if (more) {
+    var hidden = PAGES.filter(function(p){ return !p.tab; })
+      .reduce(function(a, p){ return a + ((ALERTS.counts || {})[p.id] || 0); }, 0);
+    paintBadge(more, hidden);
+  }
+}
+
+function paintBadge(el, n){
   if (n > 0) {
     el.textContent = n > 99 ? '99+' : n;
     el.style.display = '';
@@ -1396,6 +1566,45 @@ function barChart(items, labelKey, valueKey, formatter){
 
 /* ---------------- modal ---------------- */
 
+/* ------------------------------------------------------------------
+   ตารางบนจอแคบ
+   ------------------------------------------------------------------
+   ตารางกว้าง 1,000px อ่านบนมือถือไม่ไหว ต้องเลื่อนซ้ายขวาตลอด
+   จึงติดชื่อคอลัมน์ไว้ที่แต่ละช่องด้วย data-label แล้วให้ CSS
+   เป็นคนตัดสินว่าจะแสดงเป็นตารางหรือเป็นการ์ดทีละรายการ
+
+   ทำที่นี่ที่เดียวหลังวาดหน้าเสร็จ ทุกตารางในระบบจึงได้ผลเหมือนกันหมด
+   ไม่ต้องไล่แก้ทีละตาราง และตารางที่เพิ่มใหม่ทีหลังก็ได้ไปด้วยเลย
+   HTML ยังเป็นชุดเดียว ต่างกันแค่ CSS ย่อ-ขยายหน้าต่างก็สลับได้ทันที
+------------------------------------------------------------------- */
+function labelCells(root){
+  if (!root) return;
+  var tables = root.querySelectorAll ? root.querySelectorAll('table') : [];
+  Array.prototype.forEach.call(tables, function(t){
+    var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function(th){
+      return (th.textContent || '').trim();
+    });
+    if (!heads.length) return;
+    Array.prototype.forEach.call(t.querySelectorAll('tbody tr'), function(tr){
+      // แถวสรุปหรือแถว "ไม่มีข้อมูล" ที่รวมช่อง ปล่อยไว้เต็มความกว้าง
+      if (tr.querySelector('[colspan]')) { tr.classList.add('row-wide'); return; }
+      Array.prototype.forEach.call(tr.children, function(td, i){
+        var label = heads[i] || '';
+        if (label) td.setAttribute('data-label', label);
+        else td.classList.add('cell-actions');   // คอลัมน์ปุ่ม ไม่มีหัวตาราง ไม่ต้องติดป้าย
+
+        // ช่องที่ไม่มีค่า (ว่างหรือขีด) บนจอแคบไม่ต้องโชว์เป็นบรรทัด
+        // การ์ดจะได้ไม่ยาวเก้อ ส่วนบนจอกว้างยังต้องมีเพื่อให้คอลัมน์ตรงกัน
+        var txt = (td.textContent || '').trim();
+        var hasThing = td.querySelector('img,button,a,input,svg,.thumb');
+        if ((txt === '' || txt === '–' || txt === '-') && !hasThing) {
+          td.classList.add('cell-empty');
+        }
+      });
+    });
+  });
+}
+
 function openModal(title, bodyHtml, footHtml, wide){
   var root = document.getElementById('modalRoot');
   root.innerHTML =
@@ -1407,6 +1616,7 @@ function openModal(title, bodyHtml, footHtml, wide){
       '</div>' +
     '</div>';
   applyReadOnly(root);
+  labelCells(root);
   document.body.style.overflow = 'hidden';
 }
 function closeModal(){

@@ -129,6 +129,43 @@ function saveAcService_(obj) {
   return insertRow_(SHEETS.AC_SERVICE, obj);
 }
 
+/**
+ * เปลี่ยนสถานะล้างแอร์จากตารางโดยตรง ไม่ต้องเปิดฟอร์ม
+ *
+ * เจ้าของหอเปลี่ยนสถานะบ่อยกว่าแก้ช่องอื่นมาก การต้องกดดินสอ เปิดฟอร์ม
+ * แก้ช่องเดียว แล้วกดบันทึกทุกครั้ง ช้าเกินไปเมื่อต้องไล่อัปเดตหลายห้อง
+ *
+ * @param {{id:string, status:string}} p
+ */
+function setAcStatus_(p) {
+  var found = findRow_(SHEETS.AC_SERVICE, p && p.id);
+  if (!found) throw new Error('ไม่พบรายการล้างแอร์: ' + (p && p.id));
+
+  // รับเฉพาะสถานะที่มีอยู่จริงในระบบ ไม่ให้ยัดค่าอะไรก็ได้เข้ามา
+  var allowed = fieldOptions_(SHEETS.AC_SERVICE, 'status');
+  var next = String((p && p.status) || '').trim();
+  if (allowed.indexOf(next) < 0) throw new Error('สถานะไม่ถูกต้อง: ' + next);
+
+  var patch = { status: next, updatedAt: new Date() };
+
+  // เลือก "ดำเนินการแล้ว" ทั้งที่ยังไม่เคยกรอกวันที่ดำเนินการ = เพิ่งล้างเสร็จวันนี้
+  // ต้องเติมวันที่ให้ด้วย ไม่งั้นช่องห้องจะยังขึ้นว่า "ยังไม่เคยล้าง" และรอบถัดไป
+  // ก็คำนวณไม่ได้ ทั้งที่แถวในตารางบอกว่าล้างแล้ว — ตัวเลขจะไม่ตรงกันเอง
+  // ส่วนขาเปลี่ยนกลับ ไม่ลบวันที่ทิ้ง เพราะนั่นคือการทำลายข้อมูลที่เคยบันทึกไว้
+  var filledDate = '';
+  if (next === 'ดำเนินการแล้ว' && !found.serviceDate) {
+    filledDate = todayIso_();
+    patch.serviceDate = filledDate;
+    patch.year = yearOf_(filledDate);
+  }
+
+  logActivity_('เปลี่ยนสถานะล้างแอร์', found.id,
+               found.room + ' รอบที่ ' + (found.round || 1) + ': ' + found.status + ' → ' + next);
+  var saved = updateRow_(SHEETS.AC_SERVICE, found._row, Object.assign({}, found, patch));
+  saved.filledDate = filledDate;   // ให้หน้าเว็บบอกผู้ใช้ได้ว่าเติมวันที่ให้ด้วย
+  return saved;
+}
+
 function deleteAcService_(id) {
   var found = findRow_(SHEETS.AC_SERVICE, id);
   if (!found) throw new Error('ไม่พบรายการล้างแอร์: ' + id);

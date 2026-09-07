@@ -392,7 +392,7 @@ ROUTES.ac = {
             '<td class="num">' + (x.round || 1) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.serviceDate) + '</td>' +
-            '<td>' + statusBadge(x.status) + '</td>' +
+            '<td>' + statusSelect(x, 'ac.setStatus', opt('acStatuses')) + '</td>' +
             '<td class="fs12">' + esc(x.technician || '–') + '</td>' +
             '<td class="num">' + num(x.cost) + '</td>' +
             '<td>' + thumbsHtml(x.photoRefs) + '</td>' +
@@ -407,6 +407,51 @@ ROUTES.ac = {
     return head + actions + grid + '<div class="mt12">' + list + '</div>';
   }
 };
+
+/**
+ * ช่องเลือกสถานะในตาราง — เปลี่ยนแล้วบันทึกทันที ไม่ต้องเปิดฟอร์ม
+ *
+ * หน้าตาเหมือนป้ายสถานะเดิมทุกอย่าง (สีเดียวกัน) แค่กดแล้วเลือกได้
+ * คนที่เปิดดูอย่างเดียวจะเห็นเป็นป้ายธรรมดาเหมือนเดิม
+ */
+function statusSelect(x, action, options){
+  if (!canEdit()) return statusBadge(x.status);
+  var cur = String(x.status || '');
+  var list = (options || []).slice();
+  if (cur && list.indexOf(cur) < 0) list.unshift(cur);   // ค่าเก่านอกรายการ ต้องไม่หายไป
+  return '<select class="st-sel ' + statusTone(cur) + '" title="เปลี่ยนสถานะได้เลย"' +
+    ' data-prev="' + esc(cur) + '"' +
+    ' onchange="changeStatus(\'' + action + '\',\'' + esc(x.id) + '\',this)">' +
+    list.map(function(o){
+      return '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>';
+    }).join('') + '</select>';
+}
+
+/** สีของสถานะ ใช้ชุดเดียวกับป้าย statusBadge จะได้ไม่เพี้ยนกัน */
+function statusTone(st){
+  var m = String(statusBadge(st)).match(/class="b ([a-z]+)"/);
+  return m ? m[1] : 'mute';
+}
+
+function changeStatus(action, id, sel){
+  var next = sel.value, prev = sel.getAttribute('data-prev') || '';
+  sel.disabled = true;
+  sel.className = 'st-sel ' + statusTone(next);
+
+  callApi(action, { id: id, status: next }).then(function(saved){
+    if (saved && saved.filledDate) {
+      toast('บันทึกแล้ว · เติมวันที่ดำเนินการเป็น ' + thDate(saved.filledDate) + ' ให้ด้วย', 'ok');
+    }
+    sel.setAttribute('data-prev', next);
+    sel.disabled = false;
+    load({ quiet: true });   // ช่องห้องกับตัวเลขสรุปด้านบนอาจเปลี่ยนตาม
+    refreshAlerts();
+  }).catch(function(e){
+    if (prev) { sel.value = prev; sel.className = 'st-sel ' + statusTone(prev); }
+    sel.disabled = false;
+    toast(e.message || e, 'err');
+  });
+}
 
 function openAcRoom(room){
   var d = S.cache.ac;

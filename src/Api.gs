@@ -100,6 +100,7 @@ var API_ROUTES = {
   'ac.matrix': function (p) { return acMatrix_(p.year); },
   'ac.list': function (p) { return listAcService_(p.year, p.room); },
   'ac.save': function (p) { return saveAcService_(p.record); },
+  'ac.setStatus': function (p) { return setAcStatus_(p); },
   'ac.delete': function (p) { return deleteAcService_(p.id); },
   'ac.bulkBook': function (p) { return bulkBookAc_(p); },
 

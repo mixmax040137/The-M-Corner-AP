@@ -747,6 +747,31 @@ button.sync-pill:active{transform:translateY(1px)}
   .card{break-inside:avoid;box-shadow:none}
 }
 
+/* ============ ช่องเลือกสถานะในตาราง ============ --------------------
+   หน้าตาเหมือนป้ายสถานะเดิม แต่กดเปลี่ยนได้เลยไม่ต้องเปิดฟอร์ม
+   ใช้สีชุดเดียวกับ .b เพื่อให้ตารางอ่านเหมือนเดิมทุกประการ
+-------------------------------------------------------------------- */
+.st-sel{
+  -webkit-appearance:none;appearance:none;
+  border:1px solid transparent;border-radius:99px;
+  padding:3px 22px 3px 10px;font-size:12px;font-weight:600;line-height:1.5;
+  cursor:pointer;max-width:100%;
+  background-repeat:no-repeat;background-position:right 7px center;background-size:9px;
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23667' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.st-sel:hover{border-color:var(--line)}
+.st-sel:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.st-sel[disabled]{opacity:.55;cursor:progress}
+.st-sel.ok{background-color:var(--ok-soft);color:var(--ok)}
+.st-sel.info{background-color:var(--info-soft);color:var(--info)}
+.st-sel.warn{background-color:var(--warn-soft);color:var(--warn)}
+.st-sel.dgr{background-color:var(--danger-soft);color:var(--danger)}
+.st-sel.mute{background-color:var(--surface-2);color:var(--muted)}
+/* จอแคบ: การ์ดทีละรายการ ให้ช่องนี้กดง่ายด้วยนิ้ว */
+@media (max-width:760px){
+  .st-sel{padding:7px 26px 7px 12px;font-size:13px}
+}
+
 /* ============ กราฟ ============ ------------------------------------
    เส้นตารางกับแกนเป็นเส้นบางทึบ ไม่ใช้เส้นประ (เส้นประอ่านเหมือนเส้นคาดการณ์)
    แท่งหนาไม่เกิน 24px ปลายด้านข้อมูลมนเล็กน้อย ด้านฐานเหลี่ยม

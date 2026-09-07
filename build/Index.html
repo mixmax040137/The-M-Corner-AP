@@ -757,6 +757,31 @@ button.sync-pill:active{transform:translateY(1px)}
   .card{break-inside:avoid;box-shadow:none}
 }
 
+/* ============ ช่องเลือกสถานะในตาราง ============ --------------------
+   หน้าตาเหมือนป้ายสถานะเดิม แต่กดเปลี่ยนได้เลยไม่ต้องเปิดฟอร์ม
+   ใช้สีชุดเดียวกับ .b เพื่อให้ตารางอ่านเหมือนเดิมทุกประการ
+-------------------------------------------------------------------- */
+.st-sel{
+  -webkit-appearance:none;appearance:none;
+  border:1px solid transparent;border-radius:99px;
+  padding:3px 22px 3px 10px;font-size:12px;font-weight:600;line-height:1.5;
+  cursor:pointer;max-width:100%;
+  background-repeat:no-repeat;background-position:right 7px center;background-size:9px;
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23667' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.st-sel:hover{border-color:var(--line)}
+.st-sel:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.st-sel[disabled]{opacity:.55;cursor:progress}
+.st-sel.ok{background-color:var(--ok-soft);color:var(--ok)}
+.st-sel.info{background-color:var(--info-soft);color:var(--info)}
+.st-sel.warn{background-color:var(--warn-soft);color:var(--warn)}
+.st-sel.dgr{background-color:var(--danger-soft);color:var(--danger)}
+.st-sel.mute{background-color:var(--surface-2);color:var(--muted)}
+/* จอแคบ: การ์ดทีละรายการ ให้ช่องนี้กดง่ายด้วยนิ้ว */
+@media (max-width:760px){
+  .st-sel{padding:7px 26px 7px 12px;font-size:13px}
+}
+
 /* ============ กราฟ ============ ------------------------------------
    เส้นตารางกับแกนเป็นเส้นบางทึบ ไม่ใช้เส้นประ (เส้นประอ่านเหมือนเส้นคาดการณ์)
    แท่งหนาไม่เกิน 24px ปลายด้านข้อมูลมนเล็กน้อย ด้านฐานเหลี่ยม
@@ -1173,7 +1198,7 @@ function applyReadOnly(root){
 ------------------------------------------------------------------ */
 
 /** คำสั่งที่ทำให้ข้อมูลในชีตเปลี่ยน (ให้ตรงกับ MUTATING_ACTIONS ฝั่งเซิร์ฟเวอร์) */
-var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|rotateToken|backupNow|upload|trash|toggle)$/;
+var CLIENT_MUTATING = /\.(save|delete|savePayment|deletePayment|bulkBook|import|rotateToken|backupNow|upload|trash|toggle|setStatus)$/;
 
 /**
  * เพิ่งกดบันทึกเอง — หน้าโหลดข้อมูลใหม่ไปแล้วตอนกดบันทึก
@@ -2528,7 +2553,7 @@ ROUTES.ac = {
             '<td class="num">' + (x.round || 1) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.serviceDate) + '</td>' +
-            '<td>' + statusBadge(x.status) + '</td>' +
+            '<td>' + statusSelect(x, 'ac.setStatus', opt('acStatuses')) + '</td>' +
             '<td class="fs12">' + esc(x.technician || '–') + '</td>' +
             '<td class="num">' + num(x.cost) + '</td>' +
             '<td>' + thumbsHtml(x.photoRefs) + '</td>' +
@@ -2543,6 +2568,51 @@ ROUTES.ac = {
     return head + actions + grid + '<div class="mt12">' + list + '</div>';
   }
 };
+
+/**
+ * ช่องเลือกสถานะในตาราง — เปลี่ยนแล้วบันทึกทันที ไม่ต้องเปิดฟอร์ม
+ *
+ * หน้าตาเหมือนป้ายสถานะเดิมทุกอย่าง (สีเดียวกัน) แค่กดแล้วเลือกได้
+ * คนที่เปิดดูอย่างเดียวจะเห็นเป็นป้ายธรรมดาเหมือนเดิม
+ */
+function statusSelect(x, action, options){
+  if (!canEdit()) return statusBadge(x.status);
+  var cur = String(x.status || '');
+  var list = (options || []).slice();
+  if (cur && list.indexOf(cur) < 0) list.unshift(cur);   // ค่าเก่านอกรายการ ต้องไม่หายไป
+  return '<select class="st-sel ' + statusTone(cur) + '" title="เปลี่ยนสถานะได้เลย"' +
+    ' data-prev="' + esc(cur) + '"' +
+    ' onchange="changeStatus(\'' + action + '\',\'' + esc(x.id) + '\',this)">' +
+    list.map(function(o){
+      return '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>';
+    }).join('') + '</select>';
+}
+
+/** สีของสถานะ ใช้ชุดเดียวกับป้าย statusBadge จะได้ไม่เพี้ยนกัน */
+function statusTone(st){
+  var m = String(statusBadge(st)).match(/class="b ([a-z]+)"/);
+  return m ? m[1] : 'mute';
+}
+
+function changeStatus(action, id, sel){
+  var next = sel.value, prev = sel.getAttribute('data-prev') || '';
+  sel.disabled = true;
+  sel.className = 'st-sel ' + statusTone(next);
+
+  callApi(action, { id: id, status: next }).then(function(saved){
+    if (saved && saved.filledDate) {
+      toast('บันทึกแล้ว · เติมวันที่ดำเนินการเป็น ' + thDate(saved.filledDate) + ' ให้ด้วย', 'ok');
+    }
+    sel.setAttribute('data-prev', next);
+    sel.disabled = false;
+    load({ quiet: true });   // ช่องห้องกับตัวเลขสรุปด้านบนอาจเปลี่ยนตาม
+    refreshAlerts();
+  }).catch(function(e){
+    if (prev) { sel.value = prev; sel.className = 'st-sel ' + statusTone(prev); }
+    sel.disabled = false;
+    toast(e.message || e, 'err');
+  });
+}
 
 function openAcRoom(room){
   var d = S.cache.ac;

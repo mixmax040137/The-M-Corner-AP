@@ -26,7 +26,7 @@ check('สร้างครบ 13 ชีต', Object.keys(SHEETS).length === 13
 check('รายการซื้อ 94 รายการ', readRows_(SHEETS.PURCHASES).length === 94);
 check('ยอดชำระหนี้ 5,049,654', Math.round(debtSummary_('หนี้หลัก', 'all').paid) === 5049654);
 check('รายรับ-รายจ่าย 32 รายการ', readRows_(SHEETS.FINANCE).length === 32);
-check('มีคำสั่ง API ครบ 74 คำสั่ง', Object.keys(API_ROUTES).length === 74);
+check('มีคำสั่ง API ครบ 75 คำสั่ง', Object.keys(API_ROUTES).length === 75);
 check('มีบัญชีผู้ดูแลคนแรกให้ล็อกอิน', !!findUser_('admin'), true);
 const adminKey = getSetting_('admin_token', ''), viewKey = getSetting_('view_token', '');
 check('มีกุญแจผู้ดูแลและกุญแจแชร์', !!(adminKey && viewKey && adminKey !== viewKey), true);
@@ -108,6 +108,15 @@ console.log('\n── build/AllInOne.gs ──');
   fx['purchase.save|{"record":{"item":"ทดสอบ","price":1,"buyDate":"2026-01-01"}}'] =
     { ok: true, data: { id: 'PUR-TEST' } };
 
+  // เปลี่ยนสถานะล้างแอร์จากตาราง — เตรียมคำตอบไว้ทั้งกรณีสำเร็จและกรณีเติมวันที่ให้
+  // เตรียมให้ทุกแถว เพราะไม่รู้ว่าหน้าเว็บจะเรียงแถวไหนขึ้นก่อนในปีที่เลือก
+  readRows_(SHEETS.AC_SERVICE).forEach(function (r) {
+    fx['ac.setStatus|' + JSON.stringify({ id: r.id, status: 'ยกเลิก' })] =
+      { ok: true, data: { id: r.id, status: 'ยกเลิก' } };
+    fx['ac.setStatus|' + JSON.stringify({ id: r.id, status: 'ดำเนินการแล้ว' })] =
+      { ok: true, data: { id: r.id, status: 'ดำเนินการแล้ว', filledDate: '2026-09-07' } };
+  });
+
   const meAdmin = api('auth.me', { _key: adminKey });
   const meViewer = api('auth.me', { _key: viewKey });
   fx['auth.me|{}'] = meAdmin;
@@ -116,7 +125,7 @@ console.log('\n── build/AllInOne.gs ──');
   //   <?=  expr ?>  พิมพ์ค่าโดย escape HTML  (ถ้าใช้ในแท็ก script จะพัง เพราะ &quot; ไม่ถูกถอดกลับ)
   //   <?!= expr ?>  พิมพ์ค่าดิบ
   // จำลองให้ตรงจุดนี้สำคัญมาก — เคยพลาดมาแล้วจนกุญแจไม่ถึงหน้าเว็บ
-  const tplVars = { appName: 'The M Corner AP', subtitle: 'ระบบบริหารหอพัก', version: '1.0.0',
+  const tplVars = { appName: APP.NAME, subtitle: APP.SUBTITLE, version: APP.VERSION,
                     accessKey: adminKey, role: ROLE.ADMIN, theme: 'ตามเครื่อง' };
   const htmlEscape = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -330,6 +339,92 @@ console.log('\n── build/AllInOne.gs ──');
   }
 
   /* ---------- เช็คลิสต์งานซ่อม ---------- */
+  console.log('\n── เปลี่ยนสถานะล้างแอร์จากตารางตรง ๆ ──');
+  {
+    await pg.evaluate(() => { S.year = '2026'; go('ac'); });
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 9000 });
+    await pg.waitForTimeout(350);
+
+    check('ช่องสถานะเป็นช่องเลือกได้ ไม่ต้องเปิดฟอร์ม',
+      await pg.$$eval('.st-sel', e => e.length) > 0,
+      await pg.$$eval('.st-sel', e => e.length));
+    check('ตัวเลือกครบตามที่ระบบกำหนด',
+      JSON.stringify(await pg.$eval('.st-sel', e => [].slice.call(e.options).map(o => o.value))) ===
+      JSON.stringify(['นัดหมายแล้ว', 'ดำเนินการแล้ว', 'เลื่อนนัด', 'ยกเลิก']));
+    check('มีสีตามสถานะเหมือนป้ายเดิม',
+      /st-sel (ok|info|warn|dgr|mute)/.test(await pg.$eval('.st-sel', e => e.className)));
+    check('จำค่าเดิมไว้เผื่อบันทึกไม่ผ่าน',
+      !!(await pg.$eval('.st-sel', e => e.getAttribute('data-prev'))));
+    check('ช่องเลือกกดโดนง่ายพอ (สูงอย่างน้อย 22px)',
+      await pg.$eval('.st-sel', e => e.getBoundingClientRect().height) >= 22);
+
+    // จับแถวแรกที่แสดงอยู่จริง (เตรียมคำตอบจำลองไว้ให้ทุกแถวแล้ว)
+    const target = await pg.evaluate(() => {
+      const sel = document.querySelector('.st-sel');
+      if (!sel) return null;
+      sel.id = 'acProbe';
+      return { before: sel.value, cls: sel.className };
+    });
+    check('เจอแถวที่จะทดสอบ', !!target);
+
+    if (target) {
+      // ดักดูว่าส่งคำสั่งอะไรออกไปบ้าง — นี่คือสัญญาที่แท้จริงของฟีเจอร์นี้
+      // (หลังบันทึกสำเร็จ ตารางจะถูกวาดใหม่ ปุ่มเดิมจึงหายไปตามปกติ)
+      await pg.evaluate(() => {
+        window.__calls = [];
+        const real = window.callApi;
+        window.callApi = function (a, p) { window.__calls.push({ a: a, p: p }); return real(a, p); };
+      });
+      // อ่านผลในจังหวะเดียวกับที่กด — โค้ดซิงโครนัสทำงานก่อนคำตอบจากเซิร์ฟเวอร์เสมอ
+      // จึงวัดได้ว่า "ขยับทันที" จริงไหม โดยไม่ต้องแข่งกับการวาดตารางใหม่
+      const mid = await pg.evaluate(() => {
+        const s = document.getElementById('acProbe');
+        const before = s.className;
+        s.value = 'ยกเลิก';
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+        return { before: before, cls: s.className, off: s.disabled };
+      });
+      check('กดเปลี่ยนแล้วสีขยับทันที ไม่ต้องรอเซิร์ฟเวอร์',
+        mid.cls !== mid.before, mid.before + ' → ' + mid.cls);
+      check('ระหว่างบันทึกล็อกช่องไว้ กันกดซ้ำ', mid.off === true, String(mid.off));
+
+      await pg.waitForTimeout(900);
+      const calls = await pg.evaluate(() => window.__calls);
+      const sent = calls.filter(c => c.a === 'ac.setStatus')[0];
+      check('ส่งคำสั่งเปลี่ยนสถานะออกไปจริง', !!sent, JSON.stringify(calls.map(c => c.a)));
+      check('ส่งสถานะใหม่ไปถูกต้อง', !!sent && sent.p.status === 'ยกเลิก', sent && JSON.stringify(sent.p));
+      check('ส่งรหัสรายการไปด้วย', !!sent && !!sent.p.id, sent && JSON.stringify(sent.p));
+      check('บันทึกเสร็จแล้วดึงข้อมูลใหม่ให้ตัวเลขด้านบนตรง',
+        calls.some(c => c.a === 'ac.matrix'), JSON.stringify(calls.map(c => c.a)));
+    }
+
+    // บันทึกไม่ผ่าน ต้องย้อนค่ากลับ ไม่ใช่ค้างค่าที่ยังไม่ได้บันทึก
+    const rolled = await pg.evaluate(() => {
+      const s = document.querySelector('.st-sel');
+      s.id = 'acProbe2';
+      s.setAttribute('data-prev', 'นัดหมายแล้ว');
+      s.value = 'เลื่อนนัด';
+      changeStatus('ac.setStatus', 'ไม่มีรหัสนี้', s);
+      return true;
+    });
+    await pg.waitForTimeout(800);
+    check('บันทึกไม่ผ่าน แล้วย้อนค่ากลับให้',
+      await pg.evaluate(() => document.getElementById('acProbe2').value) === 'นัดหมายแล้ว',
+      await pg.evaluate(() => document.getElementById('acProbe2').value));
+
+    // คนที่ดูอย่างเดียวต้องไม่ได้ช่องเลือก
+    check('คนที่เปิดดูอย่างเดียวเห็นเป็นป้ายธรรมดา',
+      await pg.evaluate(() => {
+        const real = window.CAN_EDIT;
+        window.CAN_EDIT = false;
+        const html = statusSelect({ id: 'X', status: 'ดำเนินการแล้ว' }, 'ac.setStatus', ['ดำเนินการแล้ว']);
+        window.CAN_EDIT = real;
+        return html.indexOf('<select') < 0 && html.indexOf('<span') === 0;
+      }));
+
+    check('หน้าล้างแอร์ไม่มี JS error', errs.length === 0, errs.join(' | '));
+  }
+
   console.log('\n── ปี ค.ศ. ทั้งระบบ ──');
   {
     await pg.evaluate(() => { S.year = '2026'; go('repairs'); });

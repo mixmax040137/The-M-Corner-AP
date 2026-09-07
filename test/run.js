@@ -414,7 +414,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 74);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 75);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
@@ -1166,6 +1166,48 @@ console.log('\n── 26. ปี ค.ศ. ทั้งระบบ ──');
     pays.filter(function (r) { return /^(\d{1,2}\/)?25\d{2}$/.test(String(r.installment || '')); }).length, 0);
   check('ช่องงวดยังมีค่าอยู่ครบ ไม่ได้ถูกล้างทิ้ง',
     pays.filter(function (r) { return String(r.installment || '').trim(); }).length > 30, true);
+}
+
+console.log('\n── 27. เปลี่ยนสถานะล้างแอร์จากตารางตรง ๆ ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  const booked = api('ac.save', { _key: admKey,
+    record: { room: '111', bookDate: '2026-09-20', status: 'นัดหมายแล้ว' } }).data;
+
+  // กดเป็น "ดำเนินการแล้ว" ทั้งที่ยังไม่เคยกรอกวันที่ = เพิ่งล้างเสร็จวันนี้
+  // ต้องเติมวันที่ให้ ไม่งั้นช่องห้องจะยังขึ้นว่ายังไม่เคยล้าง ทั้งที่แถวบอกว่าล้างแล้ว
+  const r = api('ac.setStatus', { _key: admKey, id: booked.id, status: 'ดำเนินการแล้ว' });
+  check('เปลี่ยนสถานะได้โดยไม่ต้องส่งข้อมูลทั้งแถว', r.ok, true);
+  check('สถานะเปลี่ยนจริง', r.data.status, 'ดำเนินการแล้ว');
+  check('เติมวันที่ดำเนินการให้เมื่อยังไม่มี', r.data.serviceDate, todayIso_());
+  check('บอกหน้าเว็บด้วยว่าเติมวันที่ให้', r.data.filledDate, todayIso_());
+  check('ช่องอื่นไม่ถูกล้าง', r.data.room, '111');
+
+  // เปลี่ยนสถานะอื่นต้องไม่ไปลบวันที่ที่เคยบันทึกไว้
+  const back = api('ac.setStatus', { _key: admKey, id: booked.id, status: 'เลื่อนนัด' });
+  check('เปลี่ยนสถานะกลับ ไม่ลบวันที่ที่บันทึกไว้แล้ว', back.data.serviceDate, todayIso_());
+  check('ไม่เติมวันที่ซ้ำเมื่อมีอยู่แล้ว', back.data.filledDate, '');
+
+  // รับเฉพาะสถานะที่มีจริง
+  check('สถานะนอกรายการ ถูกปฏิเสธ',
+    api('ac.setStatus', { _key: admKey, id: booked.id, status: 'อะไรก็ไม่รู้' }).ok, false);
+  check('สถานะว่าง ถูกปฏิเสธ',
+    api('ac.setStatus', { _key: admKey, id: booked.id, status: '' }).ok, false);
+  check('รหัสที่ไม่มีอยู่ ถูกปฏิเสธ',
+    api('ac.setStatus', { _key: admKey, id: 'ไม่มีจริง', status: 'ยกเลิก' }).ok, false);
+
+  // คนที่ดูอย่างเดียวเปลี่ยนไม่ได้
+  setSetting_('share_link_enabled', 'เปิด');
+  check('ลิงก์ดูอย่างเดียวเปลี่ยนสถานะไม่ได้',
+    api('ac.setStatus', { _key: getSetting_('view_token', ''), id: booked.id, status: 'ยกเลิก' }).ok, false);
+  setSetting_('share_link_enabled', 'ปิด');
+
+  // มีบันทึกไว้ว่าใครเปลี่ยนอะไร
+  const log = readRows_(SHEETS.LOG).filter(function (l) { return l.action === 'เปลี่ยนสถานะล้างแอร์'; });
+  check('มีบันทึกใน ActivityLog', log.length > 0, true);
+
+  api('ac.delete', { _key: admKey, id: booked.id });
+  check('ลบรายการทดสอบแล้วจำนวนกลับเท่าเดิม', readRows_(SHEETS.AC_SERVICE).length, 41);
 }
 
 console.log('\n════════════════════════════');

@@ -1332,6 +1332,74 @@ console.log('\n── 29. ช่องงวดที่ชีตแอบแป
   deleteDebtPayment_(saved.id); deleteDebtPayment_(phone.id);
 }
 
+console.log('\n── 30. ก้อนหนี้แสดงสองหน้า (ค่าก่อสร้างในหน้าหนี้สินด้วย) ──');
+{
+  const find = t => readRows_(SHEETS.DEBTS).find(d => d.title.indexOf(t) >= 0);
+  let build = find('ค่าก่อสร้าง');
+  // เริ่มจากยังไม่แชร์ แล้วให้การย้ายข้อมูลรุ่น 10 ตั้งให้
+  saveDebt_(Object.assign({}, build, { alsoIn: '' }));
+  props_().setProperty('SCHEMA_VERSION', '9');
+  runMigrations_();
+  build = find('ค่าก่อสร้าง');
+  check('ย้ายข้อมูลรุ่น 10: ค่าก่อสร้างแสดงในหน้าหนี้สินด้วย', build.alsoIn, 'หนี้รอง');
+  check('ตั้งเป็นบัญชีเดียวกับตัวเอง ไม่มีผล', saveDebt_(Object.assign({}, build, { alsoIn: 'หนี้หลัก' })).alsoIn, '');
+  saveDebt_(Object.assign({}, find('ค่าก่อสร้าง'), { alsoIn: 'หนี้รอง' }));
+  build = find('ค่าก่อสร้าง');
+
+  const main0 = debtSummary_('หนี้หลัก', 'all');
+  const sub0 = debtSummary_('หนี้รอง', 'all');
+  const ov0 = debtOverview_();
+  const bCard = sub0.debts.find(x => x.id === build.id);
+  check('หน้าหนี้สินมีการ์ดค่าก่อสร้าง', !!bCard, true);
+  check('การ์ดบอกว่ามาจากรายการสรุปรวม', bCard && bCard.sharedFrom, 'หนี้หลัก');
+  near('การ์ดเดียวกันตัวเลขตรงกันทั้งสองหน้า', bCard.remaining, main0.debts.find(x => x.id === build.id).remaining, 0);
+  near('ยอดหนี้หน้าหนี้สินรวมค่าก่อสร้าง', sub0.totalDebt, 1000000 + 8400000, 0);
+  near('คงเหลือหน้าหนี้สิน = ผลรวมคงเหลือรายก้อน', sub0.remaining, sub0.debts.reduce((a, x) => a + x.remaining, 0), 1);
+  check('รายการสรุปรวมไม่ได้รับผลกระทบ', main0.debts.length, 3);
+  // งวดที่คร่อมสองก้อน (ส่วนหนึ่งปิดค่าเขียนแบบ ที่เหลือเข้าค่าก่อสร้าง) ต้องนับแค่ส่วนของค่าก่อสร้าง
+  near('หนี้สิน: ยอดรายปีรวมกัน = ชำระแล้ว (ไม่นับงวดที่คร่อมเกิน)',
+    sub0.byYear.reduce((a, y) => a + y.principal, 0), sub0.paid, 1);
+  near('หนี้สิน: ชำระในปี 2026 ไม่เกินที่จ่ายเข้าก้อนจริง',
+    debtSummary_('หนี้รอง', '2026').selectedYearPaid <= sub0.paid + 0.01 ? 1 : 0, 1, 0);
+
+  // บันทึกจากหน้าหนี้สิน ผูกกับค่าก่อสร้าง
+  const pay = saveDebtPayment_({ ledger: 'หนี้รอง', debtId: build.id, payDate: '2026-10-20', principal: 80000, interest: 500 });
+  check('รายการเป็นของบัญชีที่ก้อนอยู่จริง', pay.ledger, 'หนี้หลัก');
+  const main1 = debtSummary_('หนี้หลัก', 'all'), sub1 = debtSummary_('หนี้รอง', 'all');
+  near('รายการสรุปรวม: ชำระเพิ่ม 80,000', main1.paid, main0.paid + 80000, 1);
+  near('หนี้สิน: ชำระเพิ่ม 80,000 พร้อมกัน', sub1.paid, sub0.paid + 80000, 1);
+  near('หนี้สิน: คงเหลือค่าก่อสร้างลดตาม', sub1.debts.find(x => x.id === build.id).remaining, bCard.remaining - 80000, 1);
+  near('หนี้สิน: ดอกเบี้ยของก้อนที่แสดงร่วมนับด้วย', sub1.interestPaid, sub0.interestPaid + 500, 0);
+  near('ยอดรวมทั้งระบบไม่นับซ้ำ', debtOverview_().paid, ov0.paid + 80000, 1);
+  check('อยู่ในรายการของหน้ารายการสรุปรวม', ledgerPayments_('หนี้หลัก', 'all').some(p => p.id === pay.id), true);
+  const inSub = ledgerPayments_('หนี้รอง', 'all').find(p => p.id === pay.id);
+  check('อยู่ในรายการของหน้าหนี้สินด้วย', !!inSub, true);
+  check('บอกว่ามาจากบัญชีไหน', inSub && inSub.sharedFrom, 'หนี้หลัก');
+
+  // แก้จากหน้าไหนก็ได้ผลทั้งสองหน้า
+  saveDebtPayment_(Object.assign({}, pay, { principal: 100000 }));
+  near('แก้แล้ว รายการสรุปรวมขยับตาม', debtSummary_('หนี้หลัก', 'all').paid, main0.paid + 100000, 1);
+  near('แก้แล้ว หนี้สินขยับตาม', debtSummary_('หนี้รอง', 'all').paid, sub0.paid + 100000, 1);
+
+  // โอนเข้ารายการสรุปรวมแบบไม่ระบุก้อน ส่วนที่ไหลไปค่าก่อสร้างโผล่ในหน้าหนี้สินด้วย
+  const loose = saveDebtPayment_({ ledger: 'หนี้หลัก', payDate: '2026-10-21', principal: 70000 });
+  check('รายการไม่ระบุก้อนที่ไปตัดค่าก่อสร้าง ขึ้นในหน้าหนี้สินด้วย',
+    ledgerPayments_('หนี้รอง', 'all').some(p => p.id === loose.id), true);
+  near('หนี้สินขยับตาม', debtSummary_('หนี้รอง', 'all').paid, sub0.paid + 170000, 1);
+  // งวดเก่าที่ไปตัดค่าที่ดิน ไม่ควรโผล่ในหน้าหนี้สิน
+  const oldest = listDebtPayments_('หนี้หลัก', 'all').slice(-1)[0];
+  check('งวดที่ไปตัดค่าที่ดิน ไม่ขึ้นในหน้าหนี้สิน', ledgerPayments_('หนี้รอง', 'all').some(p => p.id === oldest.id), false);
+
+  // ลบแล้วกลับทั้งสองหน้า
+  deleteDebtPayment_(pay.id); deleteDebtPayment_(loose.id);
+  near('ลบแล้ว รายการสรุปรวมกลับเป็นเดิม', debtSummary_('หนี้หลัก', 'all').paid, main0.paid, 1);
+  near('ลบแล้ว หนี้สินกลับเป็นเดิม', debtSummary_('หนี้รอง', 'all').paid, sub0.paid, 1);
+
+  // ปิดการแสดงร่วม หน้าหนี้สินกลับเป็นแบบเดิม
+  saveDebt_(Object.assign({}, find('ค่าก่อสร้าง'), { alsoIn: '' }));
+  near('ปิดแล้ว หน้าหนี้สินเหลือแค่ของตัวเอง', debtSummary_('หนี้รอง', 'all').totalDebt, 1000000, 0);
+}
+
 console.log('\n════════════════════════════');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -72,6 +72,10 @@ console.log('\n── build/AllInOne.gs ──');
 (async () => {
   console.log('\n── build/Index.html ──');
 
+  // ค่าก่อสร้างยังผ่อนอยู่ แสดงในหน้าหนี้สินด้วย (ก้อนเดียวกัน ตัวเลขเชื่อมกัน)
+  { const b = readRows_(SHEETS.DEBTS).find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0);
+    saveDebt_(Object.assign({}, b, { alsoIn: 'หนี้รอง' })); }
+
   // เตรียมคำตอบของทุกคำสั่งไว้ล่วงหน้า (เพราะเบราว์เซอร์คุยกับ Node ตรง ๆ ไม่ได้)
   const fx = {};
   const put = (a, p) => { fx[a + '|' + JSON.stringify(p || {})] = api(a, Object.assign({ _key: adminKey }, p)); };
@@ -977,6 +981,21 @@ console.log('\n── build/AllInOne.gs ──');
     await pg.evaluate(() => go('debtSub'));
     await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
     await pg.evaluate(() => { var c = document.querySelector('#view .grid.g-auto'); if (c) c.scrollIntoView(); });
+    const shared = await pg.evaluate(() => {
+      var cards = Array.prototype.slice.call(document.querySelectorAll('#view .grid.g-auto > .card'));
+      var b = cards.filter(function (c) { return /ค่าก่อสร้าง/.test(c.innerText); })[0];
+      return {
+        has: !!b,
+        tag: b ? /ก้อนเดียวกับในหน้ารายการสรุปรวม/.test(b.innerText) : false,
+        del: b ? !!b.querySelector('[onclick^="delDebt"]') : true,
+        rows: document.querySelectorAll('#view table.t tbody tr').length,
+        linked: /🔗 รายการสรุปรวม/.test(document.getElementById('view').innerText)
+      };
+    });
+    check('หน้าหนี้สินมีการ์ดค่าก่อสร้างที่แสดงร่วม', shared.has);
+    check('การ์ดบอกว่าเป็นก้อนเดียวกับหน้ารายการสรุปรวม', shared.tag);
+    check('การ์ดที่ยืมมาแสดง ไม่มีปุ่มลบ (กันลบหายจากอีกหน้า)', !shared.del);
+    check('รายการโอนของค่าก่อสร้างขึ้นในหน้าหนี้สินพร้อมป้าย 🔗', shared.linked, JSON.stringify(shared));
     await pg.screenshot({ path: OUT + '/bundle-debt.png' });
 
     // กดปุ่ม "เพิ่มรายการ" ต้องได้ฟอร์มเปล่าและไม่มีรหัสเดิม

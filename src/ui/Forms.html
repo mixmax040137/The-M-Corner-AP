@@ -704,6 +704,9 @@ function formDebt(rec, ledger){
       { key:'planPerMonth', label:'ยอดผ่อนต่อเดือน (บาท)', type:'money' },
       { key:'dueDay',   label:'กำหนดชำระ (วันที่ของเดือน)', type:'number', ph:'20' },
       { key:'status',   label:'สถานะ', type:'select', options:opt('debtStatuses'), blank:false },
+      { key:'alsoIn',   label:'แสดงในอีกหน้าด้วย', type:'select',
+        options:[ { value:'หนี้รอง', label:'หน้าหนี้สิน' }, { value:'หนี้หลัก', label:'หน้ารายการสรุปรวม' } ],
+        hint:'ก้อนเดียวกัน ไม่ได้คัดลอก — บันทึกการชำระ แก้ หรือลบจากหน้าไหน อีกหน้าก็เปลี่ยนตาม · เลือกหน้าเดียวกับประเภทบัญชีไว้ = ไม่มีผล' },
       { key:'note',     label:'หมายเหตุ', type:'textarea', full:true }
     ]
   });
@@ -725,7 +728,8 @@ function formDebtPayment(rec, ledger){
   openForm({
     title: rec && rec.id ? 'แก้ไขรายการชำระ' : 'บันทึกการโอนใช้หนี้',
     record: rec || { payDate: today(), channel: 'โอน QR' },
-    action: 'debt.savePayment', base: { ledger: ledger }, bucket: 'debt',
+    // แก้รายการเดิมคงบัญชีเดิมไว้ — รายการที่มาจากอีกหน้า (ก้อนที่แสดงร่วม) ต้องไม่ถูกย้ายบัญชี
+    action: 'debt.savePayment', base: { ledger: (rec && rec.ledger) || ledger }, bucket: 'debt',
     ocr: { date:'payDate', amount:'principal', note:'note' },
     onDelete: delDebtPayment,
     fields: [
@@ -740,7 +744,7 @@ function formDebtPayment(rec, ledger){
       { key:'installment', label:'งวดที่', ph:'เช่น 9/2026' },
       { key:'debtId',  label:'ผูกกับก้อนหนี้', type:'select',
         options: debts.map(function(d){ return { value:d.id, label:d.title }; }),
-        hint:'เว้นว่างได้ — ระบบจะนับรวมทั้งบัญชี' },
+        hint:'เว้นว่างได้ — ระบบตัดก้อนเก่าก่อนให้เอง · เลือกก้อนที่มาจากอีกหน้า ยอดจะเข้าทั้งสองหน้า' },
       { key:'payer',   label:'ผู้ชำระ' },
       { key:'slips',   label:'สลิปการโอน', type:'files', full:true },
       { key:'note',    label:'หมายเหตุ', type:'textarea', full:true }

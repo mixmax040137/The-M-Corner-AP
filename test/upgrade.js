@@ -95,13 +95,20 @@ console.log('\n── ข้อมูลเดิมต้องอยู่ค�
 const after = snapshot();
 [
   ['หนี้หลัก ยอดชำระแล้ว', 'mainPaid'], ['หนี้หลัก ยอดคงเหลือ', 'mainRemain'],
-  ['หนี้รอง ยอดชำระแล้ว', 'subPaid'], ['หนี้รอง ยอดคงเหลือ', 'subRemain'],
   ['จำนวนรายการซื้อของ', 'purchases'], ['ค่าซื้อของรวม', 'spend'],
   ['ทะเบียนห้อง', 'rooms'], ['ล้างแอร์', 'ac'], ['งานซ่อมห้อง', 'repairs'],
   ['ทรัพย์สินประจำห้อง', 'assets'], ['รายการรายรับ-รายจ่าย', 'finance'],
   ['ยอดรายรับรวม', 'income'], ['ยอดรายจ่ายรวม', 'expense']
 ].forEach(([label, k]) =>
   check(label + ' ไม่เปลี่ยน', after[k] === before[k], before[k] + ' → ' + after[k]));
+// หน้าหนี้สิน: รุ่น 10 ตั้งให้ค่าก่อสร้างแสดงที่นี่ด้วย — ยอดต้องเพิ่มเท่ากับการ์ดค่าก่อสร้างพอดี ไม่มากไม่น้อย
+{
+  const build = debtSummary_('หนี้หลัก', 'all').debts.find(x => x.title.indexOf('ค่าก่อสร้าง') >= 0);
+  check('หนี้รอง ยอดชำระแล้ว = เดิม + ค่าก่อสร้าง', after.subPaid === before.subPaid + Math.round(build.paid),
+    before.subPaid + ' + ' + build.paid + ' → ' + after.subPaid);
+  check('หนี้รอง ยอดคงเหลือ = เดิม + ค่าก่อสร้าง', after.subRemain === before.subRemain + Math.round(build.remaining),
+    before.subRemain + ' + ' + build.remaining + ' → ' + after.subRemain);
+}
 check('รายการที่ลบไปแล้วไม่กลับมา', after.building === before.building, before.building + ' → ' + after.building);
 
 console.log('\n── งานซ่อมเดิมกลายเป็นเช็คลิสต์ที่ติ๊กได้ ──');

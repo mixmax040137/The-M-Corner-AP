@@ -8,7 +8,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.6.1',
+  VERSION: '1.7.0',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -71,6 +71,7 @@ SCHEMA[SHEETS.DEBTS] = [
   { key: 'dueDay',    label: 'กำหนดชำระ (วันที่)', type: 'number' },
   { key: 'planPerMonth', label: 'ยอดผ่อนต่อเดือน', type: 'money' },
   { key: 'status',    label: 'สถานะ',           type: 'select', options: ['กำลังผ่อน', 'ปิดหนี้แล้ว', 'พักชำระ'] },
+  { key: 'alsoIn',    label: 'แสดงในบัญชีด้วย',  type: 'select', options: ['หนี้หลัก', 'หนี้รอง'] },
   { key: 'note',      label: 'หมายเหตุ',        type: 'multiline' },
   { key: 'updatedAt', label: 'แก้ไขล่าสุด',      type: 'date' }
 ];
@@ -278,7 +279,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 9;
+var SCHEMA_VERSION = 10;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];

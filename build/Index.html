@@ -2329,6 +2329,13 @@ function renderDebt(d){
       '<div class="clip" style="font-weight:650;font-size:13.5px;min-height:38px">' + esc(x.title) + '</div>' +
       '<div class="row fs12 muted mb8">' + (x.settled ? '<span class="b ok">✓ ชำระครบแล้ว</span>' : statusBadge(x.status)) +
         '<span>' + esc(x.creditor || '–') + (x.startDate ? ' · ' + thDate(x.startDate) : '') + '</span></div>' +
+      (x.sharedFrom
+        ? '<div class="b ok wrap mb8" title="ก้อนเดียวกับในอีกหน้า บันทึกการชำระจากหน้าไหนก็เข้าก้อนนี้">🔗 ก้อนเดียวกับในหน้า' +
+          (x.sharedFrom === 'หนี้หลัก' ? 'รายการสรุปรวม' : 'หนี้สิน') + '</div>'
+        : x.alsoIn
+        ? '<div class="b ok wrap mb8" title="ก้อนนี้แสดงในอีกหน้าด้วย ตัวเลขเชื่อมกัน">🔗 แสดงในหน้า' +
+          (x.alsoIn === 'หนี้หลัก' ? 'รายการสรุปรวม' : 'หนี้สิน') + 'ด้วย</div>'
+        : '') +
       (x.parentTitle
         ? '<div class="b info wrap mb8" title="ยอดก้อนนี้อยู่ในก้อนแม่แล้ว จ่ายคืนก้อนนี้ก้อนแม่จะลดตาม">' +
           '↳ เป็นส่วนหนึ่งของ ' + esc(x.parentTitle) + '</div>'
@@ -2350,7 +2357,8 @@ function renderDebt(d){
       (x.planPerMonth ? '<div class="fs12 muted">แผนผ่อน ' + baht(x.planPerMonth) + '/เดือน</div>' : '') +
       '<div class="row mt12"><button class="btn sm" onclick=\'formDebt(' + attr(x) + ',"' + d.ledger + '")\'>แก้ไข</button>' +
       '<button class="btn sm" title="ยอดไม่ตรงกับที่เจ้าหนี้แจ้ง? กรอกยอดคงเหลือจริง" onclick=\'formReconcileDebt(' + attr(x) + ')\'>⚖️ ปรับยอดให้ตรง</button>' +
-      '<button class="btn sm dgr" onclick="delDebt(\'' + x.id + '\')">ลบ</button></div>' +
+      // ก้อนที่ยืมมาแสดง ลบจากหน้านี้ไม่ได้ (จะหายจากอีกหน้าด้วย) — ไปลบที่หน้าเจ้าของ หรือปิดการแสดงร่วมในฟอร์มแก้ไข
+      (x.sharedFrom ? '' : '<button class="btn sm dgr" onclick="delDebt(\'' + x.id + '\')">ลบ</button>') + '</div>' +
     '</div></div>';
   }).join('') + '</div>' : '';
 
@@ -2387,7 +2395,9 @@ function renderDebt(d){
           '<td class="num">' + (p.principal ? '<b style="color:var(--ok)">' + money(p.principal) + '</b>' : '<span class="faint">–</span>') + '</td>' +
           '<td class="num">' + (p.interest ? '<b style="color:var(--warn)">' + money(p.interest) + '</b>' : '<span class="faint">–</span>') + '</td>' +
           '<td class="num"><b>' + money(p.amount) + '</b></td>' +
-          '<td class="fs12">' + (adj ? '<span class="b info">⚖️ ปรับยอด</span>' : esc(p.channel || '–')) + '</td>' +
+          '<td class="fs12">' + (adj ? '<span class="b info">⚖️ ปรับยอด</span>' : esc(p.channel || '–')) +
+            (p.sharedFrom ? '<div class="mt8"><span class="b ok" title="รายการเดียวกับในอีกหน้า">🔗 ' +
+              (p.sharedFrom === 'หนี้หลัก' ? 'รายการสรุปรวม' : 'หนี้สิน') + '</span></div>' : '') + '</td>' +
           '<td>' + thumbsHtml(p.slipRefs) + '</td>' +
           '<td class="fs12 muted clip">' + esc(p.note || '') + '</td>' +
           '<td><div class="t-actions">' +
@@ -4401,6 +4411,9 @@ function formDebt(rec, ledger){
       { key:'planPerMonth', label:'ยอดผ่อนต่อเดือน (บาท)', type:'money' },
       { key:'dueDay',   label:'กำหนดชำระ (วันที่ของเดือน)', type:'number', ph:'20' },
       { key:'status',   label:'สถานะ', type:'select', options:opt('debtStatuses'), blank:false },
+      { key:'alsoIn',   label:'แสดงในอีกหน้าด้วย', type:'select',
+        options:[ { value:'หนี้รอง', label:'หน้าหนี้สิน' }, { value:'หนี้หลัก', label:'หน้ารายการสรุปรวม' } ],
+        hint:'ก้อนเดียวกัน ไม่ได้คัดลอก — บันทึกการชำระ แก้ หรือลบจากหน้าไหน อีกหน้าก็เปลี่ยนตาม · เลือกหน้าเดียวกับประเภทบัญชีไว้ = ไม่มีผล' },
       { key:'note',     label:'หมายเหตุ', type:'textarea', full:true }
     ]
   });
@@ -4422,7 +4435,8 @@ function formDebtPayment(rec, ledger){
   openForm({
     title: rec && rec.id ? 'แก้ไขรายการชำระ' : 'บันทึกการโอนใช้หนี้',
     record: rec || { payDate: today(), channel: 'โอน QR' },
-    action: 'debt.savePayment', base: { ledger: ledger }, bucket: 'debt',
+    // แก้รายการเดิมคงบัญชีเดิมไว้ — รายการที่มาจากอีกหน้า (ก้อนที่แสดงร่วม) ต้องไม่ถูกย้ายบัญชี
+    action: 'debt.savePayment', base: { ledger: (rec && rec.ledger) || ledger }, bucket: 'debt',
     ocr: { date:'payDate', amount:'principal', note:'note' },
     onDelete: delDebtPayment,
     fields: [
@@ -4437,7 +4451,7 @@ function formDebtPayment(rec, ledger){
       { key:'installment', label:'งวดที่', ph:'เช่น 9/2026' },
       { key:'debtId',  label:'ผูกกับก้อนหนี้', type:'select',
         options: debts.map(function(d){ return { value:d.id, label:d.title }; }),
-        hint:'เว้นว่างได้ — ระบบจะนับรวมทั้งบัญชี' },
+        hint:'เว้นว่างได้ — ระบบตัดก้อนเก่าก่อนให้เอง · เลือกก้อนที่มาจากอีกหน้า ยอดจะเข้าทั้งสองหน้า' },
       { key:'payer',   label:'ผู้ชำระ' },
       { key:'slips',   label:'สลิปการโอน', type:'files', full:true },
       { key:'note',    label:'หมายเหตุ', type:'textarea', full:true }

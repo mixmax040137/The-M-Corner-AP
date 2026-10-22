@@ -27,6 +27,10 @@ QUIET_ = true;
 setupSystem();
 seedHistoricalData();
 
+// ค่าก่อสร้างยังผ่อนอยู่ แสดงในหน้าหนี้สินด้วย (ก้อนเดียวกัน ตัวเลขเชื่อมกัน)
+{ const b = readRows_(SHEETS.DEBTS).find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0);
+  saveDebt_(Object.assign({}, b, { alsoIn: 'หนี้รอง' })); }
+
 // ให้ตัวอย่างดูมีชีวิต: เติมงานค้างและงานที่นัดไว้ล่วงหน้าเล็กน้อย
 // งานซ่อมใส่หลายจุดในใบเดียว จะได้เห็นเช็คลิสต์ทำงานจริง
 saveRoomRepair_({ room:'212', reportDate:'2026-08-20', bookDate:'2026-09-02',

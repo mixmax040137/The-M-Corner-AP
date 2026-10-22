@@ -153,7 +153,8 @@ function renderDebt(d){
     progress(d.percent, 'lg ' + (d.percent >= 100 ? 'ok' : '')) +
     '<div class="grid g4 mt16">' +
       kpi('ยอดหนี้ทั้งหมด', baht(d.totalDebt), d.debts.length + ' ก้อนหนี้') +
-      kpi('ชำระแล้ว', baht(d.paid), d.paymentCount + ' รายการโอน', 'good') +
+      kpi('ชำระแล้ว', baht(d.paid), d.paymentCount + ' รายการโอน' +
+          (d.adjustmentCount ? ' · ปรับยอด ' + baht(d.adjusted) : ''), 'good') +
       kpi('คงเหลือ', baht(d.remaining), 'อีก ' + pct(100 - d.percent) + ' จะปิดหนี้', 'bad') +
       kpi('ชำระใน' + yearLabel, baht(d.selectedYearPaid), d.selectedYearCount + ' รายการ' +
           (d.selectedYearInterest ? ' · ดอกเบี้ย ' + baht(d.selectedYearInterest) : '')) +
@@ -162,7 +163,7 @@ function renderDebt(d){
   var perDebt = d.debts.length ? '<div class="grid g-auto mb12">' + d.debts.map(function(x){
     return '<div class="card"><div class="card-b">' +
       '<div class="clip" style="font-weight:650;font-size:13.5px;min-height:38px">' + esc(x.title) + '</div>' +
-      '<div class="row fs12 muted mb8">' + statusBadge(x.status) +
+      '<div class="row fs12 muted mb8">' + (x.settled ? '<span class="b ok">✓ ชำระครบแล้ว</span>' : statusBadge(x.status)) +
         '<span>' + esc(x.creditor || '–') + (x.startDate ? ' · ' + thDate(x.startDate) : '') + '</span></div>' +
       (x.parentTitle
         ? '<div class="b info mb8" title="ยอดก้อนนี้อยู่ในก้อนแม่แล้ว จ่ายคืนก้อนนี้ก้อนแม่จะลดตาม">' +
@@ -184,6 +185,7 @@ function renderDebt(d){
       (x.interestPerMonth ? '<div class="fs12 muted mt8">ดอกเบี้ย ' + baht(x.interestPerMonth) + '/เดือน</div>' : '') +
       (x.planPerMonth ? '<div class="fs12 muted">แผนผ่อน ' + baht(x.planPerMonth) + '/เดือน</div>' : '') +
       '<div class="row mt12"><button class="btn sm" onclick=\'formDebt(' + attr(x) + ',"' + d.ledger + '")\'>แก้ไข</button>' +
+      '<button class="btn sm" title="ยอดไม่ตรงกับที่เจ้าหนี้แจ้ง? กรอกยอดคงเหลือจริง" onclick=\'formReconcileDebt(' + attr(x) + ')\'>⚖️ ปรับยอดให้ตรง</button>' +
       '<button class="btn sm dgr" onclick="delDebt(\'' + x.id + '\')">ลบ</button></div>' +
     '</div></div>';
   }).join('') + '</div>' : '';
@@ -214,13 +216,14 @@ function renderDebt(d){
       '<th class="num">รวมที่โอน</th><th>ช่องทาง</th>' +
       '<th>สลิป</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>' +
       rows.map(function(p){
-        return '<tr>' +
+        var adj = p.channel === 'ปรับยอด';
+        return '<tr' + (adj ? ' class="adj" title="รายการปรับยอดให้ตรงยอดจริง ไม่ใช่เงินที่โอน"' : '') + '>' +
           '<td class="nowrap">' + thDate(p.payDate) + '</td>' +
           '<td class="nowrap">' + esc(p.installment || '–') + '</td>' +
           '<td class="num">' + (p.principal ? '<b style="color:var(--ok)">' + money(p.principal) + '</b>' : '<span class="faint">–</span>') + '</td>' +
           '<td class="num">' + (p.interest ? '<b style="color:var(--warn)">' + money(p.interest) + '</b>' : '<span class="faint">–</span>') + '</td>' +
           '<td class="num"><b>' + money(p.amount) + '</b></td>' +
-          '<td class="fs12">' + esc(p.channel || '–') + '</td>' +
+          '<td class="fs12">' + (adj ? '<span class="b info">⚖️ ปรับยอด</span>' : esc(p.channel || '–')) + '</td>' +
           '<td>' + thumbsHtml(p.slipRefs) + '</td>' +
           '<td class="fs12 muted clip">' + esc(p.note || '') + '</td>' +
           '<td><div class="t-actions">' +

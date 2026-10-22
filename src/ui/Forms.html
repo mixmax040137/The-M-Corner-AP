@@ -737,13 +737,34 @@ function formDebtPayment(rec, ledger){
         hint:'ไม่ถูกนำไปลดยอดหนี้' },
       { key:'_total',  label:'รวมที่โอน', type:'computed', from:['principal','interest'],
         hint:'ตรวจให้ตรงกับยอดในสลิป · ระบบคิดให้อัตโนมัติ' },
-      { key:'installment', label:'งวดที่', ph:'เช่น 9/2569' },
+      { key:'installment', label:'งวดที่', ph:'เช่น 9/2026' },
       { key:'debtId',  label:'ผูกกับก้อนหนี้', type:'select',
         options: debts.map(function(d){ return { value:d.id, label:d.title }; }),
         hint:'เว้นว่างได้ — ระบบจะนับรวมทั้งบัญชี' },
       { key:'payer',   label:'ผู้ชำระ' },
       { key:'slips',   label:'สลิปการโอน', type:'files', full:true },
       { key:'note',    label:'หมายเหตุ', type:'textarea', full:true }
+    ]
+  });
+}
+
+/**
+ * ยอดในระบบไม่ตรงกับยอดที่เจ้าหนี้แจ้ง → กรอกยอดคงเหลือจริง ระบบบันทึกส่วนต่างให้
+ * ไม่ไปแก้ยอดตั้งต้น เพราะประวัติจะเพี้ยน รายการปรับยอดลบทิ้งได้ถ้ากรอกผิด
+ */
+function formReconcileDebt(x){
+  openForm({
+    title: 'ปรับยอดให้ตรงยอดจริง · ' + x.title,
+    record: { payDate: today() },
+    action: 'debt.reconcile', base: { debtId: x.id },
+    fields: [
+      { key:'actualRemaining', label:'ยอดคงเหลือจริงตอนนี้ (บาท)', type:'money', required:true, full:true,
+        hint:'ในระบบตอนนี้คงเหลือ <b>' + baht(x.remaining) + '</b> · ถ้าปิดหนี้ก้อนนี้แล้ว ใส่ 0' },
+      { key:'payDate', label:'ณ วันที่', type:'date', required:true },
+      { key:'note',    label:'สาเหตุ', type:'textarea', full:true,
+        ph:'เช่น มีงวดที่ไม่ได้บันทึกไว้ / เจ้าหนี้ลดให้',
+        hint:'ระบบบันทึกส่วนต่างเป็นรายการช่องทาง "ปรับยอด" ผูกกับก้อนนี้ ' +
+             'ไม่นับเป็นยอดผ่อนรายปีและไม่ใช้คาดการณ์วันปิดหนี้ · กรอกผิดก็ลบรายการนั้นทิ้งได้' }
     ]
   });
 }

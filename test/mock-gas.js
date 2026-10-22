@@ -53,11 +53,24 @@ function touched() {
   store.lastUpdated = new Date(Math.max(now, prev + 1));
 }
 
+/**
+ * เลียนแบบชีตจริงที่แปลงข้อความเองตอนเขียน: "7/2569" → วันที่ 1 ก.ค. 2569, "2565" → ตัวเลข
+ * ถ้ามี ' นำหน้า ชีตเก็บส่วนที่เหลือเป็นข้อความตรง ๆ (และไม่เก็บ ' ไว้)
+ */
+function sheetsCoerce(v) {
+  if (typeof v !== 'string') return v;
+  if (v.charAt(0) === "'") return v.slice(1);
+  let m = v.match(/^(\d{1,2})\/(\d{4})$/);
+  if (m) return new Date(Number(m[2]), Number(m[1]) - 1, 1);
+  if (/^\d+$/.test(v) && !/^0\d/.test(v) && v.length < 15) return Number(v);
+  return v;
+}
+
 class Sheet {
   constructor(name) { this.name = name; this.data = []; }
   getName() { return this.name; }
   cell(r, c) { const row = this.data[r - 1]; const v = row ? row[c - 1] : ''; return v === undefined ? '' : v; }
-  set(r, c, v) { while (this.data.length < r) this.data.push([]); const row = this.data[r - 1]; while (row.length < c) row.push(''); row[c - 1] = v; }
+  set(r, c, v) { v = sheetsCoerce(v); while (this.data.length < r) this.data.push([]); const row = this.data[r - 1]; while (row.length < c) row.push(''); row[c - 1] = v; }
   getRange(r, c, nr = 1, nc = 1) { return new Range(this, r, c, nr, nc); }
   getLastRow() { let last = 0; this.data.forEach((row, i) => { if (row && row.some(v => v !== '' && v != null)) last = i + 1; }); return last; }
   getLastColumn() { return Math.max(0, ...this.data.map(r => (r ? r.length : 0))); }
@@ -207,4 +220,4 @@ global.HtmlService = {
   XFrameOptionsMode: { ALLOWALL: 1 }
 };
 
-module.exports = { store };
+module.exports = { store, sheetsCoerce };

@@ -8,7 +8,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.5.0',
+  VERSION: '1.6.0',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -85,7 +85,7 @@ SCHEMA[SHEETS.DEBT_PAYMENTS] = [
   { key: 'principal', label: 'เงินต้น',       type: 'money' },
   { key: 'interest', label: 'ดอกเบี้ย',       type: 'money' },
   { key: 'amount',   label: 'รวมที่โอน',      type: 'money' },
-  { key: 'channel',  label: 'ช่องทาง',        type: 'select', options: ['โอน QR', 'โอนธนาคาร', 'เงินสด', 'บัตรเครดิต', 'อื่น ๆ'] },
+  { key: 'channel',  label: 'ช่องทาง',        type: 'select', options: ['โอน QR', 'โอนธนาคาร', 'เงินสด', 'บัตรเครดิต', 'อื่น ๆ', 'ปรับยอด'] },
   { key: 'payer',    label: 'ผู้ชำระ',        type: 'text' },
   { key: 'slips',    label: 'สลิปการโอน',     type: 'files' },
   { key: 'note',     label: 'หมายเหตุ',       type: 'multiline' },
@@ -278,7 +278,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 8;
+var SCHEMA_VERSION = 9;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];

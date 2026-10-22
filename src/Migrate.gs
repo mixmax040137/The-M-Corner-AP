@@ -18,6 +18,7 @@ function runMigrations_() {
   if (from < 5) done.push(migrateV5RefreshRate_());
   if (from < 7) done.push(migrateV7RepairTodo_());
   if (from < 8) done.push(migrateV8ChristianYear_());
+  if (from < 9) done.push(migrateV9InstallmentText_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -375,6 +376,24 @@ function migrateV8ChristianYear_() {
 
   // ช่อง "งวดที่" ของรายการโอนใช้หนี้เป็นช่องข้อความ ชีตเดิมกรอกเป็น พ.ศ. ไว้
   // เช่น "7/2569" หรือ "2565" — อันนี้เป็นข้อมูลจริง ไม่ใช่แค่การแสดงผล จึงต้องแปลง
+  var changed = installmentsToCE_();
+  return 'ปีที่แสดง: ' + (before || '(ยังไม่เคยตั้ง)') + ' → ค.ศ. · แปลงช่องงวดที่ ' + changed + ' รายการ';
+}
+
+/**
+ * รุ่น 9 — ช่องงวดที่ชีตแอบแปลงเป็นวันที่
+ *
+ * "7/2569" ที่กรอกลงชีตตรง ๆ ถูกชีตเก็บเป็นวันที่ 1 ก.ค. 2569 รุ่น 8 จึงมองไม่เห็นว่าเป็น พ.ศ.
+ * และหน้าเว็บแสดงเป็น "Sat Jul 01 2569 00:00:00 GMT+0700" ตอนนี้ readRows_ อ่านค่าพวกนี้
+ * กลับเป็น "7/2569" ได้แล้ว จึงแปลงเป็น ค.ศ. อีกรอบ แล้วเขียนกลับเป็นข้อความถาวร
+ * (ไม่แตะการตั้งค่าปีที่แสดง ใครเลือก พ.ศ. ไว้ก็ยังเป็น พ.ศ.)
+ */
+function migrateV9InstallmentText_() {
+  return 'ช่องงวดที่: แปลงเป็น ค.ศ. ' + installmentsToCE_(true) + ' รายการ · เขียนกลับเป็นข้อความทั้งชีต';
+}
+
+/** แปลงช่องงวดที่ทั้งชีตเป็น ค.ศ. คืนจำนวนแถวที่เปลี่ยน · force = เขียนทับทั้งชีตแม้ค่าไม่เปลี่ยน */
+function installmentsToCE_(force) {
   var name = SHEETS.DEBT_PAYMENTS;
   var rows = readRows_(name);
   var changed = 0;
@@ -382,13 +401,13 @@ function migrateV8ChristianYear_() {
     var next = installmentToCE_(r.installment);
     if (next !== String(r.installment == null ? '' : r.installment)) { r.installment = next; changed++; }
   });
-  if (changed) rewriteSheet_(name, rows.map(function (r) {
+  // เขียนทับเสมอเมื่อ force เพราะเซลล์ที่เป็นวันที่อยู่ ถึงค่าที่อ่านได้จะไม่เปลี่ยน ก็ต้องเขียนกลับเป็นข้อความ
+  if (changed || (force && rows.length)) rewriteSheet_(name, rows.map(function (r) {
     var out = {};
     SCHEMA[name].forEach(function (c) { out[c.key] = r[c.key]; });
     return out;
   }));
-
-  return 'ปีที่แสดง: ' + (before || '(ยังไม่เคยตั้ง)') + ' → ค.ศ. · แปลงช่องงวดที่ ' + changed + ' รายการ';
+  return changed;
 }
 
 /**

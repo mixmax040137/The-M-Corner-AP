@@ -26,7 +26,7 @@ check('สร้างครบ 13 ชีต', Object.keys(SHEETS).length === 13
 check('รายการซื้อ 94 รายการ', readRows_(SHEETS.PURCHASES).length === 94);
 check('ยอดชำระหนี้ 5,049,654', Math.round(debtSummary_('หนี้หลัก', 'all').paid) === 5049654);
 check('รายรับ-รายจ่าย 32 รายการ', readRows_(SHEETS.FINANCE).length === 32);
-check('มีคำสั่ง API ครบ 75 คำสั่ง', Object.keys(API_ROUTES).length === 75);
+check('มีคำสั่ง API ครบ 76 คำสั่ง', Object.keys(API_ROUTES).length === 76);
 check('มีบัญชีผู้ดูแลคนแรกให้ล็อกอิน', !!findUser_('admin'), true);
 const adminKey = getSetting_('admin_token', ''), viewKey = getSetting_('view_token', '');
 check('มีกุญแจผู้ดูแลและกุญแจแชร์', !!(adminKey && viewKey && adminKey !== viewKey), true);
@@ -927,6 +927,35 @@ console.log('\n── build/AllInOne.gs ──');
             !!got.recId, JSON.stringify(got.recId));
       await pg.evaluate(() => closeModal());
     }
+
+    // ปรับยอดให้ตรงยอดจริง — ปุ่มบนการ์ดก้อนหนี้ เปิดฟอร์มแล้วส่งรหัสก้อนหนี้ไปด้วย
+    await pg.evaluate(() => go('debtMain'));
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+    const settledBadge = await pg.evaluate(() => /ชำระครบแล้ว/.test(document.getElementById('view').innerText));
+    check('ก้อนที่ตัดครบแล้วขึ้นว่า "ชำระครบแล้ว"', settledBadge);
+    const rec = await pg.evaluate(() => {
+      var btn = Array.prototype.slice.call(document.querySelectorAll('#view [onclick]'))
+        .filter(function(e){ return (e.getAttribute('onclick') || '').indexOf('formReconcileDebt({') === 0; })[0];
+      if (!btn) return { err: 'ไม่เจอปุ่มปรับยอด' };
+      window.__calls = [];
+      var real = window.callApi;
+      window.callApi = function (a, p) { window.__calls.push({ a: a, p: p }); return real(a, p); };
+      btn.click();
+      var f = document.getElementById('f_actualRemaining');
+      if (!f) return { err: 'ฟอร์มไม่มีช่องยอดคงเหลือจริง' };
+      f.value = '6870000';
+      document.getElementById('fSave').click();
+      return { ok: true };
+    });
+    check('มีปุ่ม "ปรับยอดให้ตรง" และเปิดฟอร์มได้', !!rec.ok, rec.err);
+    await pg.waitForTimeout(400);
+    const recSent = (await pg.evaluate(() => window.__calls)).filter(c => c.a === 'debt.reconcile')[0];
+    check('ส่งคำสั่งปรับยอดพร้อมรหัสก้อนหนี้และยอดจริง',
+      !!recSent && !!recSent.p.record.debtId && Number(recSent.p.record.actualRemaining) === 6870000,
+      recSent && JSON.stringify(recSent.p));
+    await pg.evaluate(() => { try { closeModal(); } catch (e) {} });
+    await pg.evaluate(() => { var c = document.querySelector('#view .grid.g-auto'); if (c) c.scrollIntoView(); });
+    await pg.screenshot({ path: OUT + '/bundle-debt.png' });
 
     // กดปุ่ม "เพิ่มรายการ" ต้องได้ฟอร์มเปล่าและไม่มีรหัสเดิม
     await pg.evaluate(() => go('finance'));

@@ -414,7 +414,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 75);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 76);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
@@ -1208,6 +1208,96 @@ console.log('\n── 27. เปลี่ยนสถานะล้างแอ
 
   api('ac.delete', { _key: admKey, id: booked.id });
   check('ลบรายการทดสอบแล้วจำนวนกลับเท่าเดิม', readRows_(SHEETS.AC_SERVICE).length, 41);
+}
+
+console.log('\n── 28. ตัดหนี้ก้อนเก่าก่อน + ปรับยอดให้ตรงยอดจริง ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  const main = debtSummary_('หนี้หลัก', 'all');
+  const card = t => main.debts.find(x => x.title.indexOf(t) >= 0);
+  const land = card('ซื้อที่ดิน'), build = card('ค่าก่อสร้าง'), design = card('ค่าเขียนแบบ');
+  check('จ่ายเกิน 4.75 ล้านแล้ว (ตั้งต้นของชุดทดสอบ)', main.paid > 4751000, true);
+  near('ที่ดินเริ่มก่อน ถูกตัดจนเต็มก่อน', land.paid, 4700000, 0);
+  check('ที่ดินขึ้นว่าปิดแล้ว', land.settled, true);
+  near('ค่าเขียนแบบ (เริ่มวันเดียวกับค่าก่อสร้าง แต่ก้อนเล็กกว่า) ปิดก่อน', design.paid, 51000, 0);
+  near('ที่เหลือทั้งหมดลงค่าก่อสร้าง', build.paid, main.paid - 4751000, 1);
+  check('ค่าก่อสร้างยังไม่ปิด', build.settled, false);
+  near('ผลรวมรายก้อน = ยอดชำระทั้งบัญชี', land.paid + build.paid + design.paid, main.paid, 1);
+
+  // ไล่ตามวันที่ชำระ ไม่ใช่ตามลำดับในชีต: งวดเก่าสุดต้องไปลงที่ดิน
+  const allPays = listDebtPayments_(null, 'all');
+  debtGraph_(readRows_(SHEETS.DEBTS), allPays);
+  const oldest = allPays.filter(x => x.ledger === 'หนี้หลัก').slice(-1)[0];
+  check('งวดแรกสุดไปลงที่ดิน', oldest._toDebts[0], land.id);
+
+  // ── ปรับยอดค่าก่อสร้างให้ตรงยอดจริง ──
+  const target = build.remaining - 180346;
+  const r = api('debt.reconcile', { _key: admKey, debtId: build.id, actualRemaining: target, payDate: '2026-10-20' });
+  check('ปรับยอดสำเร็จ', r.ok, true);
+  near('บันทึกเป็นรายการเท่าส่วนต่าง', r.data.principal, 180346, 0);
+  check('ช่องทางเป็น "ปรับยอด"', r.data.channel, 'ปรับยอด');
+  check('ผูกกับก้อนค่าก่อสร้าง', r.data.debtId, build.id);
+  const after = debtSummary_('หนี้หลัก', 'all');
+  near('ค่าก่อสร้างคงเหลือตรงยอดจริง', after.debts.find(x => x.id === build.id).remaining, target, 0);
+  near('คงเหลือทั้งบัญชีลดตาม', after.remaining, main.remaining - 180346, 1);
+  check('ไม่นับเป็นจำนวนครั้งที่โอน', after.paymentCount, main.paymentCount);
+  near('ไม่นับเป็นยอดผ่อนรายปี', after.byYear.reduce((a, y) => a + y.principal, 0),
+    main.byYear.reduce((a, y) => a + y.principal, 0), 0);
+  near('แต่บอกไว้ว่ามีการปรับยอด', after.adjusted, 180346, 0);
+  check('คาดการณ์ปิดหนี้ไม่ถูกปั่นด้วยรายการปรับยอด', after.forecast.avgPerMonth, main.forecast.avgPerMonth);
+  check('ปรับซ้ำด้วยยอดเดิม ถูกปฏิเสธ',
+    api('debt.reconcile', { _key: admKey, debtId: build.id, actualRemaining: target }).ok, false);
+  check('ยอดติดลบ ถูกปฏิเสธ',
+    api('debt.reconcile', { _key: admKey, debtId: build.id, actualRemaining: -1 }).ok, false);
+  check('ยอดเกินยอดตั้งต้น ถูกปฏิเสธ',
+    api('debt.reconcile', { _key: admKey, debtId: build.id, actualRemaining: 9999999 }).ok, false);
+  setSetting_('share_link_enabled', 'เปิด');
+  check('ลิงก์ดูอย่างเดียวปรับยอดไม่ได้',
+    api('debt.reconcile', { _key: getSetting_('view_token', ''), debtId: build.id, actualRemaining: 1 }).ok, false);
+  setSetting_('share_link_enabled', 'ปิด');
+
+  // ปรับขึ้นก็ได้ (เช่น บันทึกเกินไว้)
+  const up = api('debt.reconcile', { _key: admKey, debtId: build.id, actualRemaining: target + 1000 });
+  near('ปรับยอดขึ้น = รายการติดลบ', up.data.principal, -1000, 0);
+  near('ยอดคงเหลือขยับขึ้นตาม', debtSummary_('หนี้หลัก', 'all').debts.find(x => x.id === build.id).remaining, target + 1000, 0);
+
+  deleteDebtPayment_(r.data.id); deleteDebtPayment_(up.data.id);
+  near('ลบรายการปรับยอดแล้วกลับเป็นเดิม', debtSummary_('หนี้หลัก', 'all').remaining, main.remaining, 1);
+}
+
+console.log('\n── 29. ช่องงวดที่ชีตแอบแปลงเป็นวันที่ ──');
+{
+  // ของจริงเกิดแบบนี้: พิมพ์ "7/2569" ลงชีต ชีตเก็บเป็นวันที่ 1 ก.ค. ปี 2569
+  check('ตัวจำลองแปลงแบบชีตจริง', require('./mock-gas.js').sheetsCoerce('7/2569') instanceof Date, true);
+  check('วันที่ 1 อ่านกลับเป็น เดือน/ปี', textFromCell_(new Date(2569, 6, 1)), '7/2569');
+  check('วันอื่นอ่านเป็น yyyy-mm-dd', textFromCell_(new Date(2026, 6, 15)), '2026-07-15');
+  check('ข้อความยาวที่เคยถูกเขียนกลับลงชีต อ่านได้',
+    textFromCell_('Sat Jul 01 2569 00:00:00 GMT+0700 (Indochina Time)'), '7/2569');
+  check('ข้อความปกติไม่ถูกแตะ', textFromCell_('งวดพิเศษ'), 'งวดพิเศษ');
+
+  const sh = getSpreadsheet_().getSheetByName(SHEETS.DEBT_PAYMENTS);
+  const col = SCHEMA[SHEETS.DEBT_PAYMENTS].findIndex(c => c.key === 'installment') + 1;
+  const rows = readRows_(SHEETS.DEBT_PAYMENTS);
+  sh.getRange(rows[0]._row, col).setValue(new Date(2569, 6, 1));
+  sh.getRange(rows[1]._row, col).setValue('Sat Aug 01 2569 00:00:00 GMT+0700 (Indochina Time)');
+  check('อ่านเซลล์วันที่เป็นงวดได้', readRows_(SHEETS.DEBT_PAYMENTS)[0].installment, '7/2569');
+
+  props_().setProperty('SCHEMA_VERSION', '8');
+  runMigrations_();
+  const fixed = readRows_(SHEETS.DEBT_PAYMENTS);
+  check('ย้ายข้อมูลรุ่น 9: เซลล์วันที่ → 7/2026', fixed[0].installment, '7/2026');
+  check('ย้ายข้อมูลรุ่น 9: ข้อความยาว → 8/2026', fixed[1].installment, '8/2026');
+  check('เก็บเป็นข้อความถาวรแล้ว ไม่ใช่วันที่', typeof sh.getRange(fixed[0]._row, col).getValue(), 'string');
+  check('ไม่มีงวดไหนหน้าตาเป็นวันที่ JS เหลืออยู่',
+    fixed.filter(r => /GMT/.test(String(r.installment))).length, 0);
+
+  // บันทึกใหม่ต้องไม่โดนชีตแปลงอีก
+  const saved = saveDebtPayment_({ ledger: 'หนี้หลัก', payDate: '2026-09-09', principal: 1, installment: '9/2026' });
+  check('ค่าที่ส่งกลับไม่มี \' ติดมา', saved.installment, '9/2026');
+  check('อ่านกลับจากชีตได้ 9/2026', findRow_(SHEETS.DEBT_PAYMENTS, saved.id).installment, '9/2026');
+  const phone = saveDebtPayment_({ ledger: 'หนี้หลัก', payDate: '2026-09-09', principal: 1, payer: '0812345678' });
+  check('เลข 0 นำหน้าไม่หาย', findRow_(SHEETS.DEBT_PAYMENTS, phone.id).payer, '0812345678');
+  deleteDebtPayment_(saved.id); deleteDebtPayment_(phone.id);
 }
 
 console.log('\n════════════════════════════');

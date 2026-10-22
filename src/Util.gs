@@ -126,7 +126,51 @@ function normalizeValue_(v, type) {
   if (type === 'number' || type === 'money') return toNumber_(v);
   if (type === 'files') return splitList_(v);
   if (type === 'bool') return v === true || String(v).toUpperCase() === 'TRUE';
-  return String(v);
+  return textFromCell_(v);
+}
+
+/**
+ * ช่องข้อความที่ชีตแอบแปลงเป็นวันที่ไปแล้ว
+ *
+ * พิมพ์ "7/2569" ลงชีตตรง ๆ ชีตจะเดาว่าเป็นวันที่ 1 ก.ค. ปี 2569 แล้วเก็บเป็นวันที่
+ * พออ่านกลับมาเป็นข้อความจะได้ "Sat Jul 01 2569 00:00:00 GMT+0700 ..." แทน
+ * วันที่ 1 ของเดือนแปลงกลับเป็น "เดือน/ปี" (รูปแบบของช่องงวด) วันอื่นเป็น yyyy-mm-dd
+ * รวมถึงข้อความยาว ๆ แบบนั้นที่เคยถูกเขียนกลับลงชีตไปแล้วด้วย
+ */
+var JS_DATE_TEXT = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{2}) (\d{4}) \d{2}:\d{2}:\d{2} GMT/;
+var MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function textFromCell_(v) {
+  var y, m, d;
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    if (isNaN(v.getTime())) return '';
+    var iso = Utilities.formatDate(v, APP.TIMEZONE, 'yyyy-MM-dd');
+    y = Number(iso.slice(0, 4)); m = Number(iso.slice(5, 7)); d = Number(iso.slice(8, 10));
+  } else {
+    var s = String(v);
+    var hit = s.match(JS_DATE_TEXT);
+    if (!hit) return s;
+    y = Number(hit[3]); m = MONTH_ABBR.indexOf(hit[1]) + 1; d = Number(hit[2]);
+  }
+  if (d === 1) return m + '/' + y;
+  return y + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d;
+}
+
+/**
+ * ข้อความที่หน้าตาเหมือนตัวเลขหรือวันที่ ("7/2026", "0812345678", "2022")
+ * ใส่ ' นำหน้าตอนเขียน ชีตจะเก็บเป็นข้อความตามที่พิมพ์ ไม่แปลงเป็นวันที่/ตัดเลข 0 ข้างหน้า
+ * (เครื่องหมาย ' ไม่ถูกเก็บเป็นส่วนหนึ่งของค่า อ่านกลับมาได้ข้อความเดิม)
+ */
+var LOOKS_NUMERIC = /^[\d\s.,:\/+\-]+$/;
+
+function asSheetText_(s) {
+  return LOOKS_NUMERIC.test(s) && /\d/.test(s) ? "'" + s : s;
+}
+
+/** ค่าที่เพิ่งเขียน → ค่าที่ client เห็น (ถอด ' ที่ asSheetText_ ใส่ไว้) */
+function echoCell_(cell, type) {
+  if (typeof cell === 'string' && cell.charAt(0) === "'" && LOOKS_NUMERIC.test(cell.slice(1))) cell = cell.slice(1);
+  return normalizeValue_(cell, type);
 }
 
 /** แปลงค่าจาก client ให้พร้อมเขียนลงชีต */
@@ -144,7 +188,7 @@ function serializeValue_(v, type) {
     if (Array.isArray(v)) return v.filter(String).join('\n');
     return String(v || '');
   }
-  return String(v);
+  return asSheetText_(String(v));
 }
 
 /** เพิ่มแถวใหม่ คืน object ที่บันทึกแล้ว */
@@ -154,7 +198,7 @@ function insertRow_(name, obj) {
   var row = cols.map(function (c) { return serializeValue_(obj[c.key], c.type); });
   sh.appendRow(row);
   var saved = {};
-  cols.forEach(function (c, i) { saved[c.key] = normalizeValue_(row[i], c.type); });
+  cols.forEach(function (c, i) { saved[c.key] = echoCell_(row[i], c.type); });
   saved._row = sh.getLastRow();
   return saved;
 }
@@ -166,7 +210,7 @@ function updateRow_(name, rowNumber, obj) {
   var row = cols.map(function (c) { return serializeValue_(obj[c.key], c.type); });
   sh.getRange(rowNumber, 1, 1, cols.length).setValues([row]);
   var saved = {};
-  cols.forEach(function (c, i) { saved[c.key] = normalizeValue_(row[i], c.type); });
+  cols.forEach(function (c, i) { saved[c.key] = echoCell_(row[i], c.type); });
   saved._row = rowNumber;
   return saved;
 }

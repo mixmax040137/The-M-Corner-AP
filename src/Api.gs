@@ -88,6 +88,7 @@ var API_ROUTES = {
   'debt.delete': function (p) { return deleteDebt_(p.id); },
   'debt.savePayment': function (p) { return saveDebtPayment_(p.record); },
   'debt.deletePayment': function (p) { return deleteDebtPayment_(p.id); },
+  'debt.reconcile': function (p) { return reconcileDebt_(p.record || p); },
 
   /* ---------- รายการซื้อของ ---------- */
   'purchase.summary': function (p) { return purchaseSummary_(p.year); },

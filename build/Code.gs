@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-09-07 06:52 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-10-22 11:15 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.5.0',
+  VERSION: '1.6.0',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -99,7 +99,7 @@ SCHEMA[SHEETS.DEBT_PAYMENTS] = [
   { key: 'principal', label: 'เงินต้น',       type: 'money' },
   { key: 'interest', label: 'ดอกเบี้ย',       type: 'money' },
   { key: 'amount',   label: 'รวมที่โอน',      type: 'money' },
-  { key: 'channel',  label: 'ช่องทาง',        type: 'select', options: ['โอน QR', 'โอนธนาคาร', 'เงินสด', 'บัตรเครดิต', 'อื่น ๆ'] },
+  { key: 'channel',  label: 'ช่องทาง',        type: 'select', options: ['โอน QR', 'โอนธนาคาร', 'เงินสด', 'บัตรเครดิต', 'อื่น ๆ', 'ปรับยอด'] },
   { key: 'payer',    label: 'ผู้ชำระ',        type: 'text' },
   { key: 'slips',    label: 'สลิปการโอน',     type: 'files' },
   { key: 'note',     label: 'หมายเหตุ',       type: 'multiline' },
@@ -292,7 +292,7 @@ var YEAR_SHEETS = [
  * รุ่นของโครงสร้างข้อมูล — เพิ่มเลขนี้เมื่อมีการย้ายคอลัมน์
  * เพื่อให้ตัวย้ายข้อมูลทำงานครั้งเดียวตอนอัปเดตโค้ด
  */
-var SCHEMA_VERSION = 8;
+var SCHEMA_VERSION = 9;
 
 /** รายการที่เป็น "รายรับ" — ใช้แยกฝั่งรายรับ/รายจ่ายอัตโนมัติ */
 var INCOME_KINDS = ['รายรับค่าเช่า', 'รายรับอื่น ๆ'];
@@ -468,7 +468,51 @@ function normalizeValue_(v, type) {
   if (type === 'number' || type === 'money') return toNumber_(v);
   if (type === 'files') return splitList_(v);
   if (type === 'bool') return v === true || String(v).toUpperCase() === 'TRUE';
-  return String(v);
+  return textFromCell_(v);
+}
+
+/**
+ * ช่องข้อความที่ชีตแอบแปลงเป็นวันที่ไปแล้ว
+ *
+ * พิมพ์ "7/2569" ลงชีตตรง ๆ ชีตจะเดาว่าเป็นวันที่ 1 ก.ค. ปี 2569 แล้วเก็บเป็นวันที่
+ * พออ่านกลับมาเป็นข้อความจะได้ "Sat Jul 01 2569 00:00:00 GMT+0700 ..." แทน
+ * วันที่ 1 ของเดือนแปลงกลับเป็น "เดือน/ปี" (รูปแบบของช่องงวด) วันอื่นเป็น yyyy-mm-dd
+ * รวมถึงข้อความยาว ๆ แบบนั้นที่เคยถูกเขียนกลับลงชีตไปแล้วด้วย
+ */
+var JS_DATE_TEXT = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{2}) (\d{4}) \d{2}:\d{2}:\d{2} GMT/;
+var MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function textFromCell_(v) {
+  var y, m, d;
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    if (isNaN(v.getTime())) return '';
+    var iso = Utilities.formatDate(v, APP.TIMEZONE, 'yyyy-MM-dd');
+    y = Number(iso.slice(0, 4)); m = Number(iso.slice(5, 7)); d = Number(iso.slice(8, 10));
+  } else {
+    var s = String(v);
+    var hit = s.match(JS_DATE_TEXT);
+    if (!hit) return s;
+    y = Number(hit[3]); m = MONTH_ABBR.indexOf(hit[1]) + 1; d = Number(hit[2]);
+  }
+  if (d === 1) return m + '/' + y;
+  return y + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d;
+}
+
+/**
+ * ข้อความที่หน้าตาเหมือนตัวเลขหรือวันที่ ("7/2026", "0812345678", "2022")
+ * ใส่ ' นำหน้าตอนเขียน ชีตจะเก็บเป็นข้อความตามที่พิมพ์ ไม่แปลงเป็นวันที่/ตัดเลข 0 ข้างหน้า
+ * (เครื่องหมาย ' ไม่ถูกเก็บเป็นส่วนหนึ่งของค่า อ่านกลับมาได้ข้อความเดิม)
+ */
+var LOOKS_NUMERIC = /^[\d\s.,:\/+\-]+$/;
+
+function asSheetText_(s) {
+  return LOOKS_NUMERIC.test(s) && /\d/.test(s) ? "'" + s : s;
+}
+
+/** ค่าที่เพิ่งเขียน → ค่าที่ client เห็น (ถอด ' ที่ asSheetText_ ใส่ไว้) */
+function echoCell_(cell, type) {
+  if (typeof cell === 'string' && cell.charAt(0) === "'" && LOOKS_NUMERIC.test(cell.slice(1))) cell = cell.slice(1);
+  return normalizeValue_(cell, type);
 }
 
 /** แปลงค่าจาก client ให้พร้อมเขียนลงชีต */
@@ -486,7 +530,7 @@ function serializeValue_(v, type) {
     if (Array.isArray(v)) return v.filter(String).join('\n');
     return String(v || '');
   }
-  return String(v);
+  return asSheetText_(String(v));
 }
 
 /** เพิ่มแถวใหม่ คืน object ที่บันทึกแล้ว */
@@ -496,7 +540,7 @@ function insertRow_(name, obj) {
   var row = cols.map(function (c) { return serializeValue_(obj[c.key], c.type); });
   sh.appendRow(row);
   var saved = {};
-  cols.forEach(function (c, i) { saved[c.key] = normalizeValue_(row[i], c.type); });
+  cols.forEach(function (c, i) { saved[c.key] = echoCell_(row[i], c.type); });
   saved._row = sh.getLastRow();
   return saved;
 }
@@ -508,7 +552,7 @@ function updateRow_(name, rowNumber, obj) {
   var row = cols.map(function (c) { return serializeValue_(obj[c.key], c.type); });
   sh.getRange(rowNumber, 1, 1, cols.length).setValues([row]);
   var saved = {};
-  cols.forEach(function (c, i) { saved[c.key] = normalizeValue_(row[i], c.type); });
+  cols.forEach(function (c, i) { saved[c.key] = echoCell_(row[i], c.type); });
   saved._row = rowNumber;
   return saved;
 }
@@ -1514,7 +1558,7 @@ var PUBLIC_ACTIONS = /^auth\.(login|unlock|me|ping)$/;
  * รวม upload/trash ด้วย เพราะเป็นการเขียนและลบไฟล์ใน Google Drive ของเจ้าของ
  * และ ocr.read ที่สร้างไฟล์ชั่วคราวใน Drive ทุกครั้งที่เรียก
  */
-var MUTATING_ACTIONS = /^ocr\.read$|\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow|upload|trash|toggle|setStatus)$/;
+var MUTATING_ACTIONS = /^ocr\.read$|\.(save|delete|savePayment|deletePayment|bulkBook|import|send|rotateToken|backupNow|upload|trash|toggle|setStatus|reconcile)$/;
 
 /**
  * คำสั่งที่เฉพาะผู้ดูแลเท่านั้น
@@ -3003,6 +3047,7 @@ function runMigrations_() {
   if (from < 5) done.push(migrateV5RefreshRate_());
   if (from < 7) done.push(migrateV7RepairTodo_());
   if (from < 8) done.push(migrateV8ChristianYear_());
+  if (from < 9) done.push(migrateV9InstallmentText_());
 
   props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
   logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
@@ -3360,6 +3405,24 @@ function migrateV8ChristianYear_() {
 
   // ช่อง "งวดที่" ของรายการโอนใช้หนี้เป็นช่องข้อความ ชีตเดิมกรอกเป็น พ.ศ. ไว้
   // เช่น "7/2569" หรือ "2565" — อันนี้เป็นข้อมูลจริง ไม่ใช่แค่การแสดงผล จึงต้องแปลง
+  var changed = installmentsToCE_();
+  return 'ปีที่แสดง: ' + (before || '(ยังไม่เคยตั้ง)') + ' → ค.ศ. · แปลงช่องงวดที่ ' + changed + ' รายการ';
+}
+
+/**
+ * รุ่น 9 — ช่องงวดที่ชีตแอบแปลงเป็นวันที่
+ *
+ * "7/2569" ที่กรอกลงชีตตรง ๆ ถูกชีตเก็บเป็นวันที่ 1 ก.ค. 2569 รุ่น 8 จึงมองไม่เห็นว่าเป็น พ.ศ.
+ * และหน้าเว็บแสดงเป็น "Sat Jul 01 2569 00:00:00 GMT+0700" ตอนนี้ readRows_ อ่านค่าพวกนี้
+ * กลับเป็น "7/2569" ได้แล้ว จึงแปลงเป็น ค.ศ. อีกรอบ แล้วเขียนกลับเป็นข้อความถาวร
+ * (ไม่แตะการตั้งค่าปีที่แสดง ใครเลือก พ.ศ. ไว้ก็ยังเป็น พ.ศ.)
+ */
+function migrateV9InstallmentText_() {
+  return 'ช่องงวดที่: แปลงเป็น ค.ศ. ' + installmentsToCE_(true) + ' รายการ · เขียนกลับเป็นข้อความทั้งชีต';
+}
+
+/** แปลงช่องงวดที่ทั้งชีตเป็น ค.ศ. คืนจำนวนแถวที่เปลี่ยน · force = เขียนทับทั้งชีตแม้ค่าไม่เปลี่ยน */
+function installmentsToCE_(force) {
   var name = SHEETS.DEBT_PAYMENTS;
   var rows = readRows_(name);
   var changed = 0;
@@ -3367,13 +3430,13 @@ function migrateV8ChristianYear_() {
     var next = installmentToCE_(r.installment);
     if (next !== String(r.installment == null ? '' : r.installment)) { r.installment = next; changed++; }
   });
-  if (changed) rewriteSheet_(name, rows.map(function (r) {
+  // เขียนทับเสมอเมื่อ force เพราะเซลล์ที่เป็นวันที่อยู่ ถึงค่าที่อ่านได้จะไม่เปลี่ยน ก็ต้องเขียนกลับเป็นข้อความ
+  if (changed || (force && rows.length)) rewriteSheet_(name, rows.map(function (r) {
     var out = {};
     SCHEMA[name].forEach(function (c) { out[c.key] = r[c.key]; });
     return out;
   }));
-
-  return 'ปีที่แสดง: ' + (before || '(ยังไม่เคยตั้ง)') + ' → ค.ศ. · แปลงช่องงวดที่ ' + changed + ' รายการ';
+  return changed;
 }
 
 /**
@@ -3680,10 +3743,20 @@ function listDebtPayments_(ledger, year) {
 /*  เครื่องคิดยอด — ปันส่วนการชำระ แล้วไหลขึ้นตามสายแม่-ลูก              */
 /* ------------------------------------------------------------------ */
 
+/** ช่องทางของรายการ "ปรับยอดให้ตรงกับยอดจริง" — ไม่ใช่เงินที่โอนจริง จึงไม่นับเป็นยอดผ่อนรายปี */
+var ADJUST_CHANNEL = 'ปรับยอด';
+
+function isAdjustment_(p) { return String(p && p.channel || '') === ADJUST_CHANNEL; }
+
 /**
  * ปันส่วนรายการชำระให้แต่ละก้อนหนี้
  *   ระบุก้อนหนี้ไว้     → เข้าก้อนนั้นเต็มจำนวน
- *   ไม่ได้ระบุ          → เฉลี่ยตามสัดส่วนยอดตั้งต้น ให้ก้อนระดับบนสุดของบัญชีนั้น
+ *   ไม่ได้ระบุ          → ตัดก้อนที่เริ่มก่อนให้หมดก่อน แล้วค่อยไหลไปก้อนถัดไป
+ *                        (ก้อนที่เริ่มวันเดียวกัน ตัดก้อนเล็กก่อน)
+ *
+ * ทำไมไม่เฉลี่ยตามสัดส่วน: ของจริงคือจ่ายค่าที่ดินจนหมดก่อนค่อยมาผ่อนค่าก่อสร้าง
+ * ถ้าเฉลี่ย ค่าที่ดินจะไม่มีวันปิดได้เลยทั้งที่จ่ายครบแล้ว และค่าก่อสร้างจะดูเหมือนจ่ายไปเกินจริง
+ * รายการต้องไล่ตามวันที่ชำระ ก้อนไหนเต็มเมื่อไรจึงจะถูกต้อง
  */
 function debtGraph_(debts, payments) {
   var byId = {};
@@ -3706,16 +3779,39 @@ function debtGraph_(debts, payments) {
     if (p) (children[String(p.id)] = children[String(p.id)] || []).push(d);
   });
 
-  var rootTotal = {};
-  debts.forEach(function (d) {
+  // ลำดับการตัดของแต่ละบัญชี: เริ่มก่อน → ก้อนเล็กก่อน → ลำดับในชีต
+  var queue = {};
+  debts.forEach(function (d, i) {
     if (!isLedgerRoot(d)) return;
-    rootTotal[d.ledger] = (rootTotal[d.ledger] || 0) + (toNumber_(d.principal) || 0);
+    (queue[d.ledger] = queue[d.ledger] || []).push({ d: d, i: i });
+  });
+  Object.keys(queue).forEach(function (k) {
+    queue[k] = queue[k].sort(function (a, b) {
+      var sa = toIsoDate_(a.d.startDate) || '9999', sb = toIsoDate_(b.d.startDate) || '9999';
+      if (sa !== sb) return sa < sb ? -1 : 1;
+      var pa = toNumber_(a.d.principal) || 0, pb = toNumber_(b.d.principal) || 0;
+      if (pa !== pb) return pa - pb;
+      return a.i - b.i;
+    }).map(function (x) { return x.d; });
   });
 
   var own = {};
   debts.forEach(function (d) { own[String(d.id)] = { principal: 0, interest: 0 }; });
 
-  payments.forEach(function (p) {
+  /** เงินต้นที่ลงก้อนนี้ไปแล้ว รวมก้อนลูกทุกชั้น */
+  function allocated(d, guard) {
+    guard = guard || 0;
+    if (guard > 20) return 0;
+    var sum = own[String(d.id)].principal;
+    (children[String(d.id)] || []).forEach(function (c) { sum += allocated(c, guard + 1); });
+    return sum;
+  }
+
+  var ordered = payments.slice().sort(function (a, b) {
+    return String(toIsoDate_(a.payDate)).localeCompare(String(toIsoDate_(b.payDate)));
+  });
+
+  ordered.forEach(function (p) {
     var pr = toNumber_(p.principal) || 0;
     var it = toNumber_(p.interest) || 0;
     var id = String(p.debtId || '').trim();
@@ -3727,14 +3823,42 @@ function debtGraph_(debts, payments) {
       p._toDebts.push(id);
       return;
     }
-    var tot = rootTotal[p.ledger] || 0;
-    debts.forEach(function (d) {
-      if (d.ledger !== p.ledger || !isLedgerRoot(d)) return;
-      var w = tot > 0 ? (toNumber_(d.principal) || 0) / tot : 0;
-      own[String(d.id)].principal += pr * w;
-      own[String(d.id)].interest += it * w;
-      p._toDebts.push(String(d.id));
-    });
+    var roots = queue[p.ledger] || [];
+    if (!roots.length) return;
+
+    var left = pr, first = null;
+    if (left >= 0) {
+      roots.forEach(function (d, k) {
+        if (left <= 0) return;
+        var room = Math.max(0, (toNumber_(d.principal) || 0) - allocated(d));
+        // จ่ายเกินทุกก้อนแล้ว ส่วนที่เหลือพักไว้ที่ก้อนสุดท้าย ยอดรวมจะได้ไม่หาย
+        var take = k === roots.length - 1 ? left : Math.min(left, room);
+        if (take <= 0) return;
+        own[String(d.id)].principal += take;
+        left -= take;
+        if (!first) first = d;
+        p._toDebts.push(String(d.id));
+      });
+    } else {
+      // ยอดติดลบ (ปรับยอดหนี้เพิ่ม) คืนจากก้อนล่าสุดที่มีการตัดไว้
+      for (var k = roots.length - 1; k >= 0 && left < 0; k--) {
+        var got = own[String(roots[k].id)].principal;
+        var back = k === 0 ? left : Math.max(left, -Math.max(0, got));
+        if (!back) continue;
+        own[String(roots[k].id)].principal += back;
+        left -= back;
+        if (!first) first = roots[k];
+        p._toDebts.push(String(roots[k].id));
+      }
+    }
+    if (it) {
+      // ดอกเบี้ยลงก้อนแรกที่รายการนี้ไปตัด หรือก้อนแรกที่ยังไม่เต็ม
+      var target = first || roots.filter(function (d) {
+        return allocated(d) < (toNumber_(d.principal) || 0);
+      })[0] || roots[roots.length - 1];
+      own[String(target.id)].interest += it;
+      if (p._toDebts.indexOf(String(target.id)) < 0) p._toDebts.push(String(target.id));
+    }
   });
 
   /** ยอดของก้อนหนึ่ง = ของตัวเอง + เงินต้นของลูกทุกชั้น */
@@ -3792,6 +3916,10 @@ function debtSummary_(ledger, year) {
     if (!((toNumber_(p.principal) || 0) > 0)) return false;
     return !!g.ledgersTouched(p)[ledger];
   });
+  // รายการปรับยอดลดหนี้จริง แต่ไม่ใช่เงินที่โอนในปีนั้น — ไม่เอาไปนับเป็นยอดผ่อนรายปีหรือคาดการณ์
+  var adjustments = scoped.filter(isAdjustment_);
+  var adjusted = sum_(adjustments, function (p) { return p.principal; });
+  scoped = scoped.filter(function (p) { return !isAdjustment_(p); });
 
   var totalDebt = sum_(debts, function (d) { return d.principal; });
 
@@ -3841,6 +3969,7 @@ function debtSummary_(ledger, year) {
       percent: principal > 0 ? Math.min(100, (paid / principal) * 100) : 0,
       paidFromChildren: round2_(r.fromChildren),
       parentId: String(d.parentId || ''),
+      settled: principal > 0 && paid >= principal - 0.005,
       parentTitle: parent ? parent.title : '',
       children: kids.map(function (c) {
         var cr = g.paidOf(c);
@@ -3869,6 +3998,8 @@ function debtSummary_(ledger, year) {
     percent: round2_(percent),
     interestPaid: round2_(interestPaid),
     paymentCount: scoped.length,
+    adjusted: round2_(adjusted),
+    adjustmentCount: adjustments.length,
     years: byYear.map(function (y) { return y.year; }),
     byYear: byYear,
     debts: perDebt,
@@ -4002,6 +4133,39 @@ function deleteDebtPayment_(id) {
   deleteRow_(SHEETS.DEBT_PAYMENTS, found._row);
   logActivity_('ลบรายการชำระหนี้', id, found.amount);
   return true;
+}
+
+/**
+ * ปรับยอดคงเหลือของก้อนหนี้ให้ตรงกับยอดจริง
+ *
+ * ใช้ตอนที่ยอดในระบบกับยอดที่เจ้าหนี้แจ้งไม่ตรงกัน เช่น มีบางงวดที่ไม่ได้บันทึกไว้
+ * หรือเจ้าหนี้ยกให้บางส่วน — แทนที่จะไปแก้ยอดตั้งต้น (ซึ่งทำให้ประวัติเพี้ยน)
+ * ระบบบันทึก "รายการปรับยอด" เท่าส่วนต่างผูกกับก้อนนั้น ตรวจย้อนหลังได้และลบทิ้งได้
+ *
+ * @param {{debtId:string, actualRemaining:number, payDate?:string, note?:string}} p
+ */
+function reconcileDebt_(p) {
+  var debt = findRow_(SHEETS.DEBTS, p.debtId);
+  if (!debt) throw new Error('ไม่พบก้อนหนี้: ' + p.debtId);
+  var actual = toNumber_(p.actualRemaining);
+  if (actual === null || actual < 0) throw new Error('กรอกยอดคงเหลือจริงเป็นตัวเลขตั้งแต่ 0 ขึ้นไป');
+  var principal = toNumber_(debt.principal) || 0;
+  if (actual > principal) throw new Error('ยอดคงเหลือจริงมากกว่ายอดหนี้ตั้งต้น (' + principal + ') — แก้ยอดตั้งต้นของก้อนนี้แทน');
+
+  // ใช้ยอดที่ยังไม่ตัดเพดาน ไม่งั้นก้อนที่จ่ายเกินจะปรับลงไม่ได้
+  var g = debtGraph_(readRows_(SHEETS.DEBTS), listDebtPayments_(null, 'all'));
+  var current = principal - g.paidOf(debt).principal;
+  var diff = round2_(current - actual);
+  if (Math.abs(diff) < 0.005) throw new Error('ยอดคงเหลือตรงกับยอดจริงอยู่แล้ว ไม่ต้องปรับ');
+
+  var note = 'ปรับยอดคงเหลือ ' + round2_(current) + ' → ' + actual +
+    (p.note ? ' · ' + String(p.note).trim() : '');
+  var saved = saveDebtPayment_({
+    ledger: debt.ledger, debtId: debt.id, payDate: p.payDate || todayIso_(),
+    principal: diff, interest: 0, channel: ADJUST_CHANNEL, note: note
+  });
+  logActivity_('ปรับยอดหนี้ให้ตรงยอดจริง', debt.id, debt.title + ' · ' + note);
+  return saved;
 }
 
 
@@ -5330,6 +5494,7 @@ var API_ROUTES = {
   'debt.delete': function (p) { return deleteDebt_(p.id); },
   'debt.savePayment': function (p) { return saveDebtPayment_(p.record); },
   'debt.deletePayment': function (p) { return deleteDebtPayment_(p.id); },
+  'debt.reconcile': function (p) { return reconcileDebt_(p.record || p); },
 
   /* ---------- รายการซื้อของ ---------- */
   'purchase.summary': function (p) { return purchaseSummary_(p.year); },

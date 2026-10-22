@@ -954,6 +954,28 @@ console.log('\n── build/AllInOne.gs ──');
       !!recSent && !!recSent.p.record.debtId && Number(recSent.p.record.actualRemaining) === 6870000,
       recSent && JSON.stringify(recSent.p));
     await pg.evaluate(() => { try { closeModal(); } catch (e) {} });
+    // ตัวหนังสือในการ์ดก้อนหนี้ต้องไม่ล้นขอบ (ป้าย "เป็นส่วนหนึ่งของ …" ชื่อยาวเคยล้นออกนอกการ์ด)
+    for (const pid of ['debtMain', 'debtSub']) {
+      await pg.evaluate(x => go(x), pid);
+      await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+      const spill = await pg.evaluate(() => {
+        var out = [];
+        // บีบการ์ดให้แคบสุดเท่าที่เลย์เอาต์ยอม (240px) — จอผู้ใช้ที่เจอปัญหาการ์ดแคบระดับนี้
+        var grid = document.querySelector('#view .grid.g-auto');
+        if (grid) grid.style.gridTemplateColumns = 'repeat(auto-fill, 240px)';
+        document.querySelectorAll('#view .grid.g-auto > .card').forEach(function (card) {
+          var r = card.getBoundingClientRect();
+          card.querySelectorAll('*').forEach(function (el) {
+            var b = el.getBoundingClientRect();
+            if (b.width && (b.right > r.right + 1 || b.left < r.left - 1)) out.push((el.textContent || '').trim().slice(0, 40));
+          });
+        });
+        return out;
+      });
+      check(pid + ': ไม่มีตัวหนังสือล้นขอบการ์ดก้อนหนี้', spill.length === 0, spill.join(' | '));
+    }
+    await pg.evaluate(() => go('debtSub'));
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
     await pg.evaluate(() => { var c = document.querySelector('#view .grid.g-auto'); if (c) c.scrollIntoView(); });
     await pg.screenshot({ path: OUT + '/bundle-debt.png' });
 

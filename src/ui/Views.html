@@ -166,7 +166,7 @@ function renderDebt(d){
       '<div class="row fs12 muted mb8">' + (x.settled ? '<span class="b ok">✓ ชำระครบแล้ว</span>' : statusBadge(x.status)) +
         '<span>' + esc(x.creditor || '–') + (x.startDate ? ' · ' + thDate(x.startDate) : '') + '</span></div>' +
       (x.parentTitle
-        ? '<div class="b info mb8" title="ยอดก้อนนี้อยู่ในก้อนแม่แล้ว จ่ายคืนก้อนนี้ก้อนแม่จะลดตาม">' +
+        ? '<div class="b info wrap mb8" title="ยอดก้อนนี้อยู่ในก้อนแม่แล้ว จ่ายคืนก้อนนี้ก้อนแม่จะลดตาม">' +
           '↳ เป็นส่วนหนึ่งของ ' + esc(x.parentTitle) + '</div>'
         : '') +
       progress(x.percent) +

@@ -1265,6 +1265,38 @@ console.log('\n── 28. ตัดหนี้ก้อนเก่าก่อ
   near('ลบรายการปรับยอดแล้วกลับเป็นเดิม', debtSummary_('หนี้หลัก', 'all').remaining, main.remaining, 1);
 }
 
+console.log('\n── 28b. จ่ายคืนก้อนย่อยตอนก้อนแม่เต็มแล้ว ส่วนเกินต้องไหลต่อ (เคสจริงจากหน้าจอ) ──');
+{
+  const debts = readRows_(SHEETS.DEBTS);
+  const land = debts.find(d => d.title.indexOf('ซื้อที่ดิน') >= 0);
+  const pata = debts.find(d => d.title.indexOf('ป้าตา') >= 0);
+  const build = debts.find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0);
+  const design = debts.find(d => d.title.indexOf('ค่าเขียนแบบ') >= 0);
+  const before = debtSummary_('หนี้หลัก', 'all');
+  const sumRemain = s => s.debts.reduce((a, x) => a + x.remaining, 0);
+  near('ก่อนเริ่ม: ผลรวมคงเหลือรายก้อน = คงเหลือทั้งบัญชี', sumRemain(before), before.remaining, 1);
+
+  // จ่ายคืนป้าตาครบ 1 ล้าน ทั้งที่ค่าที่ดินถูกตัดเต็มไปแล้ว
+  const pay = saveDebtPayment_({ ledger: 'หนี้รอง', debtId: pata.id, payDate: '2026-10-01', principal: 1000000 });
+  const s1 = debtSummary_('หนี้หลัก', 'all');
+  near('ยอดชำระทั้งบัญชีเพิ่ม 1 ล้าน', s1.paid, before.paid + 1000000, 1);
+  near('ที่ดินยังเต็มพอดี ไม่เกิน', s1.debts.find(x => x.id === land.id).paid, 4700000, 0);
+  near('ส่วนเกินไหลไปค่าก่อสร้าง ไม่หายไปไหน',
+    s1.debts.find(x => x.id === build.id).paid, before.debts.find(x => x.id === build.id).paid + 1000000, 1);
+  near('ผลรวมคงเหลือรายก้อน = คงเหลือทั้งบัญชี', sumRemain(s1), s1.remaining, 1);
+
+  // ผูกค่าเขียนแบบเป็นก้อนย่อยของค่าก่อสร้าง (แบบที่เจอในหน้าจอ) ตัวเลขรวมยังต้องตรง
+  saveDebt_(Object.assign({}, design, { parentId: build.id }));
+  const s2 = debtSummary_('หนี้หลัก', 'all');
+  near('ผูกแล้ว: ผลรวมคงเหลือรายก้อน = คงเหลือทั้งบัญชี', sumRemain(s2), s2.remaining, 1);
+  near('ผูกแล้ว: ยอดชำระรวมไม่เปลี่ยน', s2.paid, s1.paid, 1);
+  saveDebt_(Object.assign({}, design, { parentId: '' }));
+  near('ปลดแล้ว: ค่าเขียนแบบกลับมาปิดครบ', debtSummary_('หนี้หลัก', 'all').debts.find(x => x.id === design.id).paid, 51000, 0);
+
+  deleteDebtPayment_(pay.id);
+  near('ลบแล้วกลับเป็นเดิม', debtSummary_('หนี้หลัก', 'all').remaining, before.remaining, 1);
+}
+
 console.log('\n── 29. ช่องงวดที่ชีตแอบแปลงเป็นวันที่ ──');
 {
   // ของจริงเกิดแบบนี้: พิมพ์ "7/2569" ลงชีต ชีตเก็บเป็นวันที่ 1 ก.ค. ปี 2569

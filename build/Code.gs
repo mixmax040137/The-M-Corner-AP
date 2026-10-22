@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-10-22 11:15 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-10-22 11:33 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.6.0',
+  VERSION: '1.6.1',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -3753,10 +3753,12 @@ function isAdjustment_(p) { return String(p && p.channel || '') === ADJUST_CHANN
  *   ระบุก้อนหนี้ไว้     → เข้าก้อนนั้นเต็มจำนวน
  *   ไม่ได้ระบุ          → ตัดก้อนที่เริ่มก่อนให้หมดก่อน แล้วค่อยไหลไปก้อนถัดไป
  *                        (ก้อนที่เริ่มวันเดียวกัน ตัดก้อนเล็กก่อน)
+ *   ก้อนไหนได้เกินยอดตั้งต้น → ส่วนเกินไหลต่อไปก้อนถัดไป ไม่หายไปเฉย ๆ
+ *                        (เช่น จ่ายคืนป้าตาครบตอนที่ค่าที่ดินเต็มไปแล้ว)
  *
  * ทำไมไม่เฉลี่ยตามสัดส่วน: ของจริงคือจ่ายค่าที่ดินจนหมดก่อนค่อยมาผ่อนค่าก่อสร้าง
  * ถ้าเฉลี่ย ค่าที่ดินจะไม่มีวันปิดได้เลยทั้งที่จ่ายครบแล้ว และค่าก่อสร้างจะดูเหมือนจ่ายไปเกินจริง
- * รายการต้องไล่ตามวันที่ชำระ ก้อนไหนเต็มเมื่อไรจึงจะถูกต้อง
+ * ผลสุดท้ายไม่ขึ้นกับลำดับวันที่ของรายการ — ยอดชำระรวมเท่าเดิม แค่เติมก้อนเก่าให้เต็มก่อน
  */
 function debtGraph_(debts, payments) {
   var byId = {};
@@ -3807,58 +3809,66 @@ function debtGraph_(debts, payments) {
     return sum;
   }
 
-  var ordered = payments.slice().sort(function (a, b) {
-    return String(toIsoDate_(a.payDate)).localeCompare(String(toIsoDate_(b.payDate)));
-  });
-
-  ordered.forEach(function (p) {
+  // 1) รายการที่ระบุก้อนไว้ เข้าก้อนนั้นตรง ๆ · ที่ไม่ได้ระบุ รวมเป็นกองกลางของบัญชี
+  var pool = {}, poolInterest = {};
+  payments.forEach(function (p) {
     var pr = toNumber_(p.principal) || 0;
     var it = toNumber_(p.interest) || 0;
     var id = String(p.debtId || '').trim();
     p._toDebts = [];
-
     if (id && own[id]) {
       own[id].principal += pr;
       own[id].interest += it;
       p._toDebts.push(id);
       return;
     }
-    var roots = queue[p.ledger] || [];
-    if (!roots.length) return;
+    pool[p.ledger] = (pool[p.ledger] || 0) + pr;
+    poolInterest[p.ledger] = (poolInterest[p.ledger] || 0) + it;
+  });
 
-    var left = pr, first = null;
+  var filled = {};
+  Object.keys(queue).forEach(function (ledger) {
+    var roots = queue[ledger];
+    var left = pool[ledger] || 0;
+
+    // 2) ก้อนที่ได้เกินยอดตั้งต้นแล้ว (เช่น จ่ายคืนก้อนย่อยทีหลังตอนที่ก้อนแม่เต็มไปแล้ว)
+    //    ส่วนที่เกินไม่ได้หายไปไหน คืนเข้ากองกลางให้ไหลไปก้อนถัดไป
+    roots.forEach(function (d) {
+      var over = allocated(d) - (toNumber_(d.principal) || 0);
+      if (over > 0) { own[String(d.id)].principal -= over; left += over; }
+    });
+
+    // 3) เทกองกลางลงก้อนที่เริ่มก่อนจนเต็ม แล้วค่อยไปก้อนถัดไป · เกินทุกก้อนพักไว้ก้อนสุดท้าย
+    var got = [];
     if (left >= 0) {
       roots.forEach(function (d, k) {
         if (left <= 0) return;
         var room = Math.max(0, (toNumber_(d.principal) || 0) - allocated(d));
-        // จ่ายเกินทุกก้อนแล้ว ส่วนที่เหลือพักไว้ที่ก้อนสุดท้าย ยอดรวมจะได้ไม่หาย
         var take = k === roots.length - 1 ? left : Math.min(left, room);
         if (take <= 0) return;
         own[String(d.id)].principal += take;
         left -= take;
-        if (!first) first = d;
-        p._toDebts.push(String(d.id));
+        got.push(String(d.id));
       });
     } else {
-      // ยอดติดลบ (ปรับยอดหนี้เพิ่ม) คืนจากก้อนล่าสุดที่มีการตัดไว้
+      // ยอดติดลบ (ปรับยอดหนี้ขึ้น) คืนจากก้อนท้าย ๆ ก่อน
       for (var k = roots.length - 1; k >= 0 && left < 0; k--) {
-        var got = own[String(roots[k].id)].principal;
-        var back = k === 0 ? left : Math.max(left, -Math.max(0, got));
+        var mine = own[String(roots[k].id)].principal;
+        var back = k === 0 ? left : Math.max(left, -Math.max(0, mine));
         if (!back) continue;
         own[String(roots[k].id)].principal += back;
         left -= back;
-        if (!first) first = roots[k];
-        p._toDebts.push(String(roots[k].id));
+        got.push(String(roots[k].id));
       }
     }
-    if (it) {
-      // ดอกเบี้ยลงก้อนแรกที่รายการนี้ไปตัด หรือก้อนแรกที่ยังไม่เต็ม
-      var target = first || roots.filter(function (d) {
-        return allocated(d) < (toNumber_(d.principal) || 0);
-      })[0] || roots[roots.length - 1];
-      own[String(target.id)].interest += it;
-      if (p._toDebts.indexOf(String(target.id)) < 0) p._toDebts.push(String(target.id));
-    }
+    if (!got.length && roots.length) got.push(String(roots[0].id));
+    // ดอกเบี้ยไม่ได้ลดยอดหนี้ ลงก้อนแรกที่ได้รับเงินไว้เฉย ๆ
+    own[got[0]].interest += poolInterest[ledger] || 0;
+    filled[ledger] = got;
+  });
+
+  payments.forEach(function (p) {
+    if (!p._toDebts.length) p._toDebts = (filled[p.ledger] || []).slice();
   });
 
   /** ยอดของก้อนหนึ่ง = ของตัวเอง + เงินต้นของลูกทุกชั้น */

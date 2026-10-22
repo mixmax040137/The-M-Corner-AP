@@ -8,7 +8,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.6.0',
+  VERSION: '1.6.1',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };

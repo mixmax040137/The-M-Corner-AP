@@ -214,6 +214,8 @@ table.t tbody tr:hover{background:var(--surface-2)}
 .b.dgr{background:var(--danger-soft);color:var(--danger)}
 .b.info{background:var(--info-soft);color:var(--info)}
 .t tr.adj td{background:var(--info-soft)}
+/* ป้ายที่ข้อความยาวได้ (ชื่อก้อนหนี้) ให้ตัดขึ้นบรรทัดใหม่แทนการล้นขอบการ์ด */
+.b.wrap{white-space:normal;display:inline-block;max-width:100%;border-radius:10px;line-height:1.45;overflow-wrap:anywhere}
 .b.mute{background:var(--line-2);color:var(--muted)}
 
 /* ============ room grid ============ */
@@ -2328,7 +2330,7 @@ function renderDebt(d){
       '<div class="row fs12 muted mb8">' + (x.settled ? '<span class="b ok">✓ ชำระครบแล้ว</span>' : statusBadge(x.status)) +
         '<span>' + esc(x.creditor || '–') + (x.startDate ? ' · ' + thDate(x.startDate) : '') + '</span></div>' +
       (x.parentTitle
-        ? '<div class="b info mb8" title="ยอดก้อนนี้อยู่ในก้อนแม่แล้ว จ่ายคืนก้อนนี้ก้อนแม่จะลดตาม">' +
+        ? '<div class="b info wrap mb8" title="ยอดก้อนนี้อยู่ในก้อนแม่แล้ว จ่ายคืนก้อนนี้ก้อนแม่จะลดตาม">' +
           '↳ เป็นส่วนหนึ่งของ ' + esc(x.parentTitle) + '</div>'
         : '') +
       progress(x.percent) +

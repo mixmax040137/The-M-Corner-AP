@@ -1020,7 +1020,7 @@ function navFootHtml(b){
   return '<b style="color:#c7d0e0">' + esc(u.name || u.label || '') + '</b>' +
     (u.username ? ' <span style="opacity:.7">@' + esc(u.username) + '</span>' : '') +
     '<br><span style="opacity:.8">' + esc(u.role && u.role !== 'none' ? u.role : u.via || '') + '</span>' +
-    (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '') +
+    (b.sheetUrl ? '<br><a href="' + esc(safeUrl(b.sheetUrl)) + '" target="_blank" rel="noopener">เปิด Google Sheet ↗</a>' : '') +
     (u.signedIn && u.username
       ? '<br><a href="javascript:void(0)" onclick="confirmLogout()">ออกจากระบบ</a>'
       : '');
@@ -1030,7 +1030,7 @@ function renderNav(){
   var html = '';
   PAGES.forEach(function(p){
     if (p.sec) html += '<div class="nav-sec">' + p.sec + '</div>';
-    html += '<button class="nav-item" id="nav-' + p.id + '" onclick="go(\'' + p.id + '\')">' +
+    html += '<button class="nav-item" id="nav-' + p.id + '" onclick="go(' + jsq(p.id) + ')">' +
               '<span class="ic">' + p.ic + '</span><span>' + p.label + '</span>' +
               '<span class="badge" id="badge-' + p.id + '" style="display:none"></span>' +
             '</button>';
@@ -1048,7 +1048,7 @@ function renderTabs(){
   var bar = document.getElementById('tabBar');
   if (!bar) return;
   var html = PAGES.filter(function(p){ return p.tab; }).map(function(p){
-    return '<button class="tab" id="tab-' + p.id + '" onclick="go(\'' + p.id + '\')" aria-label="' + esc(p.label) + '">' +
+    return '<button class="tab" id="tab-' + p.id + '" onclick="go(' + jsq(p.id) + ')" aria-label="' + esc(p.label) + '">' +
              '<span class="ic">' + p.ic + '</span><span class="tl">' + esc(p.tab) + '</span>' +
              '<span class="badge" id="tabbadge-' + p.id + '" style="display:none"></span>' +
            '</button>';
@@ -1496,13 +1496,13 @@ function renderNotifPanel(){
     if (!list.length) return;
     body += '<div class="notif-sec">' + g.ic + ' ' + esc(g.label) + ' (' + list.length + ')</div>';
     list.slice(0, 8).forEach(function(a){
-      body += '<button class="notif-item l-' + esc(a.level) + '" onclick="gotoAlert(\'' + esc(a.module) + '\')">' +
+      body += '<button class="notif-item l-' + esc(a.level) + '" onclick="gotoAlert(' + jsq(a.module) + ')">' +
         '<div class="tt">' + esc(a.title) + '</div>' +
         (a.detail ? '<div class="dd">' + esc(a.detail) + '</div>' : '') +
       '</button>';
     });
     if (list.length > 8) {
-      body += '<button class="notif-more" onclick="gotoAlert(\'' + esc(g.module) + '\')">' +
+      body += '<button class="notif-more" onclick="gotoAlert(' + jsq(g.module) + ')">' +
         'ดูอีก ' + (list.length - 8) + ' รายการ →</button>';
     }
   });
@@ -1518,6 +1518,13 @@ function gotoAlert(module){
 }
 
 /* ---------------- format helpers ---------------- */
+
+/**
+ * ข้อความที่จะไปเป็นอาร์กิวเมนต์ของ JS ใน onclick="…"
+ * JSON.stringify ทำให้เป็นสตริง JS ที่ถูกต้องเสมอ (หนีอัญประกาศ/แบ็กสแลชให้) แล้ว esc กันหลุดออกจาก attribute
+ * ใช้แทนการต่อ '\'' + ค่า + '\'' ตรง ๆ ซึ่งค่าที่มี ' จะทะลุออกมารันโค้ดได้
+ */
+function jsq(s){ return esc(JSON.stringify(String(s == null ? '' : s))); }
 
 function esc(s){
   return String(s==null?'':s)
@@ -1586,16 +1593,21 @@ function thumbsHtml(refs, big){
   return '<div class="thumbs">' + refs.map(function(r){
     if (r.thumb) {
       return '<img class="thumb' + (big?' big':'') + '" loading="lazy" src="' + esc(r.thumb) + '" ' +
-             'onclick="window.open(\'' + esc(r.url) + '\',\'_blank\')" ' +
+             'onclick="window.open(' + jsq(safeUrl(r.url)) + ',\'_blank\')" ' +
              'onerror="this.onerror=null;this.replaceWith(fileChip(' + JSON.stringify(JSON.stringify(r)).replace(/"/g,'&quot;') + '))">';
     }
-    return '<a class="b info" href="' + esc(r.url) + '" target="_blank">ไฟล์</a>';
+    var u = safeUrl(r.url);
+    return u ? '<a class="b info" href="' + esc(u) + '" target="_blank" rel="noopener">ไฟล์</a>'
+             : '<span class="b mute" title="' + esc(r.name || '') + '">ไฟล์</span>';
   }).join('') + '</div>';
 }
+
+/** รับเฉพาะลิงก์ https — ค่าอย่าง javascript: ที่ถูกพิมพ์ลงช่องไฟล์แนบในชีตจะไม่กลายเป็นลิงก์ */
+function safeUrl(u){ u = String(u == null ? '' : u).trim(); return /^https:\/\//i.test(u) ? u : ''; }
 function fileChip(json){
   var r = typeof json === 'string' ? JSON.parse(json) : json;
   var a = document.createElement('a');
-  a.className = 'b info'; a.href = r.url; a.target = '_blank'; a.textContent = '📎 ไฟล์';
+  a.className = 'b info'; a.href = safeUrl(r.url) || '#'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = '📎 ไฟล์';
   return a;
 }
 
@@ -2358,7 +2370,7 @@ function renderDebt(d){
       '<div class="row mt12"><button class="btn sm" onclick=\'formDebt(' + attr(x) + ',"' + d.ledger + '")\'>แก้ไข</button>' +
       '<button class="btn sm" title="ยอดไม่ตรงกับที่เจ้าหนี้แจ้ง? กรอกยอดคงเหลือจริง" onclick=\'formReconcileDebt(' + attr(x) + ')\'>⚖️ ปรับยอดให้ตรง</button>' +
       // ก้อนที่ยืมมาแสดง ลบจากหน้านี้ไม่ได้ (จะหายจากอีกหน้าด้วย) — ไปลบที่หน้าเจ้าของ หรือปิดการแสดงร่วมในฟอร์มแก้ไข
-      (x.sharedFrom ? '' : '<button class="btn sm dgr" onclick="delDebt(\'' + x.id + '\')">ลบ</button>') + '</div>' +
+      (x.sharedFrom ? '' : '<button class="btn sm dgr" onclick="delDebt(' + jsq(x.id) + ')">ลบ</button>') + '</div>' +
     '</div></div>';
   }).join('') + '</div>' : '';
 
@@ -2402,7 +2414,7 @@ function renderDebt(d){
           '<td class="fs12 muted clip">' + esc(p.note || '') + '</td>' +
           '<td><div class="t-actions">' +
             '<button class="btn sm icon" onclick=\'formDebtPayment(' + attr(p) + ',"' + d.ledger + '")\'>✏️</button>' +
-            '<button class="btn sm icon dgr" onclick="delDebtPayment(\'' + p.id + '\')">🗑</button>' +
+            '<button class="btn sm icon dgr" onclick="delDebtPayment(' + jsq(p.id) + ')">🗑</button>' +
           '</div></td></tr>';
       }).join('') + '</tbody></table></div>'
     : emptyBox('ยังไม่มีรายการชำระใน' + yearLabel,
@@ -2450,7 +2462,7 @@ ROUTES.purchases = {
       '<button class="chip ' + (!S.params.category?'on':'') + '" onclick="setParam(\'category\',\'\')">ทุกหมวด</button>' +
       d.byCategory.map(function(c){
         return '<button class="chip ' + (S.params.category===c.category?'on':'') + '" ' +
-               'onclick="setParam(\'category\',\'' + esc(c.category) + '\')">' + esc(c.category) + ' (' + c.count + ')</button>';
+               'onclick="setParam(\'category\',' + jsq(c.category) + ')">' + esc(c.category) + ' (' + c.count + ')</button>';
       }).join('') + '</div>';
 
     var rows = d.items;
@@ -2477,7 +2489,7 @@ ROUTES.purchases = {
             '<td>' + thumbsHtml(p.slipRefs) + '</td>' +
             '<td><div class="t-actions">' +
               '<button class="btn sm icon" onclick=\'formPurchase(' + attr(p) + ')\'>✏️</button>' +
-              '<button class="btn sm icon dgr" onclick="delPurchase(\'' + p.id + '\')">🗑</button>' +
+              '<button class="btn sm icon dgr" onclick="delPurchase(' + jsq(p.id) + ')">🗑</button>' +
             '</div></td></tr>';
         }).join('') + '</tbody></table></div>'
       : emptyBox('ยังไม่มีรายการซื้อใน' + yearLabel, '<button class="btn pri" onclick="formPurchase(null)">+ เพิ่มรายการซื้อ</button>'),
@@ -2552,7 +2564,7 @@ ROUTES.ac = {
       var sub = r.roundsInYear > 0
         ? '<b>' + r.roundsInYear + ' รอบ</b><br>' + thDateShort(r.records.filter(function(x){return x.serviceDate;}).map(function(x){return x.serviceDate;}).sort().pop())
         : (r.bookedInYear ? 'นัดแล้ว ' + r.bookedInYear : (r.lastService ? 'ล่าสุด ' + thDateShort(r.lastService) : 'ไม่มีประวัติ'));
-      return { cls: cls, sub: sub, onclick: 'openAcRoom(\'' + r.room + '\')' };
+      return { cls: cls, sub: sub, onclick: 'openAcRoom(' + jsq(r.room) + ')' };
     }), '', false);
 
     var listRows = [];
@@ -2576,7 +2588,7 @@ ROUTES.ac = {
             '<td class="fs12 muted clip">' + esc(x.note || '') + '</td>' +
             '<td><div class="t-actions">' +
               '<button class="btn sm icon" onclick=\'formAc(' + attr(x) + ')\'>✏️</button>' +
-              '<button class="btn sm icon dgr" onclick="delAc(\'' + x.id + '\')">🗑</button>' +
+              '<button class="btn sm icon dgr" onclick="delAc(' + jsq(x.id) + ')">🗑</button>' +
             '</div></td></tr>';
         }).join('') + '</tbody></table></div>'
       : emptyBox('ยังไม่มีบันทึกการล้างแอร์ใน' + yearLabel), '', true);
@@ -2598,7 +2610,7 @@ function statusSelect(x, action, options){
   if (cur && list.indexOf(cur) < 0) list.unshift(cur);   // ค่าเก่านอกรายการ ต้องไม่หายไป
   return '<select class="st-sel ' + statusTone(cur) + '" title="เปลี่ยนสถานะได้เลย"' +
     ' data-prev="' + esc(cur) + '"' +
-    ' onchange="changeStatus(\'' + action + '\',\'' + esc(x.id) + '\',this)">' +
+    ' onchange="changeStatus(\'' + action + '\',' + jsq(x.id) + ',this)">' +
     list.map(function(o){
       return '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>';
     }).join('') + '</select>';
@@ -2651,7 +2663,7 @@ function openAcRoom(room){
 
   openModal('❄️ ล้างแอร์ · ห้อง ' + room, body,
     '<button class="btn" onclick="closeModal()">ปิด</button>' +
-    '<button class="btn pri" onclick="closeModal();formAc({room:\'' + room + '\'})">+ เพิ่มรอบการล้าง</button>');
+    '<button class="btn pri" onclick="closeModal();formAc({room:' + jsq(room) + '})">+ เพิ่มรอบการล้าง</button>');
 }
 
 /* ============================================================
@@ -2677,7 +2689,7 @@ ROUTES.repairs = {
       var sub = r.count > 0
         ? '<b>' + r.count + ' งาน</b>' + (r.openCount ? ' · ค้าง ' + (r.openTasks || r.openCount) + ' จุด' : '') + '<br>' + (r.last ? thDateShort(r.last) : '')
         : 'ไม่มีงานซ่อม';
-      return { cls: cls, sub: sub, onclick: 'openRepairRoom(\'' + r.room + '\')' };
+      return { cls: cls, sub: sub, onclick: 'openRepairRoom(' + jsq(r.room) + ')' };
     }));
 
     var rows = [];
@@ -2701,7 +2713,7 @@ ROUTES.repairs = {
             '<td>' + thumbsHtml(x.afterRefs) + '</td>' +
             '<td><div class="t-actions">' +
               '<button class="btn sm icon" onclick=\'formRepair(' + attr(x) + ')\'>✏️</button>' +
-              '<button class="btn sm icon dgr" onclick="delRepair(\'' + x.id + '\')">🗑</button>' +
+              '<button class="btn sm icon dgr" onclick="delRepair(' + jsq(x.id) + ')">🗑</button>' +
             '</div></td></tr>';
         }).join('') + '</tbody></table></div>'
       : emptyBox('ยังไม่มีงานซ่อมใน' + yearLabel, '<button class="btn pri" onclick="formRepair(null)">+ แจ้งซ่อม</button>'), '', true);
@@ -2727,7 +2739,7 @@ function todoListHtml(x){
     todo.map(function(t, i){
       return '<label class="todo-line' + (t.done ? ' done' : '') + (locked ? ' locked' : '') + '">' +
         '<input type="checkbox"' + (t.done ? ' checked' : '') + (locked ? ' disabled' : '') +
-          ' onchange="toggleTodo(\'' + esc(x.id) + '\',' + i + ',this.checked,this)">' +
+          ' onchange="toggleTodo(' + jsq(x.id) + ',' + i + ',this.checked,this)">' +
         '<span class="nm">' + esc(t.name) + '</span>' +
         (t.category ? '<span class="b mute cat">' + esc(t.category) + '</span>' : '') +
       '</label>';
@@ -2775,7 +2787,7 @@ function openRepairRoom(room){
 
   openModal('🔧 งานซ่อม · ห้อง ' + room, body,
     '<button class="btn" onclick="closeModal()">ปิด</button>' +
-    '<button class="btn pri" onclick="closeModal();formRepair({room:\'' + room + '\'})">+ เพิ่มงานซ่อม</button>', true);
+    '<button class="btn pri" onclick="closeModal();formRepair({room:' + jsq(room) + '})">+ เพิ่มงานซ่อม</button>', true);
 }
 
 /* ============================================================
@@ -2800,7 +2812,7 @@ ROUTES.building = {
     var zones = '<div class="chips mb12">' +
       '<button class="chip ' + (!S.params.zone?'on':'') + '" onclick="setParam(\'zone\',\'\')">ทุกส่วน</button>' +
       d.byZone.map(function(z){
-        return '<button class="chip ' + (S.params.zone===z.zone?'on':'') + '" onclick="setParam(\'zone\',\'' + esc(z.zone) + '\')">' +
+        return '<button class="chip ' + (S.params.zone===z.zone?'on':'') + '" onclick="setParam(\'zone\',' + jsq(z.zone) + ')">' +
                esc(z.zone) + ' (' + z.count + ')</button>';
       }).join('') + '</div>';
 
@@ -2833,7 +2845,7 @@ ROUTES.building = {
             '<td>' + thumbsHtml((x.photoRefs||[]).concat(x.slipRefs||[])) + '</td>' +
             '<td><div class="t-actions">' +
               '<button class="btn sm icon" onclick=\'formBuilding(' + attr(x) + ')\'>✏️</button>' +
-              '<button class="btn sm icon dgr" onclick="delBuilding(\'' + x.id + '\')">🗑</button>' +
+              '<button class="btn sm icon dgr" onclick="delBuilding(' + jsq(x.id) + ')">🗑</button>' +
             '</div></td></tr>';
         }).join('') + '</tbody></table></div>'
       : emptyBox('ยังไม่มีงานซ่อมแซมตึกใน' + yearLabel, '<button class="btn pri" onclick="formBuilding(null)">+ เพิ่มงานซ่อมตึก</button>'),
@@ -2863,7 +2875,7 @@ ROUTES.rooms = {
     var grid = card('🚪 ผังห้องพัก', roomFloors(flat, function(r){
       var cls = r.status === 'มีผู้เช่า' ? 's-ok' : (r.status === 'ว่าง' ? 's-info' : 's-warn');
       return { cls: cls, sub: esc(r.tenant || r.status || '') + (r.rent ? '<br>' + money(r.rent) + ' ฿' : ''),
-               onclick: 'openRoom(\'' + r.room + '\')' };
+               onclick: 'openRoom(' + jsq(r.room) + ')' };
     }), '<span class="fs12 muted">คลิกที่ห้องเพื่อดูประวัติทั้งหมดของห้องนั้น</span>');
 
     return head + grid;
@@ -2883,11 +2895,11 @@ function openRoom(room){
       '</div>' +
       '<div class="row mb12">' +
         '<button class="btn sm" onclick=\'closeModal();formRoom(' + attr(i) + ')\'>✏️ แก้ไขข้อมูลห้อง</button>' +
-        '<button class="btn sm" onclick="closeModal();formRepair({room:\'' + room + '\'})">+ แจ้งซ่อม</button>' +
-        '<button class="btn sm" onclick="closeModal();formAc({room:\'' + room + '\'})">+ ล้างแอร์</button>' +
+        '<button class="btn sm" onclick="closeModal();formRepair({room:' + jsq(room) + '})">+ แจ้งซ่อม</button>' +
+        '<button class="btn sm" onclick="closeModal();formAc({room:' + jsq(room) + '})">+ ล้างแอร์</button>' +
       '</div>' +
       '<div class="card mb12"><div class="card-h"><h3>ทรัพย์สินในห้อง</h3>' +
-        '<button class="btn sm" onclick=\'closeModal();formAsset({room:"' + esc(room) + '"})\'>+ เพิ่มทรัพย์สิน</button>' +
+        '<button class="btn sm" onclick=\'closeModal();formAsset({room:' + jsq(room) + '})\'>+ เพิ่มทรัพย์สิน</button>' +
       '</div><div class="card-b">' +
         (p.assets.length
           ? '<div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
@@ -3205,7 +3217,7 @@ ROUTES.finance = {
     var kinds = '<div class="chips mb12">' +
       '<button class="chip ' + (!S.params.kind?'on':'') + '" onclick="setParam(\'kind\',\'\')">ทุกรายการ</button>' +
       d.byKind.map(function(k){
-        return '<button class="chip ' + (S.params.kind===k.kind?'on':'') + '" onclick="setParam(\'kind\',\'' + esc(k.kind) + '\')">' +
+        return '<button class="chip ' + (S.params.kind===k.kind?'on':'') + '" onclick="setParam(\'kind\',' + jsq(k.kind) + ')">' +
                esc(k.kind) + ' (' + k.count + ')</button>';
       }).join('') + '</div>';
 
@@ -3226,7 +3238,7 @@ ROUTES.finance = {
             '<td class="fs12 muted clip">' + esc(x.note || '') + '</td>' +
             '<td><div class="t-actions">' +
               '<button class="btn sm icon" onclick=\'formFinance(' + attr(x) + ')\'>✏️</button>' +
-              '<button class="btn sm icon dgr" onclick="delFinance(\'' + x.id + '\')">🗑</button>' +
+              '<button class="btn sm icon dgr" onclick="delFinance(' + jsq(x.id) + ')">🗑</button>' +
             '</div></td></tr>';
         }).join('') + '</tbody></table></div>'
       : emptyBox('ยังไม่มีรายการใน' + yearLabel, '<button class="btn pri" onclick="formFinance(null)">+ บันทึกรายการ</button>'),
@@ -3278,8 +3290,8 @@ ROUTES.reports = {
         '<th>ห้อง</th><th class="num">งานซ่อม</th><th class="num">ค่าซ่อม</th><th class="num">ล้างแอร์</th>' +
         '<th class="num">ของเข้าห้อง</th><th class="num">รวม</th><th style="width:26%"></th></tr></thead><tbody>' +
         top.map(function(r){
-          return '<tr onclick="openRoom(\'' + r.room + '\')" style="cursor:pointer">' +
-            '<td><b>' + r.room + '</b> <span class="faint fs12">ชั้น ' + r.floor + '</span></td>' +
+          return '<tr onclick="openRoom(' + jsq(r.room) + ')" style="cursor:pointer">' +
+            '<td><b>' + esc(r.room) + '</b> <span class="faint fs12">ชั้น ' + esc(r.floor) + '</span></td>' +
             '<td class="num">' + r.jobs + '</td>' +
             '<td class="num">' + (r.repair ? money(r.repair) : '–') + '</td>' +
             '<td class="num">' + (r.ac ? money(r.ac) : '–') + '</td>' +
@@ -3299,7 +3311,7 @@ ROUTES.reports = {
       '<div class="hr"></div>' +
       '<div class="fs12 muted mb8">ส่งออกเป็น CSV แยกตาราง</div>' +
       '<div class="chips">' + d.sheets.map(function(n){
-        return '<button class="chip" onclick="doExportCsv(\'' + esc(n) + '\')">' + esc(sheetLabel(n)) + '</button>';
+        return '<button class="chip" onclick="doExportCsv(' + jsq(n) + ')">' + esc(sheetLabel(n)) + '</button>';
       }).join('') + '</div>');
 
     var share = (canEdit() && d.links && d.links.viewUrl) ? card('🔗 ลิงก์เข้าใช้งาน',
@@ -3322,7 +3334,7 @@ ROUTES.reports = {
       (d.backups.length ? '<div class="hr"></div><div class="tw"><table class="t" style="min-width:auto"><thead><tr>' +
         '<th>ไฟล์</th><th>เวลา</th><th class="num">ขนาด</th></tr></thead><tbody>' +
         d.backups.slice(0,10).map(function(b){
-          return '<tr><td class="fs12"><a href="' + esc(b.url) + '" target="_blank">' + esc(b.name) + '</a></td>' +
+          return '<tr><td class="fs12"><a href="' + esc(safeUrl(b.url)) + '" target="_blank" rel="noopener">' + esc(b.name) + '</a></td>' +
             '<td class="fs12">' + esc(b.at) + '</td>' +
             '<td class="num fs12">' + Math.round(b.size/1024) + ' KB</td></tr>';
         }).join('') + '</tbody></table></div>' : '')) : '';
@@ -3609,7 +3621,7 @@ function settingsUsersCard(users){
         '<td class="num">' + (u.devices || 0) + '</td>' +
         '<td class="t-actions">' +
           '<button class="btn sm" onclick="formUser(' + attr(u) + ')">แก้ไข</button>' +
-          (meNow ? '' : '<button class="btn sm dgr" onclick="delUser(\'' + esc(u.username) + '\')">ลบ</button>') +
+          (meNow ? '' : '<button class="btn sm dgr" onclick="delUser(' + jsq(u.username) + ')">ลบ</button>') +
         '</td></tr>';
     }).join('') + '</tbody></table></div>',
     '<button class="btn pri sm" onclick="formUser()">+ เพิ่มผู้ใช้</button>');
@@ -4100,8 +4112,8 @@ function existingFilesHtml(key){
     var id = String(url).match(/[-\w]{20,}/);
     var thumb = id ? 'https://drive.google.com/thumbnail?id=' + id[0] + '&sz=w200' : '';
     return '<span style="position:relative;display:inline-block">' +
-      (thumb ? '<img class="thumb" src="' + esc(thumb) + '" onclick="window.open(\'' + esc(url) + '\',\'_blank\')">'
-             : '<a class="b info" href="' + esc(url) + '" target="_blank">ไฟล์ ' + (i+1) + '</a>') +
+      (thumb ? '<img class="thumb" src="' + esc(thumb) + '" onclick="window.open(' + jsq(safeUrl(url)) + ',\'_blank\')">'
+             : '<a class="b info" href="' + esc(safeUrl(url) || '#') + '" target="_blank" rel="noopener">ไฟล์ ' + (i+1) + '</a>') +
       '<button type="button" onclick="dropFile(\'' + key + '\',' + i + ')" title="เอาออก" ' +
       'style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:0;border-radius:99px;width:18px;height:18px;line-height:1;cursor:pointer;font-size:12px">×</button>' +
       '</span>';
@@ -4421,7 +4433,7 @@ function formDebt(rec, ledger){
 }
 
 function delDebt(id){
-  confirmAction('ลบก้อนหนี้นี้? รายการชำระที่ผูกไว้จะยังอยู่', function(){
+  confirmAction('ลบก้อนหนี้นี้? (ถ้ายังมีรายการชำระหรือก้อนย่อยผูกอยู่ ระบบจะไม่ยอมลบ เพื่อไม่ให้ยอดย้ายไปก้อนอื่นเงียบ ๆ)', function(){
     callApi('debt.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });

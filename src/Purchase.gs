@@ -212,6 +212,7 @@ function billOf_(p) {
 }
 
 function savePurchase_(obj) {
+  if (obj.room != null) obj.room = cleanRoom_(obj.room, false);
   obj.buyDate = cleanDate_(obj.buyDate, 'วันที่ซื้อ', true);
   obj.year = yearOf_(obj.buyDate);
   if (obj.buyDate && obj.warrantyMonths) {
@@ -254,7 +255,7 @@ function summarizeLines_(lines) {
 function deletePurchase_(id) {
   var found = findRow_(SHEETS.PURCHASES, id);
   if (!found) throw new Error('ไม่พบรายการซื้อ: ' + id);
-  deleteRow_(SHEETS.PURCHASES, found._row);
+  deleteRow_(SHEETS.PURCHASES, found._row, found);
   logActivity_('ลบรายการซื้อ', id, found.item);
   return true;
 }

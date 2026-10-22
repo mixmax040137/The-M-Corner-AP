@@ -219,7 +219,7 @@ function settingsUsersCard(users){
         '<td class="num">' + (u.devices || 0) + '</td>' +
         '<td class="t-actions">' +
           '<button class="btn sm" onclick="formUser(' + attr(u) + ')">แก้ไข</button>' +
-          (meNow ? '' : '<button class="btn sm dgr" onclick="delUser(\'' + esc(u.username) + '\')">ลบ</button>') +
+          (meNow ? '' : '<button class="btn sm dgr" onclick="delUser(' + jsq(u.username) + ')">ลบ</button>') +
         '</td></tr>';
     }).join('') + '</tbody></table></div>',
     '<button class="btn pri sm" onclick="formUser()">+ เพิ่มผู้ใช้</button>');

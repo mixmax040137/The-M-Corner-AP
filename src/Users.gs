@@ -167,7 +167,7 @@ function deleteUser_(username, actingRole, actingUsername) {
   if (u.role === 'ผู้ดูแล' && countAdmins_() <= 1) throw new Error('ต้องเหลือผู้ดูแลอย่างน้อย 1 คน');
 
   revokeAllSessions_(username);
-  deleteRow_(SHEETS.USERS, u._row);
+  deleteRow_(SHEETS.USERS, u._row, u);
   logActivity_('ลบผู้ใช้', username, '');
   return true;
 }
@@ -207,7 +207,7 @@ function createSession_(username, kind, hours, extra) {
 
 function revokeSession_(token) {
   var s = findSession_(token);
-  if (s) deleteRow_(SHEETS.SESSIONS, s._row);
+  if (s) deleteRow_(SHEETS.SESSIONS, s._row, s);
   return true;
 }
 
@@ -215,7 +215,7 @@ function revokeAllSessions_(username) {
   var u = normUsername_(username);
   var rows = readRows_(SHEETS.SESSIONS);
   for (var i = rows.length - 1; i >= 0; i--) {
-    if (normUsername_(rows[i].username) === u) deleteRow_(SHEETS.SESSIONS, rows[i]._row);
+    if (normUsername_(rows[i].username) === u) deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]);
   }
   return true;
 }
@@ -225,7 +225,7 @@ function purgeSessions_() {
   var rows = readRows_(SHEETS.SESSIONS);
   var removed = 0;
   for (var i = rows.length - 1; i >= 0; i--) {
-    if (isExpired_(rows[i])) { deleteRow_(SHEETS.SESSIONS, rows[i]._row); removed++; }
+    if (isExpired_(rows[i])) { deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]); removed++; }
   }
   return removed;
 }
@@ -314,15 +314,15 @@ function setPin_(sessionToken, pin, deviceName) {
 function unlockWithPin_(deviceToken, pin) {
   var d = findSession_(deviceToken);
   if (!d || d.kind !== 'อุปกรณ์') throw new Error('อุปกรณ์นี้ยังไม่ได้ตั้ง PIN — กรุณาล็อกอินด้วยรหัสผ่าน');
-  if (isExpired_(d)) { deleteRow_(SHEETS.SESSIONS, d._row); throw new Error('ครบกำหนดยืนยันตัวตนใหม่ — กรุณาล็อกอินด้วยรหัสผ่าน'); }
+  if (isExpired_(d)) { deleteRow_(SHEETS.SESSIONS, d._row, d); throw new Error('ครบกำหนดยืนยันตัวตนใหม่ — กรุณาล็อกอินด้วยรหัสผ่าน'); }
 
   var u = findUser_(d.username);
-  if (!u || u.status === 'ระงับ') { deleteRow_(SHEETS.SESSIONS, d._row); throw new Error('บัญชีนี้ใช้งานไม่ได้แล้ว'); }
+  if (!u || u.status === 'ระงับ') { deleteRow_(SHEETS.SESSIONS, d._row, d); throw new Error('บัญชีนี้ใช้งานไม่ได้แล้ว'); }
 
   if (!safeEqual_(hashSecret_(pin, d.pinSalt), d.pinHash)) {
     var n = (toNumber_(d.failCount) || 0) + 1;
     if (n >= 5) {
-      deleteRow_(SHEETS.SESSIONS, d._row);
+      deleteRow_(SHEETS.SESSIONS, d._row, d);
       logActivity_('PIN ผิดครบโควตา ยกเลิกอุปกรณ์', d.username, '');
       throw new Error('ใส่ PIN ผิด 5 ครั้ง ยกเลิก PIN บนเครื่องนี้แล้ว — กรุณาล็อกอินด้วยรหัสผ่าน');
     }
@@ -357,7 +357,7 @@ function listDevices_(username) {
 
 function forgetDevice_(deviceToken) {
   var d = findSession_(deviceToken);
-  if (d) { deleteRow_(SHEETS.SESSIONS, d._row); logActivity_('ยกเลิก PIN บนอุปกรณ์', d.username, d.device || ''); }
+  if (d) { deleteRow_(SHEETS.SESSIONS, d._row, d); logActivity_('ยกเลิก PIN บนอุปกรณ์', d.username, d.device || ''); }
   return true;
 }
 
@@ -368,7 +368,7 @@ function forgetAllDevices_(username) {
   var n = 0;
   for (var i = rows.length - 1; i >= 0; i--) {
     if (rows[i].kind === 'อุปกรณ์' && normUsername_(rows[i].username) === u) {
-      deleteRow_(SHEETS.SESSIONS, rows[i]._row); n++;
+      deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]); n++;
     }
   }
   logActivity_('ยกเลิกอุปกรณ์ทั้งหมด', username, n + ' เครื่อง');

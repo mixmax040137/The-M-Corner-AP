@@ -138,7 +138,7 @@ function setSetting_(key, value) {
   var rows = readRows_(SHEETS.SETTINGS);
   for (var i = 0; i < rows.length; i++) {
     if (String(rows[i].key) === String(key)) {
-      sh.getRange(rows[i]._row, 3).setValue(String(value));
+      sh.getRange(rows[i]._row, 3).setValue(serializeValue_(String(value), 'text'));   // ใส่ ' กันรหัส 0 นำหน้าหาย/กลายเป็นสูตร
       return value;
     }
   }

@@ -98,7 +98,7 @@ function saveBuildingRepair_(obj) {
 function deleteBuildingRepair_(id) {
   var found = findRow_(SHEETS.BUILDING_REPAIRS, id);
   if (!found) throw new Error('ไม่พบงานซ่อมตึก: ' + id);
-  deleteRow_(SHEETS.BUILDING_REPAIRS, found._row);
+  deleteRow_(SHEETS.BUILDING_REPAIRS, found._row, found);
   logActivity_('ลบงานซ่อมตึก', id, found.title);
   return true;
 }

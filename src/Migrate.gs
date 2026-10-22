@@ -11,19 +11,49 @@ function runMigrations_() {
   var from = Number(props_().getProperty('SCHEMA_VERSION') || 0);
   if (from >= SCHEMA_VERSION) return { migrated: false, from: from, to: SCHEMA_VERSION };
 
-  var done = [];
-  if (from < 2) done.push(migrateV2SplitPayment_());
-  if (from < 3) done.push(migrateV3DebtParent_());
-  if (from < 4) done.push(migrateV4Users_());
-  if (from < 5) done.push(migrateV5RefreshRate_());
-  if (from < 7) done.push(migrateV7RepairTodo_());
-  if (from < 8) done.push(migrateV8ChristianYear_());
-  if (from < 9) done.push(migrateV9InstallmentText_());
-  if (from < 10) done.push(migrateV10ShareConstruction_());
+  // หลัง deploy ถ้ามีคนเปิดเว็บพร้อมกันสองเครื่อง ทั้งคู่จะเข้ามาย้ายข้อมูลพร้อมกัน
+  // การย้ายบางรุ่นล้างทั้งชีตแล้วเขียนใหม่ ถ้าซ้อนกันแถวหายหรือซ้ำได้ — ให้ทำทีละคนเท่านั้น
+  return withScriptLock_(function () {
+    // คนก่อนหน้าอาจย้ายเสร็จไปแล้วระหว่างที่รอล็อก
+    from = Number(props_().getProperty('SCHEMA_VERSION') || 0);
+    if (from >= SCHEMA_VERSION) return { migrated: false, from: from, to: SCHEMA_VERSION };
 
-  props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
-  logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
-  return { migrated: true, from: from, to: SCHEMA_VERSION, steps: done };
+    var snapshot = snapshotBeforeMigrate_(from);
+
+    var done = [];
+    if (from < 2) done.push(migrateV2SplitPayment_());
+    if (from < 3) done.push(migrateV3DebtParent_());
+    if (from < 4) done.push(migrateV4Users_());
+    if (from < 5) done.push(migrateV5RefreshRate_());
+    if (from < 7) done.push(migrateV7RepairTodo_());
+    if (from < 8) done.push(migrateV8ChristianYear_());
+    if (from < 9) done.push(migrateV9InstallmentText_());
+    if (from < 10) done.push(migrateV10ShareConstruction_());
+    if (snapshot) done.unshift('สำเนาก่อนย้าย: ' + snapshot);
+
+    props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
+    logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
+    return { migrated: true, from: from, to: SCHEMA_VERSION, steps: done };
+  }, 120000);
+}
+
+/**
+ * ทำสำเนาไฟล์ Google Sheet ทั้งไฟล์ (ค่าดิบทุกช่อง) ไว้ในโฟลเดอร์สำรองก่อนย้ายข้อมูล
+ * ถ้าการย้ายรุ่นไหนพลาด ยังเปิดสำเนานี้ดูหรือคัดลอกกลับได้ครบ
+ * ไม่ใช้ exportAll_ เพราะมันอ่านผ่านโครงคอลัมน์ใหม่ คอลัมน์เก่าที่กำลังจะย้ายจะไม่ติดไปด้วย
+ * ติดตั้งครั้งแรก (ยังไม่มีข้อมูล) ไม่ต้องทำ · ทำไม่สำเร็จก็ย้ายต่อ (แอปต้องใช้งานได้) แต่จดไว้
+ */
+function snapshotBeforeMigrate_(from) {
+  if (!from) return '';
+  try {
+    var name = 'สำเนาก่อนย้ายข้อมูล-รุ่น' + from + '-' +
+      Utilities.formatDate(new Date(), APP.TIMEZONE, 'yyyy-MM-dd-HHmm');
+    var copy = DriveApp.getFileById(getSpreadsheet_().getId()).makeCopy(name, backupFolder_());
+    return copy.getName();
+  } catch (e) {
+    console.warn('snapshotBeforeMigrate_: ' + e);
+    return '';
+  }
 }
 
 /**

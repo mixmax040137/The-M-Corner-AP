@@ -57,6 +57,10 @@ var LOCAL_VERSION = Date.now();
 function ensureDriveFolders_() { return null; }
 function trashFile_() { return true; }
 function subFolder_() { return null; }
+// ในเบราว์เซอร์มีผู้ใช้คนเดียว ไม่มีชีตให้ย้ายโครงหรือเขียนแข่งกัน
+function runMigrations_() { return { migrated: false }; }
+function withScriptLock_(fn) { return fn(); }
+var SpreadsheetApp = { flush: function () {} };
 function sendDigestNow() { return 'การส่งอีเมลอัตโนมัติใช้ได้เมื่อติดตั้งบน Google Apps Script'; }
 
 /* ---------- ชั้นอ่าน/เขียนข้อมูล ---------- */
@@ -66,7 +70,8 @@ function rowsOf_(name) {
 }
 function coerce_(name, obj) {
   var cols = SCHEMA[name], rec = {};
-  cols.forEach(function (c) { rec[c.key] = normalizeValue_(serializeValue_(obj[c.key], c.type), c.type); });
+  // echoCell_ ถอด ' ที่ serializeValue_ ใส่ไว้กันชีตแปลงค่า (ที่นี่ไม่มีชีต เก็บค่าตามที่พิมพ์)
+  cols.forEach(function (c) { rec[c.key] = echoCell_(serializeValue_(obj[c.key], c.type), c.type); });
   return rec;
 }
 function readRows_(name) {

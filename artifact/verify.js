@@ -81,6 +81,13 @@ const check = (n, ok, extra) => { if (ok) { pass++; console.log('  ✓ ' + n); }
   check('เรียกเผยแพร่เอกสารใหม่', !!published);
   check('เอกสารใหม่ขึ้นต้นด้วย doctype', !!published && /^<!doctype html>/i.test(published.trim()));
   check('เอกสารใหม่มีข้อมูลที่เพิ่ง์บันทึก', !!published && published.includes('ทดสอบการบันทึก'));
+  // ค่าที่หน้าตาเหมือนตัวเลข/สูตร ต้องเก็บตามที่พิมพ์ ไม่มี ' ติดมา (ตัวกันชีตแปลงค่าใช้กับชีตจริงเท่านั้น)
+  const kept = await g1.pg.evaluate(() => {
+    var r = api('finance.save', { record: { date: '2026-11-07', kind: 'ค่าไฟฟ้า', amount: 1, billMonth: '9/2026', note: '=1+1' } }).data;
+    var row = DB.Finance.filter(function (x) { return x.id === r.id; })[0];
+    return { bill: row.billMonth, note: row.note };
+  });
+  check('ค่าอย่าง 9/2026 และ =1+1 เก็บตามที่พิมพ์', kept.bill === '9/2026' && kept.note === '=1+1', JSON.stringify(kept));
   check('สถานะขึ้นว่าบันทึกแล้ว', /บันทึกแล้ว|กำลังบันทึก/.test(await g1.pg.$eval('#saveState', e => e.textContent)));
 
   /* ---------- รุ่นที่ 2: เปิดเอกสารที่หน้าเว็บสร้างเอง ---------- */

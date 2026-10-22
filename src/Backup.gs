@@ -16,13 +16,23 @@ function exportable_(name) {
   return EXPORT_SKIP_SHEETS.indexOf(name) < 0;
 }
 
+/**
+ * แถวลับในชีต Settings (กุญแจกู้ระบบ กุญแจแชร์ รหัสประตู) ห้ามออกไปกับไฟล์สำรอง
+ * ไฟล์สำรองถูกเก็บใน Drive และดาวน์โหลดไปเก็บที่อื่นได้ ถ้าหลุดไป
+ * คนที่ได้ไฟล์จะเข้าระบบเป็นผู้ดูแลได้ทันทีด้วยกุญแจกู้ระบบ
+ * และขาเข้าก็ไม่ยอมให้ไฟล์สำรองเขียนทับค่าพวกนี้ (กันไฟล์ที่ถูกแก้มาฝังกุญแจที่คนอื่นรู้)
+ */
+function isSecretRow_(sheetName, row) {
+  return sheetName === SHEETS.SETTINGS && SECRET_SETTINGS.indexOf(String(row && row.key)) >= 0;
+}
+
 /** ส่งออกทุกชีตเป็นก้อน JSON เดียว — เฉพาะผู้ดูแล (ดู ADMIN_ONLY_ACTIONS) */
 function exportAll_() {
   var out = { app: APP.NAME, version: APP.VERSION, exportedAt: nowStamp_(), sheets: {} };
   Object.keys(SHEETS).forEach(function (k) {
     var name = SHEETS[k];
     if (!exportable_(name)) return;
-    out.sheets[name] = readRows_(name).map(function (r) {
+    out.sheets[name] = readRows_(name).filter(function (r) { return !isSecretRow_(name, r); }).map(function (r) {
       var c = {};
       Object.keys(r).forEach(function (key) { if (key !== '_row') c[key] = r[key]; });
       return c;
@@ -38,7 +48,7 @@ function exportCsv_(sheetName) {
   var cols = SCHEMA[sheetName];
   if (!cols) throw new Error('ไม่รู้จักชีต: ' + sheetName);
   if (!exportable_(sheetName)) throw new Error('ชีตนี้ส่งออกไม่ได้เพราะมีข้อมูลการเข้าใช้งานอยู่');
-  var rows = readRows_(sheetName);
+  var rows = readRows_(sheetName).filter(function (r) { return !isSecretRow_(sheetName, r); });
   var lines = [cols.map(function (c) { return csvCell_(c.label); }).join(',')];
   rows.forEach(function (r) {
     lines.push(cols.map(function (c) {
@@ -52,6 +62,9 @@ function exportCsv_(sheetName) {
 
 function csvCell_(v) {
   var s = String(v == null ? '' : v);
+  // ข้อความที่ขึ้นต้นด้วย = + - @ Excel จะรันเป็นสูตรตอนเปิดไฟล์ (CSV injection) — ใส่ ' นำหน้าให้เป็นข้อความ
+  // ตัวเลขจริง (เช่น ยอดติดลบ) ไม่แตะ
+  if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
@@ -68,7 +81,11 @@ function importAll_(payload) {
   Object.keys(data.sheets).forEach(function (name) {
     if (!SCHEMA[name]) return;
     if (!exportable_(name)) return;      // ไม่ยอมให้ยัดรหัสอ้างอิงปลอมเข้ามาทางไฟล์สำรอง
-    var incoming = data.sheets[name] || [];
+    var incoming = (data.sheets[name] || []).filter(function (r) { return r && !isSecretRow_(name, r); });
+    // แทนที่บัญชีผู้ใช้ทั้งชุดด้วยไฟล์ที่ไม่มีผู้ดูแลที่ใช้งานได้ = ล็อกทุกคนออกจากระบบ ไม่ยอม
+    if (name === SHEETS.USERS && mode === 'replace' && !incoming.some(function (u) {
+      return u.role === ROLE.ADMIN && String(u.status || 'ใช้งาน') === 'ใช้งาน';
+    })) { stat[name] = 'ข้าม — ไฟล์ไม่มีผู้ดูแลที่ใช้งานได้'; return; }
     if (mode === 'replace') {
       clearSheet_(name);
       stat[name] = bulkInsert_(name, incoming);

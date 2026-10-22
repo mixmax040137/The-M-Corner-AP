@@ -48,8 +48,7 @@ function ocrBlob_(p) {
     return Utilities.newBlob(Utilities.base64Decode(base64), mime, 'ocr-temp');
   }
   if (p.fileId) {
-    var id = extractDriveId_(p.fileId) || p.fileId;
-    return DriveApp.getFileById(id).getBlob();
+    return appFileById_(p.fileId).getBlob();   // เฉพาะไฟล์แนบของระบบ ไม่ใช่ไฟล์ไหนก็ได้ใน Drive
   }
   return null;
 }

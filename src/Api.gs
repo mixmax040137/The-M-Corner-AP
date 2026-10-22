@@ -5,13 +5,33 @@
  * ทุก action ผ่านการตรวจสิทธิ์ก่อนเสมอ
  */
 
+/**
+ * คำสั่งที่เขียนลงชีต — ทำทีละคำสั่งเท่านั้น
+ * ชีตไม่มี transaction ถ้าสองคนบันทึก/ลบพร้อมกัน เลขแถวที่อ่านไว้จะเลื่อน
+ * และการล้างรายการหมดอายุตอนล็อกอินก็ลบแถวเหมือนกัน — ให้รอคิวกันทีละคน
+ * (คำสั่งอ่านไม่ต้องรอ หน้าเว็บจึงไม่ช้าลง)
+ */
+var WRITE_ACTIONS = /\.(save|delete|savePayment|deletePayment|reconcile|setStatus|bulkBook|toggle|import|backupNow|rotateToken|send|login|unlock|logout|setPin|forgetDevice|forgetAllDevices|changePassword|resetPin|signOutAll)$/;
+
 function api(action, payload) {
   payload = payload || {};
   try {
-    var role = requireRole_(action, payload);
-    var fn = API_ROUTES[action];
-    if (!fn) throw new Error('ไม่รู้จักคำสั่ง: ' + action);
-    return { ok: true, data: fn(payload, role) };
+    // หน้าเว็บที่เปิดค้างไว้ตั้งแต่ก่อน deploy เรียกตรงมาที่นี่โดยไม่ผ่าน doGet
+    // ต้องย้ายข้อมูลให้ทันก่อน ไม่งั้นโค้ดใหม่อ่านชีตโครงเก่า (ย้ายแล้ว = อ่าน property ครั้งเดียว)
+    runMigrations_();
+    var run = function () {
+      var role = requireRole_(action, payload);
+      var fn = API_ROUTES[action];
+      if (!fn) throw new Error('ไม่รู้จักคำสั่ง: ' + action);
+      var data = fn(payload, role);
+      return data;
+    };
+    if (!WRITE_ACTIONS.test(String(action))) return { ok: true, data: run() };
+    return { ok: true, data: withScriptLock_(function () {
+      var data = run();
+      SpreadsheetApp.flush();   // เขียนให้ถึงชีตจริงก่อนปล่อยให้คนถัดไปอ่าน
+      return data;
+    }, 25000) };
   } catch (e) {
     console.error(action + ' -> ' + e);
     return {

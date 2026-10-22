@@ -24,6 +24,7 @@ function listRooms_() {
 }
 
 function saveRoom_(obj) {
+  obj.room = cleanRoom_(obj.room, true);
   obj.updatedAt = new Date();
   var found = findRow_(SHEETS.ROOMS, obj.room, 'room');
   if (found) {
@@ -106,6 +107,8 @@ function acMatrix_(year) {
 }
 
 function saveAcService_(obj) {
+  // แก้รายการเดิมที่ไม่ได้ส่งห้องมา = ใช้ห้องเดิม · รายการใหม่ต้องมีห้องเสมอ
+  if (obj.room !== undefined || !obj.id) obj.room = cleanRoom_(obj.room, true);
   obj.year = yearOf_(obj.serviceDate) || yearOf_(obj.bookDate) || obj.year || new Date().getFullYear();
   obj.status = obj.status || (obj.serviceDate ? 'ดำเนินการแล้ว' : 'นัดหมายแล้ว');
   obj.updatedAt = new Date();
@@ -169,7 +172,7 @@ function setAcStatus_(p) {
 function deleteAcService_(id) {
   var found = findRow_(SHEETS.AC_SERVICE, id);
   if (!found) throw new Error('ไม่พบรายการล้างแอร์: ' + id);
-  deleteRow_(SHEETS.AC_SERVICE, found._row);
+  deleteRow_(SHEETS.AC_SERVICE, found._row, found);
   logActivity_('ลบล้างแอร์', id, found.room);
   return true;
 }
@@ -179,6 +182,7 @@ function bulkBookAc_(payload) {
   var rooms = (payload && payload.rooms) || [];
   var bookDate = payload && payload.bookDate;
   if (!rooms.length || !bookDate) throw new Error('ต้องระบุห้องและวันที่นัด');
+  rooms = rooms.map(function (r) { return cleanRoom_(r, true); });
 
   var year = yearOf_(bookDate);
   var existing = readRows_(SHEETS.AC_SERVICE);
@@ -362,6 +366,8 @@ function statusFromTodo_(current, stats, fromToggle) {
 }
 
 function saveRoomRepair_(obj) {
+  // แก้รายการเดิมที่ไม่ได้ส่งห้องมา = ใช้ห้องเดิม · รายการใหม่ต้องมีห้องเสมอ
+  if (obj.room !== undefined || !obj.id) obj.room = cleanRoom_(obj.room, true);
   obj.year = yearOf_(obj.repairDate) || yearOf_(obj.bookDate) || yearOf_(obj.reportDate) || obj.year || new Date().getFullYear();
   obj.status = obj.status || (obj.repairDate ? 'เสร็จสิ้น' : (obj.bookDate ? 'นัดหมายแล้ว' : 'รอดำเนินการ'));
   obj.priority = obj.priority || 'ปกติ';
@@ -434,7 +440,7 @@ function toggleRepairItem_(p) {
 function deleteRoomRepair_(id) {
   var found = findRow_(SHEETS.ROOM_REPAIRS, id);
   if (!found) throw new Error('ไม่พบงานซ่อม: ' + id);
-  deleteRow_(SHEETS.ROOM_REPAIRS, found._row);
+  deleteRow_(SHEETS.ROOM_REPAIRS, found._row, found);
   logActivity_('ลบงานซ่อมห้อง', id, found.room);
   return true;
 }
@@ -448,6 +454,8 @@ function listAssets_(room) {
 }
 
 function saveAsset_(obj) {
+  // แก้รายการเดิมที่ไม่ได้ส่งห้องมา = ใช้ห้องเดิม · รายการใหม่ต้องมีห้องเสมอ
+  if (obj.room !== undefined || !obj.id) obj.room = cleanRoom_(obj.room, true);
   obj.updatedAt = new Date();
   if (obj.id) {
     var found = findRow_(SHEETS.ASSETS, obj.id);
@@ -460,7 +468,7 @@ function saveAsset_(obj) {
 function deleteAsset_(id) {
   var found = findRow_(SHEETS.ASSETS, id);
   if (!found) throw new Error('ไม่พบทรัพย์สิน: ' + id);
-  deleteRow_(SHEETS.ASSETS, found._row);
+  deleteRow_(SHEETS.ASSETS, found._row, found);
   return true;
 }
 

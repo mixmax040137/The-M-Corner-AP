@@ -998,6 +998,27 @@ console.log('\n── build/AllInOne.gs ──');
     check('รายการโอนของค่าก่อสร้างขึ้นในหน้าหนี้สินพร้อมป้าย 🔗', shared.linked, JSON.stringify(shared));
     await pg.screenshot({ path: OUT + '/bundle-debt.png' });
 
+    // เลขห้องที่มีอักขระพิเศษ ต้องไม่หลุดออกไปรันโค้ด (ทั้งในข้อความและใน onclick)
+    const xss = await pg.evaluate(() => {
+      window.__pwned = 0;
+      var evil = "1'\"><img src=x onerror=window.__pwned=1>";
+      var box = document.createElement('div');
+      box.innerHTML = roomFloors([{ room: evil, floor: 1 }], function (r) {
+        return { cls: '', sub: '', onclick: 'window.__got=' + jsq(r.room) };
+      });
+      document.body.appendChild(box);
+      var room = box.querySelector('.room');
+      room.click();
+      var res = { imgs: box.querySelectorAll('img').length, got: window.__got === evil, text: room.querySelector('.no').textContent === evil };
+      box.remove();
+      return res;
+    });
+    await pg.waitForTimeout(100);
+    const pwned = await pg.evaluate(() => window.__pwned);
+    check('เลขห้องมีโค้ดแฝง: ไม่กลายเป็นแท็ก HTML', xss.imgs === 0, JSON.stringify(xss));
+    check('เลขห้องมีโค้ดแฝง: ไม่มีโค้ดไหนถูกรัน', pwned === 0);
+    check('เลขห้องมีโค้ดแฝง: ปุ่มยังส่งค่าเดิมครบทุกตัวอักษร', xss.got && xss.text, JSON.stringify(xss));
+
     // กดปุ่ม "เพิ่มรายการ" ต้องได้ฟอร์มเปล่าและไม่มีรหัสเดิม
     await pg.evaluate(() => go('finance'));
     await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
@@ -1232,7 +1253,7 @@ console.log('\n── build/AllInOne.gs ──');
     if (real.total > 0) {
       const jumped = await p7.evaluate(async () => {
         var it = document.querySelector('.notif-item');
-        var mod = it.getAttribute('onclick').match(/'([^']+)'/)[1];
+        var mod = it.getAttribute('onclick').match(/["']([^"']+)["']/)[1];
         it.click();
         await new Promise(r => setTimeout(r, 400));
         return { page: S.page, closed: !document.getElementById('notifPanel'), want: mod };

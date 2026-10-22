@@ -137,7 +137,7 @@ function navFootHtml(b){
   return '<b style="color:#c7d0e0">' + esc(u.name || u.label || '') + '</b>' +
     (u.username ? ' <span style="opacity:.7">@' + esc(u.username) + '</span>' : '') +
     '<br><span style="opacity:.8">' + esc(u.role && u.role !== 'none' ? u.role : u.via || '') + '</span>' +
-    (b.sheetUrl ? '<br><a href="' + b.sheetUrl + '" target="_blank">เปิด Google Sheet ↗</a>' : '') +
+    (b.sheetUrl ? '<br><a href="' + esc(safeUrl(b.sheetUrl)) + '" target="_blank" rel="noopener">เปิด Google Sheet ↗</a>' : '') +
     (u.signedIn && u.username
       ? '<br><a href="javascript:void(0)" onclick="confirmLogout()">ออกจากระบบ</a>'
       : '');
@@ -147,7 +147,7 @@ function renderNav(){
   var html = '';
   PAGES.forEach(function(p){
     if (p.sec) html += '<div class="nav-sec">' + p.sec + '</div>';
-    html += '<button class="nav-item" id="nav-' + p.id + '" onclick="go(\'' + p.id + '\')">' +
+    html += '<button class="nav-item" id="nav-' + p.id + '" onclick="go(' + jsq(p.id) + ')">' +
               '<span class="ic">' + p.ic + '</span><span>' + p.label + '</span>' +
               '<span class="badge" id="badge-' + p.id + '" style="display:none"></span>' +
             '</button>';
@@ -165,7 +165,7 @@ function renderTabs(){
   var bar = document.getElementById('tabBar');
   if (!bar) return;
   var html = PAGES.filter(function(p){ return p.tab; }).map(function(p){
-    return '<button class="tab" id="tab-' + p.id + '" onclick="go(\'' + p.id + '\')" aria-label="' + esc(p.label) + '">' +
+    return '<button class="tab" id="tab-' + p.id + '" onclick="go(' + jsq(p.id) + ')" aria-label="' + esc(p.label) + '">' +
              '<span class="ic">' + p.ic + '</span><span class="tl">' + esc(p.tab) + '</span>' +
              '<span class="badge" id="tabbadge-' + p.id + '" style="display:none"></span>' +
            '</button>';
@@ -613,13 +613,13 @@ function renderNotifPanel(){
     if (!list.length) return;
     body += '<div class="notif-sec">' + g.ic + ' ' + esc(g.label) + ' (' + list.length + ')</div>';
     list.slice(0, 8).forEach(function(a){
-      body += '<button class="notif-item l-' + esc(a.level) + '" onclick="gotoAlert(\'' + esc(a.module) + '\')">' +
+      body += '<button class="notif-item l-' + esc(a.level) + '" onclick="gotoAlert(' + jsq(a.module) + ')">' +
         '<div class="tt">' + esc(a.title) + '</div>' +
         (a.detail ? '<div class="dd">' + esc(a.detail) + '</div>' : '') +
       '</button>';
     });
     if (list.length > 8) {
-      body += '<button class="notif-more" onclick="gotoAlert(\'' + esc(g.module) + '\')">' +
+      body += '<button class="notif-more" onclick="gotoAlert(' + jsq(g.module) + ')">' +
         'ดูอีก ' + (list.length - 8) + ' รายการ →</button>';
     }
   });
@@ -635,6 +635,13 @@ function gotoAlert(module){
 }
 
 /* ---------------- format helpers ---------------- */
+
+/**
+ * ข้อความที่จะไปเป็นอาร์กิวเมนต์ของ JS ใน onclick="…"
+ * JSON.stringify ทำให้เป็นสตริง JS ที่ถูกต้องเสมอ (หนีอัญประกาศ/แบ็กสแลชให้) แล้ว esc กันหลุดออกจาก attribute
+ * ใช้แทนการต่อ '\'' + ค่า + '\'' ตรง ๆ ซึ่งค่าที่มี ' จะทะลุออกมารันโค้ดได้
+ */
+function jsq(s){ return esc(JSON.stringify(String(s == null ? '' : s))); }
 
 function esc(s){
   return String(s==null?'':s)
@@ -703,16 +710,21 @@ function thumbsHtml(refs, big){
   return '<div class="thumbs">' + refs.map(function(r){
     if (r.thumb) {
       return '<img class="thumb' + (big?' big':'') + '" loading="lazy" src="' + esc(r.thumb) + '" ' +
-             'onclick="window.open(\'' + esc(r.url) + '\',\'_blank\')" ' +
+             'onclick="window.open(' + jsq(safeUrl(r.url)) + ',\'_blank\')" ' +
              'onerror="this.onerror=null;this.replaceWith(fileChip(' + JSON.stringify(JSON.stringify(r)).replace(/"/g,'&quot;') + '))">';
     }
-    return '<a class="b info" href="' + esc(r.url) + '" target="_blank">ไฟล์</a>';
+    var u = safeUrl(r.url);
+    return u ? '<a class="b info" href="' + esc(u) + '" target="_blank" rel="noopener">ไฟล์</a>'
+             : '<span class="b mute" title="' + esc(r.name || '') + '">ไฟล์</span>';
   }).join('') + '</div>';
 }
+
+/** รับเฉพาะลิงก์ https — ค่าอย่าง javascript: ที่ถูกพิมพ์ลงช่องไฟล์แนบในชีตจะไม่กลายเป็นลิงก์ */
+function safeUrl(u){ u = String(u == null ? '' : u).trim(); return /^https:\/\//i.test(u) ? u : ''; }
 function fileChip(json){
   var r = typeof json === 'string' ? JSON.parse(json) : json;
   var a = document.createElement('a');
-  a.className = 'b info'; a.href = r.url; a.target = '_blank'; a.textContent = '📎 ไฟล์';
+  a.className = 'b info'; a.href = safeUrl(r.url) || '#'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = '📎 ไฟล์';
   return a;
 }
 

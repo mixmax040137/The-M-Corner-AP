@@ -117,7 +117,7 @@ function saveFinance_(obj) {
 function deleteFinance_(id) {
   var found = findRow_(SHEETS.FINANCE, id);
   if (!found) throw new Error('ไม่พบรายการ: ' + id);
-  deleteRow_(SHEETS.FINANCE, found._row);
+  deleteRow_(SHEETS.FINANCE, found._row, found);
   logActivity_('ลบรายรับ-รายจ่าย', id, found.kind);
   return true;
 }

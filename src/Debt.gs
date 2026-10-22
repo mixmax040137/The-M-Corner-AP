@@ -504,7 +504,12 @@ function saveDebt_(obj) {
 function deleteDebt_(id) {
   var found = findRow_(SHEETS.DEBTS, id);
   if (!found) throw new Error('ไม่พบก้อนหนี้: ' + id);
-  deleteRow_(SHEETS.DEBTS, found._row);
+  // ลบก้อนที่ยังมีของผูกอยู่ ยอดจะย้ายไปก้อนอื่นเงียบ ๆ — ให้ย้าย/ลบของที่ผูกก่อน
+  var pays = readRows_(SHEETS.DEBT_PAYMENTS).filter(function (p) { return String(p.debtId) === String(id); }).length;
+  if (pays) throw new Error('ก้อนนี้มีรายการชำระผูกอยู่ ' + pays + ' รายการ — ลบหรือเปลี่ยน "ผูกกับก้อนหนี้" ของรายการเหล่านั้นก่อน');
+  var kids = readRows_(SHEETS.DEBTS).filter(function (d) { return String(d.parentId) === String(id); }).length;
+  if (kids) throw new Error('มีก้อนหนี้ ' + kids + ' ก้อนที่เป็นส่วนหนึ่งของก้อนนี้ — ปลดการผูกของก้อนเหล่านั้นก่อน');
+  deleteRow_(SHEETS.DEBTS, found._row, found);
   logActivity_('ลบก้อนหนี้', id, found.title);
   return true;
 }
@@ -519,8 +524,9 @@ function saveDebtPayment_(obj) {
   var debtId = String(obj.debtId || '').trim();
   if (debtId) {
     var debt = findRow_(SHEETS.DEBTS, debtId);
-    if (!debt) throw new Error('ไม่พบก้อนหนี้ที่ผูกไว้: ' + debtId);
-    obj.ledger = debt.ledger;
+    // ก้อนที่ผูกไว้ถูกลบไปแล้ว (ข้อมูลเก่า) ไม่ให้แก้รายการไม่ได้ — ปลดการผูก ให้ระบบตัดก้อนเก่าก่อนแทน
+    if (debt) obj.ledger = debt.ledger;
+    else obj.debtId = '';
   }
   // "รวมที่โอน" คิดให้เองเสมอ เพื่อให้ตรงกับสลิปและกันกรอกไม่ตรงกัน
   obj.principal = toNumber_(obj.principal) || 0;
@@ -544,7 +550,7 @@ function saveDebtPayment_(obj) {
 function deleteDebtPayment_(id) {
   var found = findRow_(SHEETS.DEBT_PAYMENTS, id);
   if (!found) throw new Error('ไม่พบรายการชำระ: ' + id);
-  deleteRow_(SHEETS.DEBT_PAYMENTS, found._row);
+  deleteRow_(SHEETS.DEBT_PAYMENTS, found._row, found);
   logActivity_('ลบรายการชำระหนี้', id, found.amount);
   return true;
 }

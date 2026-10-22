@@ -27,6 +27,26 @@ function getSpreadsheet_() {
  * ห้ามเขียนหัวใหม่ทับเฉย ๆ เพราะข้อมูลจะยังอยู่ตำแหน่งเดิมแล้วเลื่อนคอลัมน์ทั้งแผง
  * ต้องย้ายข้อมูลตามชื่อหัวตารางเดิมก่อนเสมอ
  */
+/**
+ * ทำงานใต้ล็อกของสคริปต์ (ทีละคำสั่งทั้งระบบ) — เรียกซ้อนกันได้ในคำสั่งเดียวกัน
+ * ใช้กับทุกอย่างที่ล้าง/เขียนชีตเป็นก้อน: คำสั่งบันทึก การย้ายข้อมูล การจัดคอลัมน์ใหม่
+ */
+var LOCK_DEPTH_ = 0;
+function withScriptLock_(fn, waitMs) {
+  if (LOCK_DEPTH_ > 0) return fn();
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(waitMs || 30000)) {
+    throw new Error('ระบบกำลังบันทึกรายการของคนอื่นอยู่ — รอสักครู่แล้วกดอีกครั้ง');
+  }
+  LOCK_DEPTH_++;
+  try {
+    return fn();
+  } finally {
+    LOCK_DEPTH_--;
+    lock.releaseLock();
+  }
+}
+
 function ensureSheet_(name) {
   var ss = getSpreadsheet_();
   var sh = ss.getSheetByName(name);
@@ -40,12 +60,28 @@ function ensureSheet_(name) {
     return String(h == null ? '' : h).trim();
   }) : [];
 
-  var matches = true;
-  for (var i = 0; i < headers.length; i++) {
-    if (existing[i] !== headers[i]) { matches = false; break; }
-  }
-  if (matches) return sh;
+  if (headersMatch_(existing, headers)) return sh;
 
+  // หัวตารางไม่ตรง = ต้องจัดคอลัมน์ใหม่ (ล้างแล้วเขียนทั้งชีต) — ทำทีละคน
+  // แล้วอ่านหัวตารางอีกรอบ เผื่อคนก่อนหน้าจัดให้เสร็จไปแล้วระหว่างรอ
+  return withScriptLock_(function () {
+    var lc = sh.getLastColumn();
+    var now = lc > 0 ? sh.getRange(1, 1, 1, lc).getValues()[0].map(function (h) {
+      return String(h == null ? '' : h).trim();
+    }) : [];
+    if (headersMatch_(now, headers)) return sh;
+    return relayoutSheet_(sh, name, now, headers);
+  }, 60000);
+}
+
+function headersMatch_(existing, headers) {
+  for (var i = 0; i < headers.length; i++) {
+    if (existing[i] !== headers[i]) return false;
+  }
+  return true;
+}
+
+function relayoutSheet_(sh, name, existing, headers) {
   var hasData = sh.getLastRow() > 1;
   var hasHeader = existing.filter(String).length > 0;
 
@@ -137,19 +173,29 @@ function normalizeValue_(v, type) {
  * วันที่ 1 ของเดือนแปลงกลับเป็น "เดือน/ปี" (รูปแบบของช่องงวด) วันอื่นเป็น yyyy-mm-dd
  * รวมถึงข้อความยาว ๆ แบบนั้นที่เคยถูกเขียนกลับลงชีตไปแล้วด้วย
  */
-var JS_DATE_TEXT = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{2}) (\d{4}) \d{2}:\d{2}:\d{2} GMT/;
+var JS_DATE_TEXT = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{2}) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT/;
 var MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+/*
+ * แปลงกลับเฉพาะ "วันล้วน" (เวลา 00:00:00) เท่านั้น เพราะนั่นคือร่องรอยของการที่ชีตเดาข้อความเป็นวันที่
+ * ค่าที่มีเวลาด้วย (เช่น เวลาหมดอายุของการเข้าใช้งาน เวลาปลดล็อกบัญชี) ห้ามตัดเวลาทิ้ง
+ * คืนเป็น ISO เต็ม ๆ ที่ new Date() อ่านได้ตรงเวลาเดิมทุกวินาที
+ */
 function textFromCell_(v) {
   var y, m, d;
   if (Object.prototype.toString.call(v) === '[object Date]') {
     if (isNaN(v.getTime())) return '';
-    var iso = Utilities.formatDate(v, APP.TIMEZONE, 'yyyy-MM-dd');
-    y = Number(iso.slice(0, 4)); m = Number(iso.slice(5, 7)); d = Number(iso.slice(8, 10));
+    var stamp = Utilities.formatDate(v, APP.TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+    if (stamp.slice(11) !== '00:00:00') return v.toISOString();
+    y = Number(stamp.slice(0, 4)); m = Number(stamp.slice(5, 7)); d = Number(stamp.slice(8, 10));
   } else {
     var s = String(v);
     var hit = s.match(JS_DATE_TEXT);
     if (!hit) return s;
+    if (hit[4] + hit[5] + hit[6] !== '000000') {
+      var t = new Date(s);
+      return isNaN(t.getTime()) ? s : t.toISOString();
+    }
     y = Number(hit[3]); m = MONTH_ABBR.indexOf(hit[1]) + 1; d = Number(hit[2]);
   }
   if (d === 1) return m + '/' + y;
@@ -157,19 +203,28 @@ function textFromCell_(v) {
 }
 
 /**
- * ข้อความที่หน้าตาเหมือนตัวเลขหรือวันที่ ("7/2026", "0812345678", "2022")
- * ใส่ ' นำหน้าตอนเขียน ชีตจะเก็บเป็นข้อความตามที่พิมพ์ ไม่แปลงเป็นวันที่/ตัดเลข 0 ข้างหน้า
+ * ข้อความที่ชีตจะแอบตีความเอง ต้องใส่ ' นำหน้าตอนเขียน ชีตจะเก็บเป็นข้อความตามที่พิมพ์
  * (เครื่องหมาย ' ไม่ถูกเก็บเป็นส่วนหนึ่งของค่า อ่านกลับมาได้ข้อความเดิม)
+ *   • หน้าตาเหมือนตัวเลข/วันที่ ("7/2026", "0812345678") — กันชีตแปลงเป็นวันที่หรือตัดเลข 0 ข้างหน้า
+ *   • เวลาแบบ ISO ("2026-10-22T03:00:00.000Z") — เวลาหมดอายุ/ปลดล็อก ต้องคงเป็นข้อความเดิมเป๊ะ
+ *   • ขึ้นต้นด้วย = + - @ — ไม่งั้นชีตถือเป็นสูตร ใครพิมพ์ =IMPORTDATA(...) ลงช่องหมายเหตุ
+ *     สูตรจะไปทำงานในชีตของเจ้าของหอ (formula injection)
  */
 var LOOKS_NUMERIC = /^[\d\s.,:\/+\-]+$/;
+var ISO_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+var FORMULA_LEAD = /^[=+\-@]/;
+
+function needsSheetQuote_(s) {
+  return (LOOKS_NUMERIC.test(s) && /\d/.test(s)) || ISO_STAMP.test(s) || FORMULA_LEAD.test(s);
+}
 
 function asSheetText_(s) {
-  return LOOKS_NUMERIC.test(s) && /\d/.test(s) ? "'" + s : s;
+  return needsSheetQuote_(s) ? "'" + s : s;
 }
 
 /** ค่าที่เพิ่งเขียน → ค่าที่ client เห็น (ถอด ' ที่ asSheetText_ ใส่ไว้) */
 function echoCell_(cell, type) {
-  if (typeof cell === 'string' && cell.charAt(0) === "'" && LOOKS_NUMERIC.test(cell.slice(1))) cell = cell.slice(1);
+  if (typeof cell === 'string' && cell.charAt(0) === "'" && needsSheetQuote_(cell.slice(1))) cell = cell.slice(1);
   return normalizeValue_(cell, type);
 }
 
@@ -206,6 +261,7 @@ function insertRow_(name, obj) {
 /** เขียนทับแถวเดิมทั้งแถว */
 function updateRow_(name, rowNumber, obj) {
   var sh = ensureSheet_(name);
+  rowNumber = verifyRow_(sh, name, rowNumber, obj);
   var cols = SCHEMA[name];
   var row = cols.map(function (c) { return serializeValue_(obj[c.key], c.type); });
   sh.getRange(rowNumber, 1, 1, cols.length).setValues([row]);
@@ -215,9 +271,34 @@ function updateRow_(name, rowNumber, obj) {
   return saved;
 }
 
-function deleteRow_(name, rowNumber) {
+/** @param {Object=} expect แถวที่อ่านมา (ใส่ไว้เพื่อตรวจว่ายังเป็นรายการเดิมก่อนลบ) */
+function deleteRow_(name, rowNumber, expect) {
   var sh = ensureSheet_(name);
-  sh.deleteRow(rowNumber);
+  sh.deleteRow(verifyRow_(sh, name, rowNumber, expect));
+}
+
+/**
+ * ยืนยันว่าแถวที่จะเขียน/ลบ ยังเป็นรายการเดิมอยู่ (เทียบคอลัมน์แรก = รหัสของแถว)
+ *
+ * เลขแถวได้มาตอนอ่าน ถ้าระหว่างนั้นมีคนอื่นลบแถวข้างบนไป แถวทั้งหมดจะเลื่อนขึ้น
+ * เขียนลงเลขเดิมตรง ๆ = ทับรายการของคนอื่น · ลบเลขเดิม = ลบผิดรายการ
+ * ถ้าไม่ตรง หาแถวของรหัสนั้นใหม่ · หาไม่เจอแปลว่าถูกลบไปแล้ว ไม่เขียนอะไรทั้งนั้น
+ */
+function verifyRow_(sh, name, rowNumber, obj) {
+  var col = SCHEMA[name] && SCHEMA[name][0];
+  if (!col || col.type !== 'text' || !obj) return rowNumber;
+  var want = String(obj[col.key] == null ? '' : obj[col.key]).trim();
+  if (!want) return rowNumber;
+  var last = sh.getLastRow();
+  if (rowNumber >= 2 && rowNumber <= last &&
+      String(normalizeValue_(sh.getRange(rowNumber, 1).getValue(), 'text')).trim() === want) return rowNumber;
+  if (last >= 2) {
+    var vals = sh.getRange(2, 1, last - 1, 1).getValues();
+    for (var i = 0; i < vals.length; i++) {
+      if (String(normalizeValue_(vals[i][0], 'text')).trim() === want) return i + 2;
+    }
+  }
+  throw new Error('รายการนี้ถูกลบหรือย้ายไปแล้วโดยคนอื่น — โหลดหน้าใหม่แล้วลองอีกครั้ง');
 }
 
 /** หาแถวจาก id (คอลัมน์ 'id' หรือ 'room' สำหรับชีต Rooms) */
@@ -319,6 +400,22 @@ function cleanDate_(value, label, required) {
 }
 
 /** Date -> 'YYYY-MM-DD' (โซนเวลาไทย) */
+/**
+ * เลขห้อง / ชื่อพื้นที่ — ตรวจทุกครั้งก่อนบันทึก
+ * ค่านี้ไปโผล่ในผังห้อง ปุ่ม และลิงก์ของทุกหน้า ถ้าปล่อยอักขระอย่าง < > " ' ` \ เข้าไป
+ * อาจถูกใช้ฝังโค้ดในหน้าเว็บของคนอื่น (หน้าเว็บ escape แล้ว ตรงนี้กันซ้ำอีกชั้น)
+ */
+function cleanRoom_(v, required) {
+  var s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  if (!s) {
+    if (required) throw new Error('กรุณาระบุห้อง');
+    return '';
+  }
+  if (s.length > 40) throw new Error('ชื่อห้อง/พื้นที่ยาวเกินไป (ไม่เกิน 40 ตัวอักษร)');
+  if (/[<>"'`\\\u0000-\u001f]/.test(s)) throw new Error('ชื่อห้อง/พื้นที่มีอักขระที่ใช้ไม่ได้: < > " \' ` \\');
+  return s;
+}
+
 function toIsoDate_(v) {
   var d = toDate_(v);
   if (!d) return '';

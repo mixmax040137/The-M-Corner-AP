@@ -393,8 +393,8 @@ function existingFilesHtml(key){
     var id = String(url).match(/[-\w]{20,}/);
     var thumb = id ? 'https://drive.google.com/thumbnail?id=' + id[0] + '&sz=w200' : '';
     return '<span style="position:relative;display:inline-block">' +
-      (thumb ? '<img class="thumb" src="' + esc(thumb) + '" onclick="window.open(\'' + esc(url) + '\',\'_blank\')">'
-             : '<a class="b info" href="' + esc(url) + '" target="_blank">ไฟล์ ' + (i+1) + '</a>') +
+      (thumb ? '<img class="thumb" src="' + esc(thumb) + '" onclick="window.open(' + jsq(safeUrl(url)) + ',\'_blank\')">'
+             : '<a class="b info" href="' + esc(safeUrl(url) || '#') + '" target="_blank" rel="noopener">ไฟล์ ' + (i+1) + '</a>') +
       '<button type="button" onclick="dropFile(\'' + key + '\',' + i + ')" title="เอาออก" ' +
       'style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:0;border-radius:99px;width:18px;height:18px;line-height:1;cursor:pointer;font-size:12px">×</button>' +
       '</span>';
@@ -714,7 +714,7 @@ function formDebt(rec, ledger){
 }
 
 function delDebt(id){
-  confirmAction('ลบก้อนหนี้นี้? รายการชำระที่ผูกไว้จะยังอยู่', function(){
+  confirmAction('ลบก้อนหนี้นี้? (ถ้ายังมีรายการชำระหรือก้อนย่อยผูกอยู่ ระบบจะไม่ยอมลบ เพื่อไม่ให้ยอดย้ายไปก้อนอื่นเงียบ ๆ)', function(){
     callApi('debt.delete', { id: id }).then(function(){ toast('ลบแล้ว','ok'); load({ quiet: true }); })
       .catch(function(e){ toast(e.message||e,'err'); });
   });

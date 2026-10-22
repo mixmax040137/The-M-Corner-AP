@@ -62,7 +62,7 @@ function sheetsCoerce(v) {
   if (v.charAt(0) === "'") return v.slice(1);
   let m = v.match(/^(\d{1,2})\/(\d{4})$/);
   if (m) return new Date(Number(m[2]), Number(m[1]) - 1, 1);
-  if (/^\d+$/.test(v) && !/^0\d/.test(v) && v.length < 15) return Number(v);
+  if (/^\d+$/.test(v) && v.length < 15) return Number(v);   // ชีตจริงตัดเลข 0 ข้างหน้าทิ้งด้วย
   return v;
 }
 
@@ -95,6 +95,7 @@ global.SpreadsheetApp = {
   openById: () => spreadsheet,
   newDataValidation: () => ({ requireValueInList: () => ({ setAllowInvalid: () => ({ build: () => ({}) }) }) }),
   getUi: () => { throw new Error('no ui'); }
+  , flush: () => {}
 };
 global.PropertiesService = {
   getScriptProperties: () => ({
@@ -124,7 +125,8 @@ global.Utilities = {
 };
 let fileSeq = 0;
 store.folders = new Map();          // ชื่อโฟลเดอร์ -> รายชื่อไฟล์ข้างใน
-const mkFile = (name, folderName) => {
+const iter = list => { let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; };
+const mkFile = (name, folderName, parent) => {
   const id = 'FILE' + (++fileSeq).toString().padStart(20, '0');
   const created = new Date(Date.now() + fileSeq * 1000);
   const f = {
@@ -133,6 +135,8 @@ const mkFile = (name, folderName) => {
     getSize: () => 2048, getDateCreated: () => created,
     getLastUpdated: () => store.lastUpdated || created,
     setSharing: () => f,
+    getParents: () => iter(parent ? [parent] : []),
+    getBlob: () => Utilities.newBlob(Buffer.from('mock'), 'image/jpeg', name),
     setTrashed: () => {
       const list = store.folders.get(folderName) || [];
       store.folders.set(folderName, list.filter(x => x !== f));
@@ -146,18 +150,20 @@ const mkFile = (name, folderName) => {
   }
   return f;
 };
-const mkFolder = name => ({
+// โฟลเดอร์จำพ่อแม่ของตัวเองไว้ ระบบจะได้ไล่ตรวจได้ว่าไฟล์อยู่ในโฟลเดอร์ของระบบจริงไหม
+const mkFolder = (name, parent) => { const me = {
   getId: () => 'FOLDER_' + name, getName: () => name,
   getUrl: () => 'https://drive.google.com/drive/folders/FOLDER_' + name,
-  getFoldersByName: n => ({ hasNext: () => true, next: () => mkFolder(n) }),
-  createFolder: n => mkFolder(n),
-  createFile: blob => mkFile(blob.n, name),
+  getParents: () => iter(parent ? [parent] : []),
+  getFoldersByName: n => ({ hasNext: () => true, next: () => mkFolder(n, me) }),
+  createFolder: n => mkFolder(n, me),
+  createFile: blob => mkFile(blob.n, name, me),
   getFiles: () => {
     const list = (store.folders.get(name) || []).slice();
     let i = 0;
     return { hasNext: () => i < list.length, next: () => list[i++] };
   }
-});
+}; return me; };
 global.DriveApp = {
   Access: { ANYONE_WITH_LINK: 1 }, Permission: { VIEW: 1 },
   getFolderById: () => mkFolder('root'),
@@ -167,7 +173,17 @@ global.DriveApp = {
     getLastUpdated: () => store.lastUpdated || new Date('2026-08-31T06:00:00Z'),
     getId: () => 'MOCK_SS',
     setTrashed: () => true,
-    getBlob: () => Utilities.newBlob(Buffer.from(''), 'image/jpeg', 'mock.jpg')
+    getBlob: () => Utilities.newBlob(Buffer.from(''), 'image/jpeg', 'mock.jpg'),
+    makeCopy: (name, folder) => { (store.copies = store.copies || []).push(name); return { getName: () => name, getUrl: () => 'https://mock/copy' }; }
+  })
+};
+// ล็อกของสคริปต์ — จดว่าถูกเรียกและคืนเสมอ (ทดสอบได้ว่าโค้ดคืนล็อกทุกครั้ง แม้เกิด error)
+store.locks = { held: 0, taken: 0 };
+global.LockService = {
+  getScriptLock: () => ({
+    waitLock: () => { store.locks.held++; store.locks.taken++; },
+    tryLock: () => { store.locks.held++; store.locks.taken++; return true; },
+    releaseLock: () => { if (store.locks.held > 0) store.locks.held--; }
   })
 };
 global.Session = {

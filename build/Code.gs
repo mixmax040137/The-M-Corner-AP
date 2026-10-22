@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-10-22 11:58 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-10-22 14:53 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.7.0',
+  VERSION: '1.7.1',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -370,6 +370,26 @@ function getSpreadsheet_() {
  * ห้ามเขียนหัวใหม่ทับเฉย ๆ เพราะข้อมูลจะยังอยู่ตำแหน่งเดิมแล้วเลื่อนคอลัมน์ทั้งแผง
  * ต้องย้ายข้อมูลตามชื่อหัวตารางเดิมก่อนเสมอ
  */
+/**
+ * ทำงานใต้ล็อกของสคริปต์ (ทีละคำสั่งทั้งระบบ) — เรียกซ้อนกันได้ในคำสั่งเดียวกัน
+ * ใช้กับทุกอย่างที่ล้าง/เขียนชีตเป็นก้อน: คำสั่งบันทึก การย้ายข้อมูล การจัดคอลัมน์ใหม่
+ */
+var LOCK_DEPTH_ = 0;
+function withScriptLock_(fn, waitMs) {
+  if (LOCK_DEPTH_ > 0) return fn();
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(waitMs || 30000)) {
+    throw new Error('ระบบกำลังบันทึกรายการของคนอื่นอยู่ — รอสักครู่แล้วกดอีกครั้ง');
+  }
+  LOCK_DEPTH_++;
+  try {
+    return fn();
+  } finally {
+    LOCK_DEPTH_--;
+    lock.releaseLock();
+  }
+}
+
 function ensureSheet_(name) {
   var ss = getSpreadsheet_();
   var sh = ss.getSheetByName(name);
@@ -383,12 +403,28 @@ function ensureSheet_(name) {
     return String(h == null ? '' : h).trim();
   }) : [];
 
-  var matches = true;
-  for (var i = 0; i < headers.length; i++) {
-    if (existing[i] !== headers[i]) { matches = false; break; }
-  }
-  if (matches) return sh;
+  if (headersMatch_(existing, headers)) return sh;
 
+  // หัวตารางไม่ตรง = ต้องจัดคอลัมน์ใหม่ (ล้างแล้วเขียนทั้งชีต) — ทำทีละคน
+  // แล้วอ่านหัวตารางอีกรอบ เผื่อคนก่อนหน้าจัดให้เสร็จไปแล้วระหว่างรอ
+  return withScriptLock_(function () {
+    var lc = sh.getLastColumn();
+    var now = lc > 0 ? sh.getRange(1, 1, 1, lc).getValues()[0].map(function (h) {
+      return String(h == null ? '' : h).trim();
+    }) : [];
+    if (headersMatch_(now, headers)) return sh;
+    return relayoutSheet_(sh, name, now, headers);
+  }, 60000);
+}
+
+function headersMatch_(existing, headers) {
+  for (var i = 0; i < headers.length; i++) {
+    if (existing[i] !== headers[i]) return false;
+  }
+  return true;
+}
+
+function relayoutSheet_(sh, name, existing, headers) {
   var hasData = sh.getLastRow() > 1;
   var hasHeader = existing.filter(String).length > 0;
 
@@ -480,19 +516,29 @@ function normalizeValue_(v, type) {
  * วันที่ 1 ของเดือนแปลงกลับเป็น "เดือน/ปี" (รูปแบบของช่องงวด) วันอื่นเป็น yyyy-mm-dd
  * รวมถึงข้อความยาว ๆ แบบนั้นที่เคยถูกเขียนกลับลงชีตไปแล้วด้วย
  */
-var JS_DATE_TEXT = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{2}) (\d{4}) \d{2}:\d{2}:\d{2} GMT/;
+var JS_DATE_TEXT = /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{2}) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT/;
 var MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+/*
+ * แปลงกลับเฉพาะ "วันล้วน" (เวลา 00:00:00) เท่านั้น เพราะนั่นคือร่องรอยของการที่ชีตเดาข้อความเป็นวันที่
+ * ค่าที่มีเวลาด้วย (เช่น เวลาหมดอายุของการเข้าใช้งาน เวลาปลดล็อกบัญชี) ห้ามตัดเวลาทิ้ง
+ * คืนเป็น ISO เต็ม ๆ ที่ new Date() อ่านได้ตรงเวลาเดิมทุกวินาที
+ */
 function textFromCell_(v) {
   var y, m, d;
   if (Object.prototype.toString.call(v) === '[object Date]') {
     if (isNaN(v.getTime())) return '';
-    var iso = Utilities.formatDate(v, APP.TIMEZONE, 'yyyy-MM-dd');
-    y = Number(iso.slice(0, 4)); m = Number(iso.slice(5, 7)); d = Number(iso.slice(8, 10));
+    var stamp = Utilities.formatDate(v, APP.TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+    if (stamp.slice(11) !== '00:00:00') return v.toISOString();
+    y = Number(stamp.slice(0, 4)); m = Number(stamp.slice(5, 7)); d = Number(stamp.slice(8, 10));
   } else {
     var s = String(v);
     var hit = s.match(JS_DATE_TEXT);
     if (!hit) return s;
+    if (hit[4] + hit[5] + hit[6] !== '000000') {
+      var t = new Date(s);
+      return isNaN(t.getTime()) ? s : t.toISOString();
+    }
     y = Number(hit[3]); m = MONTH_ABBR.indexOf(hit[1]) + 1; d = Number(hit[2]);
   }
   if (d === 1) return m + '/' + y;
@@ -500,19 +546,28 @@ function textFromCell_(v) {
 }
 
 /**
- * ข้อความที่หน้าตาเหมือนตัวเลขหรือวันที่ ("7/2026", "0812345678", "2022")
- * ใส่ ' นำหน้าตอนเขียน ชีตจะเก็บเป็นข้อความตามที่พิมพ์ ไม่แปลงเป็นวันที่/ตัดเลข 0 ข้างหน้า
+ * ข้อความที่ชีตจะแอบตีความเอง ต้องใส่ ' นำหน้าตอนเขียน ชีตจะเก็บเป็นข้อความตามที่พิมพ์
  * (เครื่องหมาย ' ไม่ถูกเก็บเป็นส่วนหนึ่งของค่า อ่านกลับมาได้ข้อความเดิม)
+ *   • หน้าตาเหมือนตัวเลข/วันที่ ("7/2026", "0812345678") — กันชีตแปลงเป็นวันที่หรือตัดเลข 0 ข้างหน้า
+ *   • เวลาแบบ ISO ("2026-10-22T03:00:00.000Z") — เวลาหมดอายุ/ปลดล็อก ต้องคงเป็นข้อความเดิมเป๊ะ
+ *   • ขึ้นต้นด้วย = + - @ — ไม่งั้นชีตถือเป็นสูตร ใครพิมพ์ =IMPORTDATA(...) ลงช่องหมายเหตุ
+ *     สูตรจะไปทำงานในชีตของเจ้าของหอ (formula injection)
  */
 var LOOKS_NUMERIC = /^[\d\s.,:\/+\-]+$/;
+var ISO_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+var FORMULA_LEAD = /^[=+\-@]/;
+
+function needsSheetQuote_(s) {
+  return (LOOKS_NUMERIC.test(s) && /\d/.test(s)) || ISO_STAMP.test(s) || FORMULA_LEAD.test(s);
+}
 
 function asSheetText_(s) {
-  return LOOKS_NUMERIC.test(s) && /\d/.test(s) ? "'" + s : s;
+  return needsSheetQuote_(s) ? "'" + s : s;
 }
 
 /** ค่าที่เพิ่งเขียน → ค่าที่ client เห็น (ถอด ' ที่ asSheetText_ ใส่ไว้) */
 function echoCell_(cell, type) {
-  if (typeof cell === 'string' && cell.charAt(0) === "'" && LOOKS_NUMERIC.test(cell.slice(1))) cell = cell.slice(1);
+  if (typeof cell === 'string' && cell.charAt(0) === "'" && needsSheetQuote_(cell.slice(1))) cell = cell.slice(1);
   return normalizeValue_(cell, type);
 }
 
@@ -549,6 +604,7 @@ function insertRow_(name, obj) {
 /** เขียนทับแถวเดิมทั้งแถว */
 function updateRow_(name, rowNumber, obj) {
   var sh = ensureSheet_(name);
+  rowNumber = verifyRow_(sh, name, rowNumber, obj);
   var cols = SCHEMA[name];
   var row = cols.map(function (c) { return serializeValue_(obj[c.key], c.type); });
   sh.getRange(rowNumber, 1, 1, cols.length).setValues([row]);
@@ -558,9 +614,34 @@ function updateRow_(name, rowNumber, obj) {
   return saved;
 }
 
-function deleteRow_(name, rowNumber) {
+/** @param {Object=} expect แถวที่อ่านมา (ใส่ไว้เพื่อตรวจว่ายังเป็นรายการเดิมก่อนลบ) */
+function deleteRow_(name, rowNumber, expect) {
   var sh = ensureSheet_(name);
-  sh.deleteRow(rowNumber);
+  sh.deleteRow(verifyRow_(sh, name, rowNumber, expect));
+}
+
+/**
+ * ยืนยันว่าแถวที่จะเขียน/ลบ ยังเป็นรายการเดิมอยู่ (เทียบคอลัมน์แรก = รหัสของแถว)
+ *
+ * เลขแถวได้มาตอนอ่าน ถ้าระหว่างนั้นมีคนอื่นลบแถวข้างบนไป แถวทั้งหมดจะเลื่อนขึ้น
+ * เขียนลงเลขเดิมตรง ๆ = ทับรายการของคนอื่น · ลบเลขเดิม = ลบผิดรายการ
+ * ถ้าไม่ตรง หาแถวของรหัสนั้นใหม่ · หาไม่เจอแปลว่าถูกลบไปแล้ว ไม่เขียนอะไรทั้งนั้น
+ */
+function verifyRow_(sh, name, rowNumber, obj) {
+  var col = SCHEMA[name] && SCHEMA[name][0];
+  if (!col || col.type !== 'text' || !obj) return rowNumber;
+  var want = String(obj[col.key] == null ? '' : obj[col.key]).trim();
+  if (!want) return rowNumber;
+  var last = sh.getLastRow();
+  if (rowNumber >= 2 && rowNumber <= last &&
+      String(normalizeValue_(sh.getRange(rowNumber, 1).getValue(), 'text')).trim() === want) return rowNumber;
+  if (last >= 2) {
+    var vals = sh.getRange(2, 1, last - 1, 1).getValues();
+    for (var i = 0; i < vals.length; i++) {
+      if (String(normalizeValue_(vals[i][0], 'text')).trim() === want) return i + 2;
+    }
+  }
+  throw new Error('รายการนี้ถูกลบหรือย้ายไปแล้วโดยคนอื่น — โหลดหน้าใหม่แล้วลองอีกครั้ง');
 }
 
 /** หาแถวจาก id (คอลัมน์ 'id' หรือ 'room' สำหรับชีต Rooms) */
@@ -662,6 +743,22 @@ function cleanDate_(value, label, required) {
 }
 
 /** Date -> 'YYYY-MM-DD' (โซนเวลาไทย) */
+/**
+ * เลขห้อง / ชื่อพื้นที่ — ตรวจทุกครั้งก่อนบันทึก
+ * ค่านี้ไปโผล่ในผังห้อง ปุ่ม และลิงก์ของทุกหน้า ถ้าปล่อยอักขระอย่าง < > " ' ` \ เข้าไป
+ * อาจถูกใช้ฝังโค้ดในหน้าเว็บของคนอื่น (หน้าเว็บ escape แล้ว ตรงนี้กันซ้ำอีกชั้น)
+ */
+function cleanRoom_(v, required) {
+  var s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  if (!s) {
+    if (required) throw new Error('กรุณาระบุห้อง');
+    return '';
+  }
+  if (s.length > 40) throw new Error('ชื่อห้อง/พื้นที่ยาวเกินไป (ไม่เกิน 40 ตัวอักษร)');
+  if (/[<>"'`\\\u0000-\u001f]/.test(s)) throw new Error('ชื่อห้อง/พื้นที่มีอักขระที่ใช้ไม่ได้: < > " \' ` \\');
+  return s;
+}
+
 function toIsoDate_(v) {
   var d = toDate_(v);
   if (!d) return '';
@@ -939,7 +1036,7 @@ function setSetting_(key, value) {
   var rows = readRows_(SHEETS.SETTINGS);
   for (var i = 0; i < rows.length; i++) {
     if (String(rows[i].key) === String(key)) {
-      sh.getRange(rows[i]._row, 3).setValue(String(value));
+      sh.getRange(rows[i]._row, 3).setValue(serializeValue_(String(value), 'text'));   // ใส่ ' กันรหัส 0 นำหน้าหาย/กลายเป็นสูตร
       return value;
     }
   }
@@ -1294,7 +1391,7 @@ function deleteUser_(username, actingRole, actingUsername) {
   if (u.role === 'ผู้ดูแล' && countAdmins_() <= 1) throw new Error('ต้องเหลือผู้ดูแลอย่างน้อย 1 คน');
 
   revokeAllSessions_(username);
-  deleteRow_(SHEETS.USERS, u._row);
+  deleteRow_(SHEETS.USERS, u._row, u);
   logActivity_('ลบผู้ใช้', username, '');
   return true;
 }
@@ -1334,7 +1431,7 @@ function createSession_(username, kind, hours, extra) {
 
 function revokeSession_(token) {
   var s = findSession_(token);
-  if (s) deleteRow_(SHEETS.SESSIONS, s._row);
+  if (s) deleteRow_(SHEETS.SESSIONS, s._row, s);
   return true;
 }
 
@@ -1342,7 +1439,7 @@ function revokeAllSessions_(username) {
   var u = normUsername_(username);
   var rows = readRows_(SHEETS.SESSIONS);
   for (var i = rows.length - 1; i >= 0; i--) {
-    if (normUsername_(rows[i].username) === u) deleteRow_(SHEETS.SESSIONS, rows[i]._row);
+    if (normUsername_(rows[i].username) === u) deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]);
   }
   return true;
 }
@@ -1352,7 +1449,7 @@ function purgeSessions_() {
   var rows = readRows_(SHEETS.SESSIONS);
   var removed = 0;
   for (var i = rows.length - 1; i >= 0; i--) {
-    if (isExpired_(rows[i])) { deleteRow_(SHEETS.SESSIONS, rows[i]._row); removed++; }
+    if (isExpired_(rows[i])) { deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]); removed++; }
   }
   return removed;
 }
@@ -1441,15 +1538,15 @@ function setPin_(sessionToken, pin, deviceName) {
 function unlockWithPin_(deviceToken, pin) {
   var d = findSession_(deviceToken);
   if (!d || d.kind !== 'อุปกรณ์') throw new Error('อุปกรณ์นี้ยังไม่ได้ตั้ง PIN — กรุณาล็อกอินด้วยรหัสผ่าน');
-  if (isExpired_(d)) { deleteRow_(SHEETS.SESSIONS, d._row); throw new Error('ครบกำหนดยืนยันตัวตนใหม่ — กรุณาล็อกอินด้วยรหัสผ่าน'); }
+  if (isExpired_(d)) { deleteRow_(SHEETS.SESSIONS, d._row, d); throw new Error('ครบกำหนดยืนยันตัวตนใหม่ — กรุณาล็อกอินด้วยรหัสผ่าน'); }
 
   var u = findUser_(d.username);
-  if (!u || u.status === 'ระงับ') { deleteRow_(SHEETS.SESSIONS, d._row); throw new Error('บัญชีนี้ใช้งานไม่ได้แล้ว'); }
+  if (!u || u.status === 'ระงับ') { deleteRow_(SHEETS.SESSIONS, d._row, d); throw new Error('บัญชีนี้ใช้งานไม่ได้แล้ว'); }
 
   if (!safeEqual_(hashSecret_(pin, d.pinSalt), d.pinHash)) {
     var n = (toNumber_(d.failCount) || 0) + 1;
     if (n >= 5) {
-      deleteRow_(SHEETS.SESSIONS, d._row);
+      deleteRow_(SHEETS.SESSIONS, d._row, d);
       logActivity_('PIN ผิดครบโควตา ยกเลิกอุปกรณ์', d.username, '');
       throw new Error('ใส่ PIN ผิด 5 ครั้ง ยกเลิก PIN บนเครื่องนี้แล้ว — กรุณาล็อกอินด้วยรหัสผ่าน');
     }
@@ -1484,7 +1581,7 @@ function listDevices_(username) {
 
 function forgetDevice_(deviceToken) {
   var d = findSession_(deviceToken);
-  if (d) { deleteRow_(SHEETS.SESSIONS, d._row); logActivity_('ยกเลิก PIN บนอุปกรณ์', d.username, d.device || ''); }
+  if (d) { deleteRow_(SHEETS.SESSIONS, d._row, d); logActivity_('ยกเลิก PIN บนอุปกรณ์', d.username, d.device || ''); }
   return true;
 }
 
@@ -1495,7 +1592,7 @@ function forgetAllDevices_(username) {
   var n = 0;
   for (var i = rows.length - 1; i >= 0; i--) {
     if (rows[i].kind === 'อุปกรณ์' && normUsername_(rows[i].username) === u) {
-      deleteRow_(SHEETS.SESSIONS, rows[i]._row); n++;
+      deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]); n++;
     }
   }
   logActivity_('ยกเลิกอุปกรณ์ทั้งหมด', username, n + ' เครื่อง');
@@ -1969,23 +2066,57 @@ function folderFor_(bucket) {
  * @param {{bucket:string, files:Array<{name:string, mimeType:string, dataUrl:string}>}} payload
  * @return {Array<{id:string,name:string,url:string,thumb:string}>}
  */
+var UPLOAD_MAX_BYTES = 12 * 1024 * 1024;   // ให้ตรงกับที่หน้าเว็บกันไว้
+var UPLOAD_MAX_FILES = 20;
+
+/**
+ * ดูชนิดไฟล์จาก "เนื้อไฟล์" (ไบต์แรก ๆ) ไม่เชื่อชื่อหรือชนิดที่หน้าเว็บบอกมา
+ * ไฟล์แนบถูกแชร์แบบใครมีลิงก์ก็เปิดได้ ถ้ารับทุกชนิด คนที่มีสิทธิ์แก้ไข
+ * จะอัปโหลดหน้าเว็บหลอก/ไฟล์อันตรายไปฝากไว้ใน Drive ของเจ้าของหอ แล้วส่งลิงก์ต่อได้
+ * รับเฉพาะรูปกับ PDF (สลิป ใบเสร็จ ภาพประกอบ) · คืน mime ที่ถูกต้อง หรือ '' ถ้าไม่รับ
+ */
+function sniffUpload_(bytes) {
+  var b = [];
+  for (var i = 0; i < Math.min(16, bytes.length); i++) b.push(bytes[i] & 0xff);
+  var ascii = function (from, to) { return String.fromCharCode.apply(null, b.slice(from, to)); };
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x89 && ascii(1, 4) === 'PNG') return 'image/png';
+  if (ascii(0, 4) === 'GIF8') return 'image/gif';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
+  if (ascii(0, 5) === '%PDF-') return 'application/pdf';
+  if (ascii(0, 2) === 'BM') return 'image/bmp';
+  if (ascii(4, 8) === 'ftyp' && /^(heic|heix|hevc|heim|heis|mif1|msf1|avif)$/.test(ascii(8, 12))) {
+    return ascii(8, 12) === 'avif' ? 'image/avif' : 'image/heic';
+  }
+  return '';
+}
+
 function uploadFiles_(payload) {
   var bucket = (payload && payload.bucket) || 'misc';
-  var files = (payload && payload.files) || [];
-  var folder = folderFor_(bucket);
-  var out = [];
+  var files = ((payload && payload.files) || []).filter(function (f) { return f && f.dataUrl; });
+  if (files.length > UPLOAD_MAX_FILES) throw new Error('แนบได้ครั้งละไม่เกิน ' + UPLOAD_MAX_FILES + ' ไฟล์');
 
-  files.forEach(function (f) {
-    if (!f || !f.dataUrl) return;
+  // ตรวจครบทุกไฟล์ก่อน ค่อยสร้างไฟล์จริง — ไม่ให้เหลือไฟล์ครึ่ง ๆ กลาง ๆ ถ้ามีไฟล์หนึ่งไม่ผ่าน
+  var ready = files.map(function (f) {
     var base64 = String(f.dataUrl).indexOf(',') >= 0
       ? String(f.dataUrl).split(',')[1]
       : String(f.dataUrl);
     var bytes = Utilities.base64Decode(base64);
-    var safeName = (f.name || 'file')
+    var name = String(f.name || 'file');
+    if (bytes.length > UPLOAD_MAX_BYTES) throw new Error('ไฟล์ใหญ่เกิน 12 MB: ' + name);
+    var mime = sniffUpload_(bytes);
+    if (!mime) throw new Error('แนบได้เฉพาะรูปภาพ (JPG PNG WEBP HEIC GIF) หรือ PDF — ไฟล์นี้ใช้ไม่ได้: ' + name);
+    return { bytes: bytes, mime: mime, name: name };
+  });
+
+  var folder = folderFor_(bucket);
+  var out = [];
+  ready.forEach(function (f) {
+    var safeName = f.name
       .replace(/[\\/:*?"<>|]/g, '_')
       .slice(0, 90);
     var stamped = Utilities.formatDate(new Date(), APP.TIMEZONE, 'yyyyMMdd-HHmmss') + '-' + safeName;
-    var blob = Utilities.newBlob(bytes, f.mimeType || 'application/octet-stream', stamped);
+    var blob = Utilities.newBlob(f.bytes, f.mime, stamped);
     var file = folder.createFile(blob);
     try {
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -2010,7 +2141,8 @@ function fileInfo_(file) {
 function toFileRefs_(list) {
   return splitList_(list).map(function (raw) {
     var id = extractDriveId_(raw);
-    if (!id) return { id: '', name: raw, url: raw, thumb: '' };
+    // ลิงก์อื่นที่ไม่ใช่ไฟล์ Drive รับเฉพาะ https — กัน javascript: ที่ถูกพิมพ์ใส่ช่องไฟล์แนบ
+    if (!id) return { id: '', name: raw, url: /^https:\/\//i.test(String(raw).trim()) ? String(raw).trim() : '', thumb: '' };
     return {
       id: id,
       name: '',
@@ -2029,9 +2161,46 @@ function extractDriveId_(raw) {
   return m ? m[1] : '';
 }
 
-/** ลบไฟล์ (ย้ายลงถังขยะ) */
+/**
+ * ไฟล์นี้อยู่ในโฟลเดอร์ไฟล์แนบของระบบหรือไม่ (ไล่ขึ้นไปตามโฟลเดอร์แม่)
+ *
+ * สคริปต์ทำงานด้วยสิทธิ์ของเจ้าของ เข้าถึง Drive ของเจ้าของได้ทั้งหมด
+ * ถ้ารับรหัสไฟล์อะไรก็ได้ คนที่มีสิทธิ์แก้ไขจะลบไฟล์ส่วนตัวของเจ้าของทิ้ง
+ * หรือส่งเอกสารส่วนตัวไปอ่านข้อความ (OCR) แล้วได้เนื้อหากลับไปได้
+ * จึงยอมเฉพาะไฟล์ที่ระบบเป็นคนอัปโหลดไว้เอง
+ */
+function isAppFile_(file) {
+  var rootId = props_().getProperty(PROP.DRIVE_FOLDER_ID);
+  if (!rootId || !file || typeof file.getParents !== 'function') return false;
+  var queue = [], seen = {};
+  var it = file.getParents();
+  while (it.hasNext()) queue.push({ f: it.next(), depth: 1 });
+  while (queue.length) {
+    var cur = queue.shift();
+    var id = cur.f.getId();
+    if (id === rootId) return true;
+    if (seen[id] || cur.depth >= 6) continue;
+    seen[id] = true;
+    var up = cur.f.getParents();
+    while (up.hasNext()) queue.push({ f: up.next(), depth: cur.depth + 1 });
+  }
+  return false;
+}
+
+/** เปิดไฟล์ของระบบตามรหัส — ไฟล์นอกโฟลเดอร์ไฟล์แนบถือว่าไม่มี */
+function appFileById_(fileId) {
+  var id = extractDriveId_(fileId) || String(fileId || '').trim();
+  if (!id) throw new Error('ไม่พบไฟล์');
+  var file;
+  try { file = DriveApp.getFileById(id); } catch (e) { throw new Error('ไม่พบไฟล์'); }
+  if (!isAppFile_(file)) throw new Error('ไฟล์นี้ไม่ได้อยู่ในโฟลเดอร์ไฟล์แนบของระบบ');
+  return file;
+}
+
+/** ลบไฟล์ (ย้ายลงถังขยะ) — เฉพาะไฟล์แนบของระบบ */
 function trashFile_(fileId) {
-  try { DriveApp.getFileById(fileId).setTrashed(true); return true; }
+  var file = appFileById_(fileId);
+  try { file.setTrashed(true); return true; }
   catch (e) { return false; }
 }
 
@@ -2090,8 +2259,7 @@ function ocrBlob_(p) {
     return Utilities.newBlob(Utilities.base64Decode(base64), mime, 'ocr-temp');
   }
   if (p.fileId) {
-    var id = extractDriveId_(p.fileId) || p.fileId;
-    return DriveApp.getFileById(id).getBlob();
+    return appFileById_(p.fileId).getBlob();   // เฉพาะไฟล์แนบของระบบ ไม่ใช่ไฟล์ไหนก็ได้ใน Drive
   }
   return null;
 }
@@ -3002,7 +3170,7 @@ function saveFinance_(obj) {
 function deleteFinance_(id) {
   var found = findRow_(SHEETS.FINANCE, id);
   if (!found) throw new Error('ไม่พบรายการ: ' + id);
-  deleteRow_(SHEETS.FINANCE, found._row);
+  deleteRow_(SHEETS.FINANCE, found._row, found);
   logActivity_('ลบรายรับ-รายจ่าย', id, found.kind);
   return true;
 }
@@ -3041,19 +3209,49 @@ function runMigrations_() {
   var from = Number(props_().getProperty('SCHEMA_VERSION') || 0);
   if (from >= SCHEMA_VERSION) return { migrated: false, from: from, to: SCHEMA_VERSION };
 
-  var done = [];
-  if (from < 2) done.push(migrateV2SplitPayment_());
-  if (from < 3) done.push(migrateV3DebtParent_());
-  if (from < 4) done.push(migrateV4Users_());
-  if (from < 5) done.push(migrateV5RefreshRate_());
-  if (from < 7) done.push(migrateV7RepairTodo_());
-  if (from < 8) done.push(migrateV8ChristianYear_());
-  if (from < 9) done.push(migrateV9InstallmentText_());
-  if (from < 10) done.push(migrateV10ShareConstruction_());
+  // หลัง deploy ถ้ามีคนเปิดเว็บพร้อมกันสองเครื่อง ทั้งคู่จะเข้ามาย้ายข้อมูลพร้อมกัน
+  // การย้ายบางรุ่นล้างทั้งชีตแล้วเขียนใหม่ ถ้าซ้อนกันแถวหายหรือซ้ำได้ — ให้ทำทีละคนเท่านั้น
+  return withScriptLock_(function () {
+    // คนก่อนหน้าอาจย้ายเสร็จไปแล้วระหว่างที่รอล็อก
+    from = Number(props_().getProperty('SCHEMA_VERSION') || 0);
+    if (from >= SCHEMA_VERSION) return { migrated: false, from: from, to: SCHEMA_VERSION };
 
-  props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
-  logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
-  return { migrated: true, from: from, to: SCHEMA_VERSION, steps: done };
+    var snapshot = snapshotBeforeMigrate_(from);
+
+    var done = [];
+    if (from < 2) done.push(migrateV2SplitPayment_());
+    if (from < 3) done.push(migrateV3DebtParent_());
+    if (from < 4) done.push(migrateV4Users_());
+    if (from < 5) done.push(migrateV5RefreshRate_());
+    if (from < 7) done.push(migrateV7RepairTodo_());
+    if (from < 8) done.push(migrateV8ChristianYear_());
+    if (from < 9) done.push(migrateV9InstallmentText_());
+    if (from < 10) done.push(migrateV10ShareConstruction_());
+    if (snapshot) done.unshift('สำเนาก่อนย้าย: ' + snapshot);
+
+    props_().setProperty('SCHEMA_VERSION', String(SCHEMA_VERSION));
+    logActivity_('ย้ายโครงสร้างข้อมูล', from + ' → ' + SCHEMA_VERSION, done);
+    return { migrated: true, from: from, to: SCHEMA_VERSION, steps: done };
+  }, 120000);
+}
+
+/**
+ * ทำสำเนาไฟล์ Google Sheet ทั้งไฟล์ (ค่าดิบทุกช่อง) ไว้ในโฟลเดอร์สำรองก่อนย้ายข้อมูล
+ * ถ้าการย้ายรุ่นไหนพลาด ยังเปิดสำเนานี้ดูหรือคัดลอกกลับได้ครบ
+ * ไม่ใช้ exportAll_ เพราะมันอ่านผ่านโครงคอลัมน์ใหม่ คอลัมน์เก่าที่กำลังจะย้ายจะไม่ติดไปด้วย
+ * ติดตั้งครั้งแรก (ยังไม่มีข้อมูล) ไม่ต้องทำ · ทำไม่สำเร็จก็ย้ายต่อ (แอปต้องใช้งานได้) แต่จดไว้
+ */
+function snapshotBeforeMigrate_(from) {
+  if (!from) return '';
+  try {
+    var name = 'สำเนาก่อนย้ายข้อมูล-รุ่น' + from + '-' +
+      Utilities.formatDate(new Date(), APP.TIMEZONE, 'yyyy-MM-dd-HHmm');
+    var copy = DriveApp.getFileById(getSpreadsheet_().getId()).makeCopy(name, backupFolder_());
+    return copy.getName();
+  } catch (e) {
+    console.warn('snapshotBeforeMigrate_: ' + e);
+    return '';
+  }
 }
 
 /**
@@ -3526,13 +3724,23 @@ function exportable_(name) {
   return EXPORT_SKIP_SHEETS.indexOf(name) < 0;
 }
 
+/**
+ * แถวลับในชีต Settings (กุญแจกู้ระบบ กุญแจแชร์ รหัสประตู) ห้ามออกไปกับไฟล์สำรอง
+ * ไฟล์สำรองถูกเก็บใน Drive และดาวน์โหลดไปเก็บที่อื่นได้ ถ้าหลุดไป
+ * คนที่ได้ไฟล์จะเข้าระบบเป็นผู้ดูแลได้ทันทีด้วยกุญแจกู้ระบบ
+ * และขาเข้าก็ไม่ยอมให้ไฟล์สำรองเขียนทับค่าพวกนี้ (กันไฟล์ที่ถูกแก้มาฝังกุญแจที่คนอื่นรู้)
+ */
+function isSecretRow_(sheetName, row) {
+  return sheetName === SHEETS.SETTINGS && SECRET_SETTINGS.indexOf(String(row && row.key)) >= 0;
+}
+
 /** ส่งออกทุกชีตเป็นก้อน JSON เดียว — เฉพาะผู้ดูแล (ดู ADMIN_ONLY_ACTIONS) */
 function exportAll_() {
   var out = { app: APP.NAME, version: APP.VERSION, exportedAt: nowStamp_(), sheets: {} };
   Object.keys(SHEETS).forEach(function (k) {
     var name = SHEETS[k];
     if (!exportable_(name)) return;
-    out.sheets[name] = readRows_(name).map(function (r) {
+    out.sheets[name] = readRows_(name).filter(function (r) { return !isSecretRow_(name, r); }).map(function (r) {
       var c = {};
       Object.keys(r).forEach(function (key) { if (key !== '_row') c[key] = r[key]; });
       return c;
@@ -3548,7 +3756,7 @@ function exportCsv_(sheetName) {
   var cols = SCHEMA[sheetName];
   if (!cols) throw new Error('ไม่รู้จักชีต: ' + sheetName);
   if (!exportable_(sheetName)) throw new Error('ชีตนี้ส่งออกไม่ได้เพราะมีข้อมูลการเข้าใช้งานอยู่');
-  var rows = readRows_(sheetName);
+  var rows = readRows_(sheetName).filter(function (r) { return !isSecretRow_(sheetName, r); });
   var lines = [cols.map(function (c) { return csvCell_(c.label); }).join(',')];
   rows.forEach(function (r) {
     lines.push(cols.map(function (c) {
@@ -3562,6 +3770,9 @@ function exportCsv_(sheetName) {
 
 function csvCell_(v) {
   var s = String(v == null ? '' : v);
+  // ข้อความที่ขึ้นต้นด้วย = + - @ Excel จะรันเป็นสูตรตอนเปิดไฟล์ (CSV injection) — ใส่ ' นำหน้าให้เป็นข้อความ
+  // ตัวเลขจริง (เช่น ยอดติดลบ) ไม่แตะ
+  if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
@@ -3578,7 +3789,11 @@ function importAll_(payload) {
   Object.keys(data.sheets).forEach(function (name) {
     if (!SCHEMA[name]) return;
     if (!exportable_(name)) return;      // ไม่ยอมให้ยัดรหัสอ้างอิงปลอมเข้ามาทางไฟล์สำรอง
-    var incoming = data.sheets[name] || [];
+    var incoming = (data.sheets[name] || []).filter(function (r) { return r && !isSecretRow_(name, r); });
+    // แทนที่บัญชีผู้ใช้ทั้งชุดด้วยไฟล์ที่ไม่มีผู้ดูแลที่ใช้งานได้ = ล็อกทุกคนออกจากระบบ ไม่ยอม
+    if (name === SHEETS.USERS && mode === 'replace' && !incoming.some(function (u) {
+      return u.role === ROLE.ADMIN && String(u.status || 'ใช้งาน') === 'ใช้งาน';
+    })) { stat[name] = 'ข้าม — ไฟล์ไม่มีผู้ดูแลที่ใช้งานได้'; return; }
     if (mode === 'replace') {
       clearSheet_(name);
       stat[name] = bulkInsert_(name, incoming);
@@ -4222,7 +4437,12 @@ function saveDebt_(obj) {
 function deleteDebt_(id) {
   var found = findRow_(SHEETS.DEBTS, id);
   if (!found) throw new Error('ไม่พบก้อนหนี้: ' + id);
-  deleteRow_(SHEETS.DEBTS, found._row);
+  // ลบก้อนที่ยังมีของผูกอยู่ ยอดจะย้ายไปก้อนอื่นเงียบ ๆ — ให้ย้าย/ลบของที่ผูกก่อน
+  var pays = readRows_(SHEETS.DEBT_PAYMENTS).filter(function (p) { return String(p.debtId) === String(id); }).length;
+  if (pays) throw new Error('ก้อนนี้มีรายการชำระผูกอยู่ ' + pays + ' รายการ — ลบหรือเปลี่ยน "ผูกกับก้อนหนี้" ของรายการเหล่านั้นก่อน');
+  var kids = readRows_(SHEETS.DEBTS).filter(function (d) { return String(d.parentId) === String(id); }).length;
+  if (kids) throw new Error('มีก้อนหนี้ ' + kids + ' ก้อนที่เป็นส่วนหนึ่งของก้อนนี้ — ปลดการผูกของก้อนเหล่านั้นก่อน');
+  deleteRow_(SHEETS.DEBTS, found._row, found);
   logActivity_('ลบก้อนหนี้', id, found.title);
   return true;
 }
@@ -4237,8 +4457,9 @@ function saveDebtPayment_(obj) {
   var debtId = String(obj.debtId || '').trim();
   if (debtId) {
     var debt = findRow_(SHEETS.DEBTS, debtId);
-    if (!debt) throw new Error('ไม่พบก้อนหนี้ที่ผูกไว้: ' + debtId);
-    obj.ledger = debt.ledger;
+    // ก้อนที่ผูกไว้ถูกลบไปแล้ว (ข้อมูลเก่า) ไม่ให้แก้รายการไม่ได้ — ปลดการผูก ให้ระบบตัดก้อนเก่าก่อนแทน
+    if (debt) obj.ledger = debt.ledger;
+    else obj.debtId = '';
   }
   // "รวมที่โอน" คิดให้เองเสมอ เพื่อให้ตรงกับสลิปและกันกรอกไม่ตรงกัน
   obj.principal = toNumber_(obj.principal) || 0;
@@ -4262,7 +4483,7 @@ function saveDebtPayment_(obj) {
 function deleteDebtPayment_(id) {
   var found = findRow_(SHEETS.DEBT_PAYMENTS, id);
   if (!found) throw new Error('ไม่พบรายการชำระ: ' + id);
-  deleteRow_(SHEETS.DEBT_PAYMENTS, found._row);
+  deleteRow_(SHEETS.DEBT_PAYMENTS, found._row, found);
   logActivity_('ลบรายการชำระหนี้', id, found.amount);
   return true;
 }
@@ -4519,6 +4740,7 @@ function billOf_(p) {
 }
 
 function savePurchase_(obj) {
+  if (obj.room != null) obj.room = cleanRoom_(obj.room, false);
   obj.buyDate = cleanDate_(obj.buyDate, 'วันที่ซื้อ', true);
   obj.year = yearOf_(obj.buyDate);
   if (obj.buyDate && obj.warrantyMonths) {
@@ -4561,7 +4783,7 @@ function summarizeLines_(lines) {
 function deletePurchase_(id) {
   var found = findRow_(SHEETS.PURCHASES, id);
   if (!found) throw new Error('ไม่พบรายการซื้อ: ' + id);
-  deleteRow_(SHEETS.PURCHASES, found._row);
+  deleteRow_(SHEETS.PURCHASES, found._row, found);
   logActivity_('ลบรายการซื้อ', id, found.item);
   return true;
 }
@@ -4597,6 +4819,7 @@ function listRooms_() {
 }
 
 function saveRoom_(obj) {
+  obj.room = cleanRoom_(obj.room, true);
   obj.updatedAt = new Date();
   var found = findRow_(SHEETS.ROOMS, obj.room, 'room');
   if (found) {
@@ -4679,6 +4902,8 @@ function acMatrix_(year) {
 }
 
 function saveAcService_(obj) {
+  // แก้รายการเดิมที่ไม่ได้ส่งห้องมา = ใช้ห้องเดิม · รายการใหม่ต้องมีห้องเสมอ
+  if (obj.room !== undefined || !obj.id) obj.room = cleanRoom_(obj.room, true);
   obj.year = yearOf_(obj.serviceDate) || yearOf_(obj.bookDate) || obj.year || new Date().getFullYear();
   obj.status = obj.status || (obj.serviceDate ? 'ดำเนินการแล้ว' : 'นัดหมายแล้ว');
   obj.updatedAt = new Date();
@@ -4742,7 +4967,7 @@ function setAcStatus_(p) {
 function deleteAcService_(id) {
   var found = findRow_(SHEETS.AC_SERVICE, id);
   if (!found) throw new Error('ไม่พบรายการล้างแอร์: ' + id);
-  deleteRow_(SHEETS.AC_SERVICE, found._row);
+  deleteRow_(SHEETS.AC_SERVICE, found._row, found);
   logActivity_('ลบล้างแอร์', id, found.room);
   return true;
 }
@@ -4752,6 +4977,7 @@ function bulkBookAc_(payload) {
   var rooms = (payload && payload.rooms) || [];
   var bookDate = payload && payload.bookDate;
   if (!rooms.length || !bookDate) throw new Error('ต้องระบุห้องและวันที่นัด');
+  rooms = rooms.map(function (r) { return cleanRoom_(r, true); });
 
   var year = yearOf_(bookDate);
   var existing = readRows_(SHEETS.AC_SERVICE);
@@ -4935,6 +5161,8 @@ function statusFromTodo_(current, stats, fromToggle) {
 }
 
 function saveRoomRepair_(obj) {
+  // แก้รายการเดิมที่ไม่ได้ส่งห้องมา = ใช้ห้องเดิม · รายการใหม่ต้องมีห้องเสมอ
+  if (obj.room !== undefined || !obj.id) obj.room = cleanRoom_(obj.room, true);
   obj.year = yearOf_(obj.repairDate) || yearOf_(obj.bookDate) || yearOf_(obj.reportDate) || obj.year || new Date().getFullYear();
   obj.status = obj.status || (obj.repairDate ? 'เสร็จสิ้น' : (obj.bookDate ? 'นัดหมายแล้ว' : 'รอดำเนินการ'));
   obj.priority = obj.priority || 'ปกติ';
@@ -5007,7 +5235,7 @@ function toggleRepairItem_(p) {
 function deleteRoomRepair_(id) {
   var found = findRow_(SHEETS.ROOM_REPAIRS, id);
   if (!found) throw new Error('ไม่พบงานซ่อม: ' + id);
-  deleteRow_(SHEETS.ROOM_REPAIRS, found._row);
+  deleteRow_(SHEETS.ROOM_REPAIRS, found._row, found);
   logActivity_('ลบงานซ่อมห้อง', id, found.room);
   return true;
 }
@@ -5021,6 +5249,8 @@ function listAssets_(room) {
 }
 
 function saveAsset_(obj) {
+  // แก้รายการเดิมที่ไม่ได้ส่งห้องมา = ใช้ห้องเดิม · รายการใหม่ต้องมีห้องเสมอ
+  if (obj.room !== undefined || !obj.id) obj.room = cleanRoom_(obj.room, true);
   obj.updatedAt = new Date();
   if (obj.id) {
     var found = findRow_(SHEETS.ASSETS, obj.id);
@@ -5033,7 +5263,7 @@ function saveAsset_(obj) {
 function deleteAsset_(id) {
   var found = findRow_(SHEETS.ASSETS, id);
   if (!found) throw new Error('ไม่พบทรัพย์สิน: ' + id);
-  deleteRow_(SHEETS.ASSETS, found._row);
+  deleteRow_(SHEETS.ASSETS, found._row, found);
   return true;
 }
 
@@ -5208,7 +5438,7 @@ function saveBuildingRepair_(obj) {
 function deleteBuildingRepair_(id) {
   var found = findRow_(SHEETS.BUILDING_REPAIRS, id);
   if (!found) throw new Error('ไม่พบงานซ่อมตึก: ' + id);
-  deleteRow_(SHEETS.BUILDING_REPAIRS, found._row);
+  deleteRow_(SHEETS.BUILDING_REPAIRS, found._row, found);
   logActivity_('ลบงานซ่อมตึก', id, found.title);
   return true;
 }
@@ -5543,13 +5773,33 @@ function costPerRoom_(year) {
  * ทุก action ผ่านการตรวจสิทธิ์ก่อนเสมอ
  */
 
+/**
+ * คำสั่งที่เขียนลงชีต — ทำทีละคำสั่งเท่านั้น
+ * ชีตไม่มี transaction ถ้าสองคนบันทึก/ลบพร้อมกัน เลขแถวที่อ่านไว้จะเลื่อน
+ * และการล้างรายการหมดอายุตอนล็อกอินก็ลบแถวเหมือนกัน — ให้รอคิวกันทีละคน
+ * (คำสั่งอ่านไม่ต้องรอ หน้าเว็บจึงไม่ช้าลง)
+ */
+var WRITE_ACTIONS = /\.(save|delete|savePayment|deletePayment|reconcile|setStatus|bulkBook|toggle|import|backupNow|rotateToken|send|login|unlock|logout|setPin|forgetDevice|forgetAllDevices|changePassword|resetPin|signOutAll)$/;
+
 function api(action, payload) {
   payload = payload || {};
   try {
-    var role = requireRole_(action, payload);
-    var fn = API_ROUTES[action];
-    if (!fn) throw new Error('ไม่รู้จักคำสั่ง: ' + action);
-    return { ok: true, data: fn(payload, role) };
+    // หน้าเว็บที่เปิดค้างไว้ตั้งแต่ก่อน deploy เรียกตรงมาที่นี่โดยไม่ผ่าน doGet
+    // ต้องย้ายข้อมูลให้ทันก่อน ไม่งั้นโค้ดใหม่อ่านชีตโครงเก่า (ย้ายแล้ว = อ่าน property ครั้งเดียว)
+    runMigrations_();
+    var run = function () {
+      var role = requireRole_(action, payload);
+      var fn = API_ROUTES[action];
+      if (!fn) throw new Error('ไม่รู้จักคำสั่ง: ' + action);
+      var data = fn(payload, role);
+      return data;
+    };
+    if (!WRITE_ACTIONS.test(String(action))) return { ok: true, data: run() };
+    return { ok: true, data: withScriptLock_(function () {
+      var data = run();
+      SpreadsheetApp.flush();   // เขียนให้ถึงชีตจริงก่อนปล่อยให้คนถัดไปอ่าน
+      return data;
+    }, 25000) };
   } catch (e) {
     console.error(action + ' -> ' + e);
     return {
@@ -5921,8 +6171,10 @@ function doGet(e) {
   return t.evaluate()
     .setTitle(APP.NAME)
     .setFaviconUrl('https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_jfk2.png')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+  // ไม่ตั้ง XFrameOptionsMode.ALLOWALL — ถ้าเปิดให้เว็บอื่นฝังหน้านี้ได้ คนอื่นทำหน้าหลอก
+  // ครอบหน้าระบบไว้ใต้ปุ่มของตัวเอง ให้คนที่ล็อกอินค้างอยู่กดลบ/แก้ข้อมูลโดยไม่รู้ตัวได้ (clickjacking)
+  // ค่าตั้งต้นของ Apps Script เปิดผ่านลิงก์ /exec ได้ตามปกติ
 }
 
 /**

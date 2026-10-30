@@ -579,6 +579,14 @@ button.sync-pill:active{transform:translateY(1px)}
   background:var(--warn);color:#fff;font-weight:700;font-variant-numeric:tabular-nums;
 }
 .nav-item.on .badge{background:rgba(255,255,255,.28);color:#fff}
+/* เห็นแล้ว: ยังบอกจำนวนงานค้าง แต่จางลง ไม่เรียกร้องความสนใจเท่าเรื่องใหม่ */
+.nav-item .badge.seen{background:rgba(255,255,255,.12);color:var(--nav-ink);font-weight:600}
+.nav-item.on .badge.seen{background:rgba(255,255,255,.2);color:#fff}
+.tab .badge.seen{background:var(--line);color:var(--muted)}
+/* รายการที่เพิ่งเข้ามาตั้งแต่เปิดดูครั้งก่อน */
+.notif-item.is-new{background:var(--brand-soft)}
+.notif-item.is-new:hover{background:var(--brand-soft);filter:brightness(.98)}
+.new-dot{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--brand);margin-right:6px;vertical-align:1px}
 
 @media (max-width:720px){
   .notif{

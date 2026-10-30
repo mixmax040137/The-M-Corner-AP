@@ -26,7 +26,7 @@ check('สร้างครบ 13 ชีต', Object.keys(SHEETS).length === 13
 check('รายการซื้อ 94 รายการ', readRows_(SHEETS.PURCHASES).length === 94);
 check('ยอดชำระหนี้ 5,049,654', Math.round(debtSummary_('หนี้หลัก', 'all').paid) === 5049654);
 check('รายรับ-รายจ่าย 32 รายการ', readRows_(SHEETS.FINANCE).length === 32);
-check('มีคำสั่ง API ครบ 76 คำสั่ง', Object.keys(API_ROUTES).length === 76);
+check('มีคำสั่ง API ครบ 77 คำสั่ง', Object.keys(API_ROUTES).length === 77);
 check('มีบัญชีผู้ดูแลคนแรกให้ล็อกอิน', !!findUser_('admin'), true);
 const adminKey = getSetting_('admin_token', ''), viewKey = getSetting_('view_token', '');
 check('มีกุญแจผู้ดูแลและกุญแจแชร์', !!(adminKey && viewKey && adminKey !== viewKey), true);
@@ -1240,6 +1240,38 @@ console.log('\n── build/AllInOne.gs ──');
     await p7.click('#bellBtn');
     await p7.waitForTimeout(250);
     check('กดกระดิ่งแล้วกล่องเปิด', await p7.$('#notifPanel') !== null);
+    if (real.total > 0) {
+      // เปิดดูแล้ว = เห็นแล้ว: ตัวเลขบนกระดิ่งหาย แต่รายการยังอยู่ครบ และติดป้าย "ใหม่" ให้รู้ว่าเรื่องไหนเพิ่งเข้ามา
+      const opened = await p7.evaluate(() => ({
+        dot: !!document.querySelector('.bell-dot'),
+        items: document.querySelectorAll('.notif-item').length,
+        fresh: document.querySelectorAll('.notif-item.is-new').length,
+        head: document.querySelector('.notif-h').innerText,
+        seenBadge: document.getElementById('badge-ac').classList.contains('seen')
+      }));
+      check('เปิดดูแล้ว ตัวเลขบนกระดิ่งหาย', !opened.dot);
+      check('เปิดดูแล้ว รายการยังอยู่ในกล่อง', opened.items > 0, JSON.stringify(opened));
+      check('รอบแรกทุกเรื่องติดป้ายใหม่', opened.fresh === opened.items, JSON.stringify(opened));
+      check('หัวกล่องบอกจำนวนเรื่องใหม่และเรื่องค้าง', /ใหม่ \d+/.test(opened.head) && /ค้าง \d+ เรื่อง/.test(opened.head), opened.head);
+      check('ตัวเลขบนเมนูยังอยู่ แต่จางลงเมื่อเห็นแล้ว', opened.seenBadge &&
+        (await p7.evaluate(() => document.getElementById('badge-ac').style.display !== 'none')));
+      // ปิดแล้วเปิดใหม่: ไม่มีป้ายใหม่แล้ว · โหลดหน้าใหม่ก็ยังจำได้
+      await p7.evaluate(() => { closeNotif(); toggleNotif(); });
+      await p7.waitForTimeout(250);
+      check('เปิดรอบสอง ไม่มีป้ายใหม่ซ้ำ', await p7.evaluate(() => document.querySelectorAll('.notif-item.is-new').length) === 0);
+      await p7.evaluate(() => closeNotif());
+      await p7.reload(); await p7.waitForTimeout(1200);
+      check('โหลดหน้าใหม่แล้วยังจำว่าเห็นแล้ว (ไม่มีตัวเลขบนกระดิ่ง)', await p7.$('.bell-dot') === null);
+      // มีเรื่องใหม่เข้ามา 1 เรื่อง → ตัวเลขกลับมาเป็น 1
+      await p7.evaluate(() => {
+        var k = JSON.parse(localStorage.getItem(SEEN_LOCAL_KEY));
+        localStorage.setItem(SEEN_LOCAL_KEY, JSON.stringify(k.slice(1)));
+        paintBadges(); paintBell();
+      });
+      check('มีเรื่องใหม่ 1 เรื่อง ตัวเลขขึ้น 1', (await p7.$eval('.bell-dot', e => e.textContent)) === '1');
+      await p7.click('#bellBtn'); await p7.waitForTimeout(250);
+      check('เปิดดู: เรื่องใหม่ติดป้ายเรื่องเดียว', await p7.evaluate(() => document.querySelectorAll('.notif-item.is-new').length) === 1);
+    }
     const panelText = await p7.$eval('#notifPanel', e => e.innerText);
     check('กล่องมีหัวข้อ "การแจ้งเตือน"', panelText.includes('การแจ้งเตือน'));
     if (real.total > 0) {

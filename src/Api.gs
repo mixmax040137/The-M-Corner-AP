@@ -15,6 +15,7 @@ var WRITE_ACTIONS = /\.(save|delete|savePayment|deletePayment|reconcile|setStatu
 
 function api(action, payload) {
   payload = payload || {};
+  REQUEST_ACTOR_ = null;
   try {
     // หน้าเว็บที่เปิดค้างไว้ตั้งแต่ก่อน deploy เรียกตรงมาที่นี่โดยไม่ผ่าน doGet
     // ต้องย้ายข้อมูลให้ทันก่อน ไม่งั้นโค้ดใหม่อ่านชีตโครงเก่า (ย้ายแล้ว = อ่าน property ครั้งเดียว)
@@ -96,7 +97,9 @@ var API_ROUTES = {
   'app.dashboard': function (p) { return dashboard_(p.year); },
 
   /** เบา — หน้าเว็บเรียกบ่อยเพื่ออัปเดตตัวเลขบนเมนูและกล่องแจ้งเตือน */
-  'app.alerts': function () { return alertCenter_(); },
+  'app.alerts': function (p) { return alertCenter_(p); },
+  // ไม่ได้เขียนชีต (เก็บใน Script Properties) จึงไม่ต้องเข้าคิวเขียน และไม่ทำให้เครื่องอื่นโหลดใหม่
+  'app.alertsSeen': function (p) { return markAlertsSeen_(p); },
   'app.search': function (p) { return globalSearch_(p.q); },
 
   /* ---------- หนี้ (ใช้ร่วมกันทั้งหนี้หลักและหนี้รอง) ---------- */
@@ -206,7 +209,12 @@ var API_ROUTES = {
   'auth.changePassword': function (p) {
     var me = actorUsername_(p);
     if (!me) throw new Error('บัญชีนี้เข้าผ่านลิงก์ จึงไม่มีรหัสผ่านให้เปลี่ยน');
-    return changePassword_(me, p.oldPassword, p.newPassword);
+    var ok = changePassword_(me, p.oldPassword, p.newPassword);
+    // เปลี่ยนรหัสผ่าน (มักเพราะสงสัยว่ามีคนรู้) → ออกจากระบบทุกเครื่องอื่น
+    // เครื่องที่กดเปลี่ยนยังอยู่ต่อ ทั้งการเข้าใช้งานและ PIN ของเครื่องนั้น (หน้าเว็บส่ง _device มา)
+    var n = revokeAllSessions_(me, [p._session, p._device]);
+    if (n) logActivity_('ออกจากระบบเครื่องอื่นหลังเปลี่ยนรหัสผ่าน', me, n + ' รายการ');
+    return ok;
   },
   'auth.devices': function (p) {
     var me = actorUsername_(p);

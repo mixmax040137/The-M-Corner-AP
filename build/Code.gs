@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-10-22 14:53 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-10-30 06:44 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.7.1',
+  VERSION: '1.8.0',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -1435,13 +1435,22 @@ function revokeSession_(token) {
   return true;
 }
 
-function revokeAllSessions_(username) {
+/**
+ * ออกจากระบบทุกเครื่องของผู้ใช้ (รวมอุปกรณ์ที่ตั้ง PIN ไว้)
+ * @param {string[]=} keepTokens รหัสที่ไม่ต้องลบ — เช่น เครื่องที่กำลังเปลี่ยนรหัสผ่านอยู่ และ PIN ของเครื่องนั้น
+ * @return {number} จำนวนที่ลบ
+ */
+function revokeAllSessions_(username, keepTokens) {
   var u = normUsername_(username);
+  var keep = (keepTokens || []).map(String).filter(String);
   var rows = readRows_(SHEETS.SESSIONS);
+  var n = 0;
   for (var i = rows.length - 1; i >= 0; i--) {
-    if (normUsername_(rows[i].username) === u) deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]);
+    if (normUsername_(rows[i].username) !== u) continue;
+    if (keep.some(function (t) { return safeEqual_(rows[i].token, t); })) continue;
+    deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]); n++;
   }
-  return true;
+  return n;
 }
 
 /** ลบรายการที่หมดอายุทิ้ง ไม่ให้ชีตบวม */
@@ -1705,11 +1714,14 @@ function shareLinkEnabled_() {
   return String(getSetting_('share_link_enabled', 'ปิด')).trim().indexOf('เปิด') === 0;
 }
 
+var REQUEST_ACTOR_ = null;
+
 function requireRole_(action, payloadOrKey) {
   var payload = (payloadOrKey && typeof payloadOrKey === 'object') ? payloadOrKey : { _key: payloadOrKey };
   if (PUBLIC_ACTIONS.test(action)) return ROLE.NONE;
 
   var actor = resolveActor_(payload);
+  REQUEST_ACTOR_ = actor;      // คำสั่งที่ต้องรู้ว่าใครเรียก ใช้ตัวนี้ได้เลย ไม่ต้องอ่านชีตการเข้าใช้งานซ้ำ
   if (actor.role === ROLE.NONE) throw new Error('กรุณาเข้าสู่ระบบก่อนใช้งาน');
 
   if (ADMIN_ONLY_ACTIONS.test(action) && actor.role !== ROLE.ADMIN) {
@@ -1869,10 +1881,10 @@ var SETTINGS_FORM = [
   {
     group: 'การแจ้งเตือน', icon: '🔔',
     items: [
-      { key: 'ac_cycle_months', type: 'number' },
-      { key: 'warranty_alert_days', type: 'number' },
-      { key: 'overdue_alert_days', type: 'number' },
-      { key: 'due_soon_days', type: 'number' },
+      { key: 'ac_cycle_months', type: 'number', min: 1, max: 24 },
+      { key: 'warranty_alert_days', type: 'number', min: 1, max: 365 },
+      { key: 'overdue_alert_days', type: 'number', min: 1, max: 365 },
+      { key: 'due_soon_days', type: 'number', min: 0, max: 60 },
       { key: 'notify_email', type: 'text' },
       { key: 'notify_weekday', type: 'select', options: ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'] }
     ]
@@ -1881,18 +1893,18 @@ var SETTINGS_FORM = [
     group: 'การเงิน', icon: '💰',
     items: [
       { key: 'currency', type: 'text' },
-      { key: 'default_due_day', type: 'number' },
-      { key: 'late_fee', type: 'number' }
+      { key: 'default_due_day', type: 'number', min: 1, max: 31 },
+      { key: 'late_fee', type: 'number', min: 0, max: 100000 }
     ]
   },
   {
     group: 'ความปลอดภัยและการเข้าใช้งาน', icon: '🔐',
     items: [
       { key: 'share_link_enabled', type: 'select', options: ['ปิด', 'เปิด'] },
-      { key: 'session_hours', type: 'number' },
-      { key: 'device_days', type: 'number' },
-      { key: 'login_max_fail', type: 'number' },
-      { key: 'login_lock_minutes', type: 'number' }
+      { key: 'session_hours', type: 'number', min: 1, max: 720 },
+      { key: 'device_days', type: 'number', min: 1, max: 365 },
+      { key: 'login_max_fail', type: 'number', min: 3, max: 20 },
+      { key: 'login_lock_minutes', type: 'number', min: 1, max: 1440 }
     ]
   },
   {
@@ -1906,8 +1918,8 @@ var SETTINGS_FORM = [
   {
     group: 'สำรองข้อมูล', icon: '💾',
     items: [
-      { key: 'backup_keep', type: 'number' },
-      { key: 'backup_hour', type: 'number', note: '0–23 นาฬิกา' }
+      { key: 'backup_keep', type: 'number', min: 1, max: 365 },
+      { key: 'backup_hour', type: 'number', min: 0, max: 23, note: '0–23 นาฬิกา' }
     ]
   }
 ];
@@ -1954,6 +1966,8 @@ function listSettings_(role) {
           label: meta.label,
           note: it.note || meta.note || '',
           type: it.type,
+          min: it.min != null ? it.min : null,
+          max: it.max != null ? it.max : null,
           options: it.options ? it.options.map(function (o) {
             return (o && typeof o === 'object')
               ? { value: String(o.value), label: String(o.label) }
@@ -1989,6 +2003,12 @@ function saveSettings_(values) {
     if (spec.type === 'number') {
       var n = toNumber_(v);
       if (n === null) throw new Error(settingMeta_(k).label + ': ต้องเป็นตัวเลข');
+      // ช่วงที่ใช้งานได้จริง — เช่น "ใส่รหัสผิดได้กี่ครั้ง" = -1 จะล็อกทุกคนตั้งแต่พิมพ์ผิดครั้งแรก
+      // ตรวจเฉพาะค่าที่เปลี่ยน: ค่าเก่าที่บันทึกไว้ก่อนมีกติกานี้ ต้องไม่ทำให้บันทึกช่องอื่นไม่ได้
+      var changedNow = String(getSetting_(k, '')) !== String(n);
+      if (changedNow && ((spec.min != null && n < spec.min) || (spec.max != null && n > spec.max))) {
+        throw new Error(settingMeta_(k).label + ': ต้องอยู่ระหว่าง ' + spec.min + '–' + spec.max);
+      }
       v = String(n);
     }
     if (spec.type === 'select' && spec.options &&
@@ -5412,6 +5432,8 @@ function buildingSummary_(year) {
     yearCost: round2_(sum_(scope, function (r) { return r.cost; })),
     grandCost: round2_(sum_(all, function (r) { return r.cost; })),
     openCount: scope.filter(function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; }).length,
+    // งานที่ยังไม่ปิดทุกปี (งานที่เปิดไว้ตั้งแต่ปีก่อนก็ยังต้องทำ) — ศูนย์แจ้งเตือนใช้ ไม่ต้องอ่านชีตซ้ำ
+    openJobs: all.filter(function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; }),
     byZone: byZone,
     byYear: byYear,
     upcoming: upcoming
@@ -5523,7 +5545,8 @@ function dashboard_(year) {
     },
     spendThisYear: spendThisYear,
     upcoming: upcomingSchedule_(60),
-    alerts: buildAlerts_(overdueRepairs, ac, bld, today)
+    // รายการเดียวกับกล่องแจ้งเตือน (งานที่ยังค้างทุกงาน ไม่ใช่แค่ที่เลยกำหนด) ปุ่ม "ดูทั้งหมดในแดชบอร์ด" จึงตรงกัน
+    alerts: buildAlerts_(overdueRepairs, ac, bld, today, { openRepairs: openRepairs, openBuilding: bld.openJobs })
   };
 }
 
@@ -5554,61 +5577,171 @@ function overdueRepairs_(openList, today) {
  *
  * @return {{counts:Object, total:number, items:Array}}
  */
-function alertCenter_() {
+/** รายการแจ้งเตือนทั้งหมดของวันนี้ — ที่เดียวที่กล่องแจ้งเตือนและตัวเลขบนเมนูใช้ */
+function collectAlerts_() {
   var today = todayIso_();
   var y = String(new Date().getFullYear());
-
   var open = openRepairs_();
-  var overdue = overdueRepairs_(open, today);
-  var ac = acMatrix_(y);
   var bld = buildingSummary_(y);
+  return buildAlerts_(overdueRepairs_(open, today), acMatrix_(y), bld, today,
+    { openRepairs: open, openBuilding: bld.openJobs });
+}
 
-  var items = buildAlerts_(overdue, ac, bld, today);
+var ALERT_LIST_CAP = 40;   // รายละเอียดที่ส่งไปต่อหน้า (กล่องแสดงหน้าละ 8) — ตัวเลขยังนับครบทุกเรื่อง
 
-  // ตัวเลขบนเมนู = "จำนวนงานที่ยังค้างอยู่" ของแต่ละโมดูล
-  // ไม่ใช่จำนวนการแจ้งเตือน เพราะผู้ใช้อ่านว่า "ยังเหลืองานกี่ชิ้น"
-  var counts = {
-    repairs: open.length,
-    ac: ac.roomsPending.length,
-    building: bld.openCount || 0,
-    purchases: expiringWarranties_().length
-  };
+function alertCenter_(payload) {
+  var items = collectAlerts_();
 
-  var byModule = {};
-  items.forEach(function (a) { byModule[a.module] = (byModule[a.module] || 0) + 1; });
+  // ตัวเลขบนเมนูกับรายการในกล่องแจ้งเตือนมาจากรายการชุดเดียวกันเสมอ
+  // (เดิมนับคนละแบบ เมนูบอก "ซ่อมแซม 4" แต่ในกล่องไม่มีงานซ่อมเลยสักรายการ)
+  var counts = { repairs: 0, ac: 0, building: 0, purchases: 0, finance: 0 };
+  items.forEach(function (a) { counts[a.module] = (counts[a.module] || 0) + 1; });
+
+  // ผู้ใช้แต่ละคนเห็นแล้วหรือยัง — ตัวเลขบนกระดิ่ง = เฉพาะเรื่องที่ยังไม่เคยเห็น
+  // เปิดดูแล้วตัวเลขหายไป แต่รายการยังอยู่ในกล่องจนกว่าจะแก้ที่ต้นเหตุ
+  var who = alertViewer_(payload);
+  var seen = who ? seenAlertKeys_(who) : {};
+  items.forEach(function (a) { a.seen = alertKeySeen_(a.key, seen); });
+  var unseen = items.filter(function (a) { return !a.seen; });
+  var unseenByModule = {};
+  unseen.forEach(function (a) { unseenByModule[a.module] = (unseenByModule[a.module] || 0) + 1; });
+
+  // ส่งรายละเอียดไม่เกินหน้าละ ALERT_LIST_CAP แต่ส่ง "ดัชนี" ของทุกเรื่องไปด้วย (สั้นมาก)
+  // หน้าเว็บจะได้นับเรื่องใหม่และจดเห็นแล้วได้ครบทุกเรื่อง แม้เรื่องที่ไม่ได้แสดงรายละเอียด
+  var shown = {}, list = [];
+  items.forEach(function (a) {
+    shown[a.module] = (shown[a.module] || 0) + 1;
+    if (shown[a.module] <= ALERT_LIST_CAP) list.push(a);
+  });
 
   return {
     counts: counts,
-    alertsByModule: byModule,
+    alertsByModule: counts,
+    unseenByModule: unseenByModule,
     total: items.length,
+    unseen: unseen.length,
     urgent: items.filter(function (a) { return a.level === 'danger'; }).length,
-    items: items.slice(0, 40),
+    // จำ "เห็นแล้ว" ไว้ที่บัญชี (ข้ามเครื่องได้) · เข้าด้วยกุญแจ/ลิงก์แชร์ไม่มีบัญชี ให้หน้าเว็บจำเอง
+    seenStore: who ? 'account' : 'device',
+    index: items.map(function (a) { return { key: a.key, module: a.module, level: a.level, seen: a.seen }; }),
+    items: list,
     at: nowStamp_()
   };
 }
 
-/** รายการ "สิ่งที่ต้องทำ" รวมทุกโมดูล เรียงตามความสำคัญ */
-function buildAlerts_(overdueRepairs, ac, bld, today) {
+/** ชื่อผู้ใช้ที่ใช้จำว่าเห็นการแจ้งเตือนแล้ว ('' = เข้าโดยไม่มีบัญชี) */
+function alertViewer_(payload) {
+  if (REQUEST_ACTOR_) return REQUEST_ACTOR_.username || '';
+  try { return resolveActor_(payload || {}).username || ''; } catch (e) { return ''; }
+}
+
+/*
+ * รหัสการแจ้งเตือน = "ต้นเรื่อง#ระดับ" เช่น repairs:R12#2
+ * เห็นแล้ว = เคยเห็นต้นเรื่องเดียวกันที่ระดับเท่านี้หรือหนักกว่า
+ *   เรื่องหนักขึ้น (ระดับสูงขึ้น) → เตือนอีกครั้ง · เรื่องเบาลง (เช่น งานเลยกำหนดถูกนัดใหม่) → ไม่เตือนซ้ำ
+ * หน้าเว็บใช้กติกาเดียวกันใน alertKeySeen()
+ */
+function alertBase_(key) { var i = String(key).lastIndexOf('#'); return i < 0 ? String(key) : String(key).slice(0, i); }
+function alertRank_(key) { var i = String(key).lastIndexOf('#'); return i < 0 ? 0 : Number(String(key).slice(i + 1)) || 0; }
+function alertKeySeen_(key, seenMap) {
+  if (seenMap[key]) return true;
+  var base = alertBase_(key), rank = alertRank_(key);
+  return Object.keys(seenMap).some(function (k) { return alertBase_(k) === base && alertRank_(k) >= rank; });
+}
+
+/*
+ * "เห็นแล้ว" เก็บใน Script Properties แยกตามชื่อผู้ใช้ — ไม่เก็บในชีต
+ * เพราะทุกครั้งที่ชีตถูกเขียน เวลาแก้ไขล่าสุดของไฟล์ขยับ ทุกเครื่องที่เปิดอยู่จะคิดว่า
+ * "มีคนแก้ข้อมูล" แล้วโหลดใหม่หมด (รวมคนที่กำลังกรอกฟอร์มค้างอยู่) แค่เพราะมีคนเปิดดูกระดิ่ง
+ * และไม่ต้องเข้าคิวเขียนชีต การเปิดกระดิ่งจึงไม่ไปถ่วงการบันทึกของคนอื่น
+ */
+var ALERT_SEEN_PREFIX = 'alertSeen:';
+var ALERT_SEEN_MAX_CHARS = 8000;   // ค่าหนึ่งช่องของ Properties เก็บได้ราว 9 KB
+
+function seenAlertKeys_(username) {
+  var out = {};
+  try {
+    var list = JSON.parse(props_().getProperty(ALERT_SEEN_PREFIX + username) || '[]');
+    if (Array.isArray(list)) list.forEach(function (k) { out[String(k)] = true; });
+  } catch (e) { /* ค่าเสีย ถือว่ายังไม่เคยเห็น */ }
+  return out;
+}
+
+/**
+ * จดว่าผู้ใช้เห็นการแจ้งเตือนเหล่านี้แล้ว (เรียกตอนเปิดกล่องแจ้งเตือน)
+ * @param {{keys:string[], live:string[]}} payload  live = รหัสของทุกเรื่องที่ยังค้างตอนนี้
+ *   เก็บเฉพาะเรื่องที่ยังค้าง เรื่องที่แก้ไปแล้วถูกตัดทิ้งเอง จึงไม่บวมขึ้นเรื่อย ๆ
+ *   (เป็นข้อมูลส่วนตัวของผู้ใช้คนนั้นเอง ส่งค่าแปลก ๆ มาก็กระทบแค่ตัวเอง)
+ */
+function markAlertsSeen_(payload) {
+  var who = alertViewer_(payload);
+  if (!who) return { stored: false };
+  // ตัดทิ้งตาม "ต้นเรื่อง" ที่ยังค้าง ไม่ใช่รหัสเป๊ะ ๆ — เรื่องที่เบาลงยังจำได้ว่าเคยเห็นระดับที่หนักกว่า
+  var live = {};
+  ((payload && payload.live) || []).forEach(function (k) { live[alertBase_(k)] = true; });
+  // หน้าเว็บส่ง "ทุกเรื่องที่เห็นแล้ว" มาทุกครั้ง (ไม่ใช่แค่ส่วนที่เพิ่ม) คำขอสองอันที่ส่งซ้อนกัน
+  // จึงไม่ทับกันจนบางเรื่องหายไป
+  var keep = {};
+  Object.keys(seenAlertKeys_(who)).forEach(function (k) { if (live[alertBase_(k)]) keep[k] = true; });
+  ((payload && payload.keys) || []).forEach(function (k) { k = String(k).slice(0, 200); if (live[alertBase_(k)]) keep[k] = true; });
+  var list = Object.keys(keep);
+  // ตัดของเก่าออกจนพอดีที่เก็บได้ (นับความยาวครั้งเดียว แล้วลบออกทีละรายการ)
+  var size = JSON.stringify(list).length;
+  while (list.length && size > ALERT_SEEN_MAX_CHARS) size -= JSON.stringify(list.shift()).length + 1;
+  props_().setProperty(ALERT_SEEN_PREFIX + who, JSON.stringify(list));
+  return { stored: true, seen: list.length };
+}
+
+/**
+ * รายการ "สิ่งที่ต้องทำ" รวมทุกโมดูล เรียงตามความสำคัญ
+ *
+ * ทุกรายการมี key คงที่ = โมดูล + ต้นเรื่อง + ระดับ
+ * เรื่องเดิมที่ยังไม่แก้ → key เดิม → ถือว่าเห็นแล้ว ไม่เด้งตัวเลขซ้ำ
+ * เรื่องเดิมที่หนักขึ้น (เช่น งานซ่อมเพิ่งเลยกำหนด) → key ใหม่ → เด้งตัวเลขให้เห็นอีกครั้ง
+ *
+ * @param {Object=} extra  { openRepairs, openBuilding } — ใส่มาเพื่อให้ทุกงานที่ยังค้างขึ้นในรายการ
+ *                         (แดชบอร์ดไม่ใส่ จะเห็นเฉพาะเรื่องที่ถึงกำหนด/เลยกำหนดเหมือนเดิม)
+ */
+function buildAlerts_(overdueRepairs, ac, bld, today, extra) {
+  extra = extra || {};
   var alerts = [];
+  var overdueIds = {};
 
   overdueRepairs.forEach(function (r) {
+    overdueIds[String(r.id)] = true;
     var days = daysBetween_(r.bookDate || r.reportDate, today);
+    var urgent = r.priority === 'ด่วนมาก';
     alerts.push({
-      level: r.priority === 'ด่วนมาก' ? 'danger' : 'warn',
+      level: urgent ? 'danger' : 'warn',
       icon: '🔧', module: 'repairs',
       title: 'ห้อง ' + r.room + ' — งานซ่อมค้าง ' + days + ' วัน',
       detail: String(r.items || '').slice(0, 80),
-      ref: r.id
+      // สถานะจริง (เลยกำหนด/ยังไม่เลย × ด่วน/ไม่ด่วน) ไม่ใช่สีของป้าย — สองสถานะบางคู่สีเดียวกัน
+      // ระดับ: ค้าง 1 · เลยกำหนด 2 · ด่วนมาก 3 · ด่วนมากและเลยกำหนด 4
+      ref: r.id, key: 'repairs:' + r.id + '#' + (urgent ? 4 : 2)
+    });
+  });
+  (extra.openRepairs || []).forEach(function (r) {
+    if (overdueIds[String(r.id)]) return;
+    var urgent = r.priority === 'ด่วนมาก';
+    alerts.push({
+      level: urgent ? 'warn' : 'info', icon: '🔧', module: 'repairs',
+      title: 'ห้อง ' + r.room + ' — ' + (r.status || 'รอดำเนินการ') +
+        (r.bookDate ? ' · นัด ' + thDate_(r.bookDate) : ''),
+      detail: String(r.items || '').slice(0, 80),
+      ref: r.id, key: 'repairs:' + r.id + '#' + (urgent ? 3 : 1)
     });
   });
 
   ac.overdue.forEach(function (r) {
+    var never = r.state === 'ยังไม่เคยล้าง';
     alerts.push({
-      level: r.state === 'ยังไม่เคยล้าง' ? 'warn' : 'info',
+      level: never ? 'warn' : 'info',
       icon: '❄️', module: 'ac',
-      title: 'ห้อง ' + r.room + ' — ' + (r.state === 'ยังไม่เคยล้าง' ? 'ยังไม่เคยบันทึกการล้างแอร์' : 'ถึงกำหนดล้างแอร์'),
+      title: 'ห้อง ' + r.room + ' — ' + (never ? 'ยังไม่เคยบันทึกการล้างแอร์' : 'ถึงกำหนดล้างแอร์'),
       detail: r.lastService ? ('ล้างล่าสุด ' + thDate_(r.lastService) + ' · ครบกำหนด ' + thDate_(r.nextDue)) : 'ยังไม่มีประวัติการล้าง',
-      ref: r.room
+      // ผูกกับวันครบกำหนด: ล้างแล้วรอบหน้าครบอีก = เรื่องใหม่
+      ref: r.room, key: 'ac:' + r.room + ':' + (r.nextDue || 'never') + '#1'
     });
   });
 
@@ -5617,16 +5750,28 @@ function buildAlerts_(overdueRepairs, ac, bld, today) {
       level: 'info', icon: '🛡️', module: 'purchases',
       title: 'ประกันใกล้หมด: ' + String(p.item).slice(0, 50),
       detail: 'หมดอายุ ' + thDate_(p.warranty.end) + ' (อีก ' + p.warranty.daysLeft + ' วัน)',
-      ref: p.id
+      ref: p.id, key: 'purchases:' + p.id + ':' + p.warranty.end + '#1'
     });
   });
 
+  var dueIds = {};
   bld.upcoming.forEach(function (r) {
+    dueIds[String(r.id)] = true;
+    var late = r.dueInDays < 0;
     alerts.push({
-      level: r.dueInDays < 0 ? 'warn' : 'info', icon: '🏢', module: 'building',
+      level: late ? 'warn' : 'info', icon: '🏢', module: 'building',
       title: 'งานตึก: ' + r.title,
-      detail: 'ครบกำหนดรอบถัดไป ' + thDate_(r.nextDue) + (r.dueInDays < 0 ? ' (เลยกำหนดแล้ว)' : ' (อีก ' + r.dueInDays + ' วัน)'),
-      ref: r.id
+      detail: 'ครบกำหนดรอบถัดไป ' + thDate_(r.nextDue) + (late ? ' (เลยกำหนดแล้ว)' : ' (อีก ' + r.dueInDays + ' วัน)'),
+      ref: r.id, key: 'building:' + r.id + ':' + r.nextDue + '#' + (late ? 2 : 1)
+    });
+  });
+  (extra.openBuilding || []).forEach(function (r) {
+    if (dueIds[String(r.id)]) return;
+    alerts.push({
+      level: 'info', icon: '🏢', module: 'building',
+      title: 'งานตึก: ' + r.title + ' — ' + (r.status || 'รอดำเนินการ'),
+      detail: [r.zone, r.contractor, r.bookDate ? 'นัด ' + thDate_(r.bookDate) : ''].filter(String).join(' · '),
+      ref: r.id, key: 'building:' + r.id + ':open#1'
     });
   });
 
@@ -5636,7 +5781,8 @@ function buildAlerts_(overdueRepairs, ac, bld, today) {
       level: 'info', icon: '🧾', module: 'finance',
       title: 'ยังไม่ได้บันทึกบิลเดือน ' + bills.label,
       detail: 'ขาด: ' + bills.missing.join(' · '),
-      ref: ''
+      // หนึ่งเรื่องต่อเดือน — บันทึกบิลไปบางส่วน (เรื่องเล็กลง) ไม่ควรเด้งเตือนว่าเป็นเรื่องใหม่
+      ref: '', key: 'finance:bills:' + bills.year + '-' + bills.month + '#1'
     });
   }
 
@@ -5783,6 +5929,7 @@ var WRITE_ACTIONS = /\.(save|delete|savePayment|deletePayment|reconcile|setStatu
 
 function api(action, payload) {
   payload = payload || {};
+  REQUEST_ACTOR_ = null;
   try {
     // หน้าเว็บที่เปิดค้างไว้ตั้งแต่ก่อน deploy เรียกตรงมาที่นี่โดยไม่ผ่าน doGet
     // ต้องย้ายข้อมูลให้ทันก่อน ไม่งั้นโค้ดใหม่อ่านชีตโครงเก่า (ย้ายแล้ว = อ่าน property ครั้งเดียว)
@@ -5864,7 +6011,9 @@ var API_ROUTES = {
   'app.dashboard': function (p) { return dashboard_(p.year); },
 
   /** เบา — หน้าเว็บเรียกบ่อยเพื่ออัปเดตตัวเลขบนเมนูและกล่องแจ้งเตือน */
-  'app.alerts': function () { return alertCenter_(); },
+  'app.alerts': function (p) { return alertCenter_(p); },
+  // ไม่ได้เขียนชีต (เก็บใน Script Properties) จึงไม่ต้องเข้าคิวเขียน และไม่ทำให้เครื่องอื่นโหลดใหม่
+  'app.alertsSeen': function (p) { return markAlertsSeen_(p); },
   'app.search': function (p) { return globalSearch_(p.q); },
 
   /* ---------- หนี้ (ใช้ร่วมกันทั้งหนี้หลักและหนี้รอง) ---------- */
@@ -5974,7 +6123,12 @@ var API_ROUTES = {
   'auth.changePassword': function (p) {
     var me = actorUsername_(p);
     if (!me) throw new Error('บัญชีนี้เข้าผ่านลิงก์ จึงไม่มีรหัสผ่านให้เปลี่ยน');
-    return changePassword_(me, p.oldPassword, p.newPassword);
+    var ok = changePassword_(me, p.oldPassword, p.newPassword);
+    // เปลี่ยนรหัสผ่าน (มักเพราะสงสัยว่ามีคนรู้) → ออกจากระบบทุกเครื่องอื่น
+    // เครื่องที่กดเปลี่ยนยังอยู่ต่อ ทั้งการเข้าใช้งานและ PIN ของเครื่องนั้น (หน้าเว็บส่ง _device มา)
+    var n = revokeAllSessions_(me, [p._session, p._device]);
+    if (n) logActivity_('ออกจากระบบเครื่องอื่นหลังเปลี่ยนรหัสผ่าน', me, n + ' รายการ');
+    return ok;
   },
   'auth.devices': function (p) {
     var me = actorUsername_(p);

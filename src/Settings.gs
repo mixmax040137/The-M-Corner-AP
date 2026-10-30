@@ -48,10 +48,10 @@ var SETTINGS_FORM = [
   {
     group: 'การแจ้งเตือน', icon: '🔔',
     items: [
-      { key: 'ac_cycle_months', type: 'number' },
-      { key: 'warranty_alert_days', type: 'number' },
-      { key: 'overdue_alert_days', type: 'number' },
-      { key: 'due_soon_days', type: 'number' },
+      { key: 'ac_cycle_months', type: 'number', min: 1, max: 24 },
+      { key: 'warranty_alert_days', type: 'number', min: 1, max: 365 },
+      { key: 'overdue_alert_days', type: 'number', min: 1, max: 365 },
+      { key: 'due_soon_days', type: 'number', min: 0, max: 60 },
       { key: 'notify_email', type: 'text' },
       { key: 'notify_weekday', type: 'select', options: ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'] }
     ]
@@ -60,18 +60,18 @@ var SETTINGS_FORM = [
     group: 'การเงิน', icon: '💰',
     items: [
       { key: 'currency', type: 'text' },
-      { key: 'default_due_day', type: 'number' },
-      { key: 'late_fee', type: 'number' }
+      { key: 'default_due_day', type: 'number', min: 1, max: 31 },
+      { key: 'late_fee', type: 'number', min: 0, max: 100000 }
     ]
   },
   {
     group: 'ความปลอดภัยและการเข้าใช้งาน', icon: '🔐',
     items: [
       { key: 'share_link_enabled', type: 'select', options: ['ปิด', 'เปิด'] },
-      { key: 'session_hours', type: 'number' },
-      { key: 'device_days', type: 'number' },
-      { key: 'login_max_fail', type: 'number' },
-      { key: 'login_lock_minutes', type: 'number' }
+      { key: 'session_hours', type: 'number', min: 1, max: 720 },
+      { key: 'device_days', type: 'number', min: 1, max: 365 },
+      { key: 'login_max_fail', type: 'number', min: 3, max: 20 },
+      { key: 'login_lock_minutes', type: 'number', min: 1, max: 1440 }
     ]
   },
   {
@@ -85,8 +85,8 @@ var SETTINGS_FORM = [
   {
     group: 'สำรองข้อมูล', icon: '💾',
     items: [
-      { key: 'backup_keep', type: 'number' },
-      { key: 'backup_hour', type: 'number', note: '0–23 นาฬิกา' }
+      { key: 'backup_keep', type: 'number', min: 1, max: 365 },
+      { key: 'backup_hour', type: 'number', min: 0, max: 23, note: '0–23 นาฬิกา' }
     ]
   }
 ];
@@ -133,6 +133,8 @@ function listSettings_(role) {
           label: meta.label,
           note: it.note || meta.note || '',
           type: it.type,
+          min: it.min != null ? it.min : null,
+          max: it.max != null ? it.max : null,
           options: it.options ? it.options.map(function (o) {
             return (o && typeof o === 'object')
               ? { value: String(o.value), label: String(o.label) }
@@ -168,6 +170,12 @@ function saveSettings_(values) {
     if (spec.type === 'number') {
       var n = toNumber_(v);
       if (n === null) throw new Error(settingMeta_(k).label + ': ต้องเป็นตัวเลข');
+      // ช่วงที่ใช้งานได้จริง — เช่น "ใส่รหัสผิดได้กี่ครั้ง" = -1 จะล็อกทุกคนตั้งแต่พิมพ์ผิดครั้งแรก
+      // ตรวจเฉพาะค่าที่เปลี่ยน: ค่าเก่าที่บันทึกไว้ก่อนมีกติกานี้ ต้องไม่ทำให้บันทึกช่องอื่นไม่ได้
+      var changedNow = String(getSetting_(k, '')) !== String(n);
+      if (changedNow && ((spec.min != null && n < spec.min) || (spec.max != null && n > spec.max))) {
+        throw new Error(settingMeta_(k).label + ': ต้องอยู่ระหว่าง ' + spec.min + '–' + spec.max);
+      }
       v = String(n);
     }
     if (spec.type === 'select' && spec.options &&

@@ -414,7 +414,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 76);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 77);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
@@ -913,10 +913,15 @@ console.log('\n── 21. ศูนย์แจ้งเตือน ──');
   const openNow = listRoomRepairs_('all', 'all', 'all')
     .filter(x => x.status !== 'เสร็จสิ้น' && x.status !== 'ยกเลิก').length;
   check('งานซ่อมค้างตรงกับข้อมูลจริง', a.counts.repairs, openNow);
-  check('ล้างแอร์ค้างตรงกับตารางล้างแอร์',
-    a.counts.ac, acMatrix_(String(new Date().getFullYear())).roomsPending.length);
-  check('งานตึกค้างตรงกับสรุปงานตึก',
-    a.counts.building, buildingSummary_(String(new Date().getFullYear())).openCount || 0);
+  check('ล้างแอร์ = ห้องที่ถึงกำหนดล้างในตารางล้างแอร์',
+    a.counts.ac, acMatrix_(String(new Date().getFullYear())).overdue.length);
+  // ตัวเลขบนเมนู = จำนวนรายการในกล่องแจ้งเตือนของหน้านั้นพอดี (เดิมนับคนละแบบ เมนูบอก 4 แต่กล่องว่าง)
+  check('ตัวเลขบนเมนูตรงกับจำนวนรายการในกล่องทุกหน้า',
+    Object.keys(a.counts).every(k => a.counts[k] === a.items.filter(x => x.module === k).length), true);
+  check('งานซ่อมที่ยังไม่เสร็จทุกงานอยู่ในกล่อง (ไม่ใช่แค่ที่เลยกำหนด)',
+    a.items.filter(x => x.module === 'repairs').length, openNow);
+  check('ทุกการแจ้งเตือนมีรหัสคงที่ไว้จำว่าเห็นแล้ว', a.items.every(x => !!x.key), true);
+  check('รหัสไม่ซ้ำกัน', new Set(a.items.map(x => x.key)).size, a.items.length);
 
   // แจ้งเตือนแต่ละรายการต้องมีข้อมูลพอให้หน้าเว็บพาไปถูกที่
   if (a.items.length) {
@@ -1552,6 +1557,148 @@ console.log('\n── 31. ตรวจเชิงรุกก่อน deploy: 
   runMigrations_();
   check('ไม่มีอะไรต้องย้าย ไม่ทำสำเนาซ้ำ', st.copies.length, 0);
   saveDebt_(Object.assign({}, readRows_(SHEETS.DEBTS).find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0), { alsoIn: '' }));
+}
+
+console.log('\n── 32. การแจ้งเตือน: เห็นแล้วตัวเลขหาย รายการยังอยู่จนกว่าจะแก้ ──');
+{
+  const st = require('./mock-gas.js').store;
+  const admKey = getSetting_('admin_token', '');
+  saveUser_({ username: 'notiftest', name: 'ทดสอบแจ้งเตือน', role: 'แก้ไขได้', password: 'TestPass#2026' }, 'ผู้ดูแล');
+  saveUser_({ username: 'notiftwo', name: 'อีกคน', role: 'แก้ไขได้', password: 'TestPass#2026' }, 'ผู้ดูแล');
+  const ses = api('auth.login', { username: 'notiftest', password: 'TestPass#2026' }).data.session;
+  const ses2 = api('auth.login', { username: 'notiftwo', password: 'TestPass#2026' }).data.session;
+  const A = (s) => api('app.alerts', { _session: s || ses }).data;
+  const seeAll = (s, a) => api('app.alertsSeen', { _session: s || ses, keys: a.index.map(x => x.key), live: a.index.map(x => x.key) });
+
+  const a0 = A();
+  check('บัญชีผู้ใช้จำ "เห็นแล้ว" ไว้ที่บัญชี', a0.seenStore, 'account');
+  check('ยังไม่เคยเปิดดู: ทุกเรื่องนับเป็นเรื่องใหม่', a0.unseen, a0.total);
+  check('ส่งดัชนีครบทุกเรื่อง (แม้รายละเอียดถูกจำกัด)', a0.index.length, a0.total);
+
+  // เปิดกระดิ่ง ต้องไม่ไปเขียนชีต (ไม่งั้นทุกเครื่องคิดว่ามีคนแก้ข้อมูลแล้วโหลดใหม่หมด) และไม่เข้าคิวเขียน
+  const ver0 = dataVersion_(), taken0 = st.locks.taken;
+  const r = seeAll(ses, a0);
+  check('จดว่าเห็นแล้วได้', r.ok && r.data.stored, true);
+  check('เปิดกระดิ่งไม่ทำให้ไฟล์ชีตเปลี่ยน (เครื่องอื่นไม่ต้องโหลดใหม่)', dataVersion_(), ver0);
+  check('เปิดกระดิ่งไม่เข้าคิวเขียน (ไม่ถ่วงการบันทึกของคนอื่น)', st.locks.taken, taken0);
+
+  const a1 = A();
+  check('เปิดดูแล้ว: ตัวเลขเรื่องใหม่เป็น 0', a1.unseen, 0);
+  check('เปิดดูแล้ว: รายการยังอยู่ครบ', a1.total, a0.total);
+  check('เปิดดูแล้ว: ตัวเลขงานค้างบนเมนูไม่เปลี่ยน', JSON.stringify(a1.counts), JSON.stringify(a0.counts));
+  check('แต่ละคนเห็นแยกกัน: อีกบัญชียังเป็นเรื่องใหม่ทั้งหมด', A(ses2).unseen, a0.total);
+
+  // มีงานซ่อมใหม่เข้ามา → ตัวเลขกลับมา 1 (เฉพาะเรื่องใหม่)
+  const job = api('repair.save', { _key: admKey, record: { room: '212', items: 'ก๊อกรั่ว', status: 'รอดำเนินการ', reportDate: todayIso_() } }).data;
+  const a2 = A();
+  check('มีเรื่องใหม่: ตัวเลขขึ้นมาเฉพาะเรื่องใหม่', a2.unseen, 1);
+  check('เรื่องใหม่อยู่หน้างานซ่อม', a2.unseenByModule.repairs, 1);
+
+  // เรื่องเดิมที่หนักขึ้นต้องเด้งเตือนอีกครั้ง
+  seeAll(ses, a2);
+  check('เห็นเรื่องใหม่แล้ว ตัวเลขหาย', A().unseen, 0);
+  api('repair.save', { _key: admKey, record: Object.assign(findRow_(SHEETS.ROOM_REPAIRS, job.id), { reportDate: '2026-01-02' }) });
+  const lateItem = A().items.find(x => x.ref === job.id);
+  check('งานเดิมเพิ่งเลยกำหนด: เด้งเตือนอีกครั้ง', !!lateItem && !lateItem.seen, true);
+  seeAll(ses, A());
+  // ด่วน+ยังไม่เลยกำหนด กับ ไม่ด่วน+เลยกำหนด สีป้ายเดียวกัน แต่เป็นคนละสถานะ ต้องแยกได้
+  check('รหัสแยกสถานะจริง ไม่ใช่สีป้าย (เลยกำหนด = ระดับ 2)', /#2$/.test(lateItem.key), true);
+  api('repair.save', { _key: admKey, record: Object.assign(findRow_(SHEETS.ROOM_REPAIRS, job.id), { priority: 'ด่วนมาก' }) });
+  const urg = A().items.find(x => x.ref === job.id);
+  check('งานเดิมกลายเป็นด่วนมาก: เด้งเตือนอีกครั้ง', !!urg && !urg.seen && urg.level === 'danger', true);
+
+  // เรื่องเบาลง (นัดใหม่ล่วงหน้า ไม่เลยกำหนดแล้ว) ต้องไม่เด้งว่าเป็นเรื่องใหม่
+  seeAll(ses, A());
+  const future = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+  api('repair.save', { _key: admKey, record: Object.assign(findRow_(SHEETS.ROOM_REPAIRS, job.id),
+    { reportDate: todayIso_(), bookDate: future }) });
+  const calm = A().items.find(x => x.ref === job.id);
+  check('เรื่องเบาลง (นัดใหม่): ไม่เด้งว่าเป็นเรื่องใหม่', !!calm && calm.seen, true);
+  check('แต่ถ้ากลับมาหนักอีกก็ยังเตือน', (() => {
+    api('repair.save', { _key: admKey, record: Object.assign(findRow_(SHEETS.ROOM_REPAIRS, job.id), { reportDate: '2026-01-02', bookDate: '' }) });
+    const back = A().items.find(x => x.ref === job.id);
+    return !!back && back.seen;   // เคยเห็นระดับด่วนมาก+เลยกำหนดไปแล้ว ระดับนี้ไม่ต้องเตือนซ้ำ
+  })(), true);
+
+  // คำขอจดเห็นแล้วสองอันซ้อนกัน (เปิดกระดิ่ง + ข้อมูลรอบใหม่) ต้องไม่ทับกันจนบางเรื่องหาย
+  seeAll(ses, A());
+  const live = A().index.map(x => x.key);
+  api('app.alertsSeen', { _session: ses, keys: live.slice(0, 1), live: live });   // คำขอที่มีแค่บางเรื่อง
+  check('คำขอที่มีแค่บางเรื่อง ไม่ลบเรื่องอื่นที่เห็นไปแล้ว', A().unseen, 0);
+
+  // บิลรายเดือน: บันทึกไปบางส่วน (เรื่องเล็กลง) ไม่นับเป็นเรื่องใหม่
+  seeAll(ses, A());
+  const bill = A().items.find(x => x.module === 'finance');
+  if (bill) {
+    const now = new Date();
+    const f = saveFinance_({ date: todayIso_(), kind: 'ค่าไฟฟ้า', amount: 100 });
+    const bill2 = A().items.find(x => x.module === 'finance');
+    check('บันทึกบิลไปบางส่วน: ไม่เด้งว่าเป็นเรื่องใหม่', !bill2 || bill2.seen, true);
+    deleteFinance_(f.id);
+  }
+
+  // แก้ที่ต้นเหตุแล้ว → หายจากกล่อง และจำ "เห็นแล้ว" ของเรื่องที่จบไปแล้วถูกตัดทิ้ง
+  api('repair.save', { _key: admKey, record: Object.assign(findRow_(SHEETS.ROOM_REPAIRS, job.id), { status: 'เสร็จสิ้น' }) });
+  const a4 = A();
+  check('ปิดงานแล้วหายจากกล่อง', a4.items.some(x => x.ref === job.id), false);
+  check('ปิดงานแล้วตัวเลขงานค้างลดลง', a4.counts.repairs, a0.counts.repairs);
+  seeAll(ses, a4);
+  const stored = JSON.parse(props_().getProperty('alertSeen:notiftest') || '[]');
+  check('จำเฉพาะเรื่องที่ยังค้าง ไม่บวมขึ้นเรื่อย ๆ', stored.every(k => a4.index.some(x => x.key === k)), true);
+  const huge = Array.from({ length: 3000 }, (_, n) => 'repairs:FAKE' + n + ':open');
+  api('app.alertsSeen', { _session: ses, keys: huge, live: huge });
+  check('จำได้ไม่เกินขนาดที่เก็บได้', (props_().getProperty('alertSeen:notiftest') || '').length <= 8000, true);
+
+  // กล่องกับแดชบอร์ดใช้รายการเดียวกัน
+  const dashRepairs = dashboard_(String(new Date().getFullYear())).alerts.filter(x => x.module === 'repairs').length;
+  check('แดชบอร์ดกับกล่องแจ้งเตือนนับงานซ่อมตรงกัน', dashRepairs, a4.counts.repairs);
+
+  // คนดูอย่างเดียวก็จดเห็นแล้วได้ (ไม่ใช่การแก้ข้อมูลหอ)
+  saveUser_({ username: 'viewonly', name: 'ดูอย่างเดียว', role: 'ดูอย่างเดียว', password: 'ViewPass#2026' }, 'ผู้ดูแล');
+  const vs = api('auth.login', { username: 'viewonly', password: 'ViewPass#2026' }).data.session;
+  check('คนดูอย่างเดียวจดว่าเห็นแล้วได้', api('app.alertsSeen', { _session: vs, keys: [], live: [] }).ok, true);
+  check('เข้าด้วยกุญแจ (ไม่มีบัญชี) ให้หน้าเว็บจำเอง', api('app.alerts', { _key: admKey }).data.seenStore, 'device');
+  check('ยังไม่ล็อกอิน จดเห็นแล้วไม่ได้',
+    (() => { const o = global.Session.getActiveUser; global.Session.getActiveUser = () => ({ getEmail: () => '' });
+      const ok = api('app.alertsSeen', { keys: [] }).ok; global.Session.getActiveUser = o; return ok; })(), false);
+  api('repair.delete', { _key: admKey, id: job.id });
+  ['notiftest', 'notiftwo', 'viewonly'].forEach(u => deleteUser_(u, 'ผู้ดูแล', ''));
+}
+
+console.log('\n── 33. ตรวจเชิงลึก: การตั้งค่าและรหัสผ่าน ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  const save = v => api('settings.save', { _key: admKey, values: v });
+  check('ใส่รหัสผิดได้ -1 ครั้ง ถูกปฏิเสธ', save({ login_max_fail: '-1' }).ok, false);
+  check('อยู่ในระบบได้ 100000 ชั่วโมง ถูกปฏิเสธ', save({ session_hours: '100000' }).ok, false);
+  check('สำรองตอน 25 นาฬิกา ถูกปฏิเสธ', save({ backup_hour: '25' }).ok, false);
+  check('บอกช่วงที่ใช้ได้', /ต้องอยู่ระหว่าง 3–20/.test(save({ login_max_fail: '0' }).error || ''), true);
+  check('ค่าในช่วงปกติยังบันทึกได้', save({ login_max_fail: '6' }).ok, true);
+  save({ login_max_fail: '5' });
+  // ค่าเก่าที่บันทึกไว้ก่อนมีกติกา (นอกช่วง) ต้องไม่ทำให้แก้ช่องอื่นไม่ได้ (หน้าเว็บส่งทุกช่องมาพร้อมกัน)
+  setSetting_('late_fee', '200000');
+  const all = {}; listSettings_('ผู้ดูแล').groups.forEach(g => g.items.forEach(it => { if (!it.readOnly) all[it.key] = it.value; }));
+  all.building_name = 'The M Corner AP';
+  check('ค่าเก่านอกช่วง ไม่ขวางการบันทึกช่องอื่น', save(all).ok, true);
+  setSetting_('late_fee', '0');
+  check('ส่งช่วงที่ใช้ได้ไปให้หน้าเว็บ', listSettings_('ผู้ดูแล').groups.some(g => g.items.some(it => it.key === 'session_hours' && it.max === 720)), true);
+
+  // เปลี่ยนรหัสผ่าน → เครื่องอื่นหลุด เครื่องที่ใช้อยู่ยังอยู่
+  saveUser_({ username: 'pwtest', name: 'ทดสอบรหัส', role: 'แก้ไขได้', password: 'OldPass#2026' }, 'ผู้ดูแล');
+  const phone = api('auth.login', { username: 'pwtest', password: 'OldPass#2026' }).data.session;
+  const pc = api('auth.login', { username: 'pwtest', password: 'OldPass#2026' }).data.session;
+  const pcPin = api('auth.setPin', { _session: pc, pin: '482915', device: 'คอมที่บ้าน' }).data;
+  const phonePin = api('auth.setPin', { _session: phone, pin: '739164', device: 'มือถือ' }).data;
+  const r = api('auth.changePassword', { _session: pc, _device: pcPin.device, oldPassword: 'OldPass#2026', newPassword: 'NewPass#2026' });
+  check('เปลี่ยนรหัสผ่านได้', r.ok, true);
+  // ตรวจที่ตัวการเข้าใช้งานโดยตรง (ในตัวจำลอง คำขอที่ไม่มีการเข้าใช้งานจะได้สิทธิ์เจ้าของชีตแทน)
+  check('เครื่องที่กดเปลี่ยนยังใช้งานต่อได้', !!findSession_(pc), true);
+  check('เครื่องอื่นถูกออกจากระบบ', findSession_(phone), null);
+  check('เครื่องอื่นไม่ถูกนับเป็นผู้ใช้คนนี้แล้ว', sessionUser_(phone), null);
+  check('PIN ของเครื่องที่กดเปลี่ยนยังใช้ได้', !!findSession_(pcPin.device), true);
+  check('PIN ของเครื่องอื่นถูกยกเลิก', findSession_(phonePin.device), null);
+  check('รหัสใหม่ใช้ล็อกอินได้', api('auth.login', { username: 'pwtest', password: 'NewPass#2026' }).ok, true);
+  deleteUser_('pwtest', 'ผู้ดูแล', '');
 }
 
 console.log('\n════════════════════════════');

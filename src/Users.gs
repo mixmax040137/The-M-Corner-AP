@@ -211,13 +211,22 @@ function revokeSession_(token) {
   return true;
 }
 
-function revokeAllSessions_(username) {
+/**
+ * ออกจากระบบทุกเครื่องของผู้ใช้ (รวมอุปกรณ์ที่ตั้ง PIN ไว้)
+ * @param {string[]=} keepTokens รหัสที่ไม่ต้องลบ — เช่น เครื่องที่กำลังเปลี่ยนรหัสผ่านอยู่ และ PIN ของเครื่องนั้น
+ * @return {number} จำนวนที่ลบ
+ */
+function revokeAllSessions_(username, keepTokens) {
   var u = normUsername_(username);
+  var keep = (keepTokens || []).map(String).filter(String);
   var rows = readRows_(SHEETS.SESSIONS);
+  var n = 0;
   for (var i = rows.length - 1; i >= 0; i--) {
-    if (normUsername_(rows[i].username) === u) deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]);
+    if (normUsername_(rows[i].username) !== u) continue;
+    if (keep.some(function (t) { return safeEqual_(rows[i].token, t); })) continue;
+    deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]); n++;
   }
-  return true;
+  return n;
 }
 
 /** ลบรายการที่หมดอายุทิ้ง ไม่ให้ชีตบวม */

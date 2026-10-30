@@ -72,6 +72,8 @@ function buildingSummary_(year) {
     yearCost: round2_(sum_(scope, function (r) { return r.cost; })),
     grandCost: round2_(sum_(all, function (r) { return r.cost; })),
     openCount: scope.filter(function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; }).length,
+    // งานที่ยังไม่ปิดทุกปี (งานที่เปิดไว้ตั้งแต่ปีก่อนก็ยังต้องทำ) — ศูนย์แจ้งเตือนใช้ ไม่ต้องอ่านชีตซ้ำ
+    openJobs: all.filter(function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; }),
     byZone: byZone,
     byYear: byYear,
     upcoming: upcoming

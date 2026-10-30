@@ -331,7 +331,7 @@ function showChangePassword(forced){
     var btn = this;
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
-    callApi('auth.changePassword', { oldPassword: o, newPassword: n }).then(function(){
+    callApi('auth.changePassword', { oldPassword: o, newPassword: n, _device: AUTH.device || '' }).then(function(){
       return callApi('auth.me').then(enterApp);
     }).then(function(){
       toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');
@@ -361,7 +361,7 @@ function formChangePassword(){
     var btn = this;
     btn.disabled = true;
     callApi('auth.changePassword', {
-      oldPassword: document.getElementById('mcOld').value, newPassword: n
+      oldPassword: document.getElementById('mcOld').value, newPassword: n, _device: AUTH.device || ''
     }).then(function(){
       closeModal();
       toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');

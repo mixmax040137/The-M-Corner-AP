@@ -589,6 +589,14 @@ button.sync-pill:active{transform:translateY(1px)}
   background:var(--warn);color:#fff;font-weight:700;font-variant-numeric:tabular-nums;
 }
 .nav-item.on .badge{background:rgba(255,255,255,.28);color:#fff}
+/* เห็นแล้ว: ยังบอกจำนวนงานค้าง แต่จางลง ไม่เรียกร้องความสนใจเท่าเรื่องใหม่ */
+.nav-item .badge.seen{background:rgba(255,255,255,.12);color:var(--nav-ink);font-weight:600}
+.nav-item.on .badge.seen{background:rgba(255,255,255,.2);color:#fff}
+.tab .badge.seen{background:var(--line);color:var(--muted)}
+/* รายการที่เพิ่งเข้ามาตั้งแต่เปิดดูครั้งก่อน */
+.notif-item.is-new{background:var(--brand-soft)}
+.notif-item.is-new:hover{background:var(--brand-soft);filter:brightness(.98)}
+.new-dot{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--brand);margin-right:6px;vertical-align:1px}
 
 @media (max-width:720px){
   .notif{
@@ -1375,40 +1383,123 @@ function startPolling(seconds){
 
 var ALERTS = { counts: {}, items: [], total: 0, urgent: 0, at: '' };
 
+/*
+ * "เห็นแล้ว" — ตัวเลขบนกระดิ่งนับเฉพาะเรื่องที่ยังไม่เคยเห็น
+ * เปิดกล่องดูแล้วตัวเลขหาย แต่รายการยังอยู่ในกล่องจนกว่าจะแก้ที่ต้นเหตุ
+ * เรื่องใหม่หรือเรื่องเดิมที่หนักขึ้น (เช่น งานซ่อมเพิ่งเลยกำหนด) ได้รหัสใหม่ ตัวเลขจึงกลับมาเอง
+ *
+ * ล็อกอินด้วยบัญชี → จำไว้ที่บัญชี (เปิดมือถือหรือคอมก็ตรงกัน)
+ * เข้าด้วยกุญแจ/ลิงก์แชร์ (ไม่มีบัญชี) → จำไว้ในเครื่องนี้
+ */
+var SEEN_LOCAL_KEY = 'mcorner.alertSeen';
+var NOTIF_NEW = {};      // เรื่องที่ "ใหม่" ตอนเปิดกล่องรอบนี้ — ยังติดป้ายใหม่ให้เห็นจนกว่าจะปิดกล่อง
+var SEEN_THIS_PAGE = {}; // จดเห็นแล้วไปแล้วตั้งแต่เปิดหน้า — กันผลอ่านที่ส่งมาก่อนบันทึกเสร็จ ทำให้ตัวเลขเด้งกลับ
+
+function localSeen(){
+  try { var v = JSON.parse(localStorage.getItem(SEEN_LOCAL_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch (e) { return []; }
+}
+
+/** ดัชนีของทุกเรื่อง (รายละเอียดอาจส่งมาไม่ครบ แต่ดัชนีครบเสมอ) */
+function alertIndex(){
+  return ALERTS.index || (ALERTS.items || []).map(function(a){ return { key: a.key, module: a.module, level: a.level, seen: a.seen }; });
+}
+
+/*
+ * รหัส = "ต้นเรื่อง#ระดับ" — เห็นแล้วถ้าเคยเห็นต้นเรื่องเดียวกันที่ระดับเท่านี้หรือหนักกว่า
+ * (กติกาเดียวกับ alertKeySeen_ ฝั่งเซิร์ฟเวอร์) เรื่องหนักขึ้นเตือนอีก · เบาลงไม่เตือนซ้ำ
+ */
+function alertBase(k){ k = String(k); var i = k.lastIndexOf('#'); return i < 0 ? k : k.slice(0, i); }
+function alertRank(k){ k = String(k); var i = k.lastIndexOf('#'); return i < 0 ? 0 : (Number(k.slice(i + 1)) || 0); }
+
+/** ระดับสูงสุดที่เห็นแล้วของแต่ละต้นเรื่อง — คำนวณครั้งเดียวต่อการวาด */
+function seenSet(){
+  var best = {};
+  function add(k){ var b = alertBase(k), r = alertRank(k); if (!(b in best) || r > best[b]) best[b] = r; }
+  Object.keys(SEEN_THIS_PAGE).forEach(add);
+  if (ALERTS.seenStore === 'account') alertIndex().forEach(function(a){ if (a.seen) add(a.key); });
+  else localSeen().forEach(add);
+  return best;
+}
+function isSeenIn(best, key){ var b = alertBase(key); return (b in best) && best[b] >= alertRank(key); }
+function unseenAlerts(best){
+  best = best || seenSet();
+  return alertIndex().filter(function(a){ return !isSeenIn(best, a.key); });
+}
+
+/** จดว่าเห็นแล้วทุกเรื่องที่ค้างอยู่ตอนนี้ (เปิดกล่อง = เห็นทั้งหมด รวมเรื่องที่อยู่เกินหน้าละ 8) */
+function markAlertsSeen(){
+  var fresh = unseenAlerts();
+  if (!fresh.length) return;
+  var keys = fresh.map(function(a){ return a.key; });
+  keys.forEach(function(k){ NOTIF_NEW[k] = true; SEEN_THIS_PAGE[k] = true; });
+  var live = alertIndex().map(function(a){ return a.key; });
+  if (ALERTS.seenStore === 'account') {
+    // ส่ง "ทุกเรื่องที่เห็นแล้ว" ทุกครั้ง ไม่ใช่แค่ที่เพิ่ม — คำขอสองอันที่ซ้อนกันจะได้ไม่ทับกันจนบางเรื่องหาย
+    var all = alertIndex().filter(function(a){ return a.seen || SEEN_THIS_PAGE[a.key]; })
+      .map(function(a){ return a.key; });
+    callApi('app.alertsSeen', { keys: all, live: live })
+      .catch(function(){ /* บันทึกไม่ผ่าน ให้ตัวเลขกลับมา จะได้รู้ว่ายังไม่ได้จดไว้ */ forgetPendingSeen(keys); });
+  } else {
+    // เก็บเฉพาะเรื่องที่ยังค้างอยู่ ที่แก้ไปแล้วตัดทิ้ง ไม่ให้บวมขึ้นเรื่อย ๆ
+    var liveSet = {}; live.forEach(function(k){ liveSet[alertBase(k)] = true; });
+    var keep = localSeen().filter(function(k){ return liveSet[alertBase(k)]; }).concat(keys);
+    try { localStorage.setItem(SEEN_LOCAL_KEY, JSON.stringify(keep)); } catch (e) { /* โหมดส่วนตัว */ }
+  }
+  paintBadges();
+  paintBell();
+}
+/** บันทึกเห็นแล้วไม่ผ่าน (เน็ตหลุด) — เอาออกจากที่จำไว้ รอบหน้าที่เปิดกล่องจะส่งใหม่ */
+function forgetPendingSeen(keys){
+  keys.forEach(function(k){ delete SEEN_THIS_PAGE[k]; });
+  paintBadges();
+  paintBell();
+}
+
 function refreshAlerts(){
   return callApi('app.alerts').then(function(a){
     ALERTS = a || ALERTS;
+    var open = !!document.getElementById('notifPanel');
+    if (open) markAlertsSeen();           // เปิดดูอยู่ เรื่องที่เพิ่งเข้ามาก็ถือว่าเห็นแล้ว
     paintBadges();
     paintBell();
-    if (document.getElementById('notifPanel')) renderNotifPanel();   // เปิดค้างอยู่ ให้อัปเดตตาม
+    if (open) renderNotifPanel();         // เปิดค้างอยู่ ให้อัปเดตตาม
     return a;
   }).catch(function(){ /* เน็ตสะดุด ไว้รอบหน้า */ });
 }
 
-/** ตัวเลขบนเมนูซ้าย — บอกจำนวนงานที่ยังค้างอยู่ของแต่ละโมดูล */
+/**
+ * ตัวเลขบนเมนูซ้าย — จำนวนเรื่องที่ยังค้างของแต่ละหน้า (ตรงกับจำนวนในกล่องแจ้งเตือนเสมอ)
+ * มีเรื่องที่ยังไม่เคยเห็น = สีส้มเด่น · เห็นครบแล้ว = สีจาง ยังบอกจำนวนค้างแต่ไม่เรียกร้องความสนใจ
+ */
 function paintBadges(){
   var c = ALERTS.counts || {};
-  PAGES.forEach(function(p){ setBadge(p.id, c[p.id] || 0); });
+  var fresh = {};
+  unseenAlerts().forEach(function(a){ fresh[a.module] = (fresh[a.module] || 0) + 1; });
+  PAGES.forEach(function(p){ setBadge(p.id, c[p.id] || 0, (fresh[p.id] || 0) === 0, fresh); });
 }
 
-function setBadge(page, n){
+function setBadge(page, n, seen, fresh){
   [document.getElementById('badge-' + page), document.getElementById('tabbadge-' + page)]
-    .forEach(function(el){ if (el) paintBadge(el, n); });
+    .forEach(function(el){ if (el) paintBadge(el, n, seen); });
 
   // งานค้างของหน้าที่ไม่มีแท็บ ให้ไปรวมอยู่ที่ปุ่ม "เพิ่มเติม" ไม่งั้นบนมือถือจะมองไม่เห็นเลย
   var more = document.getElementById('tabbadge-more');
   if (more) {
-    var hidden = PAGES.filter(function(p){ return !p.tab; })
-      .reduce(function(a, p){ return a + ((ALERTS.counts || {})[p.id] || 0); }, 0);
-    paintBadge(more, hidden);
+    var hiddenPages = PAGES.filter(function(p){ return !p.tab; });
+    var hidden = hiddenPages.reduce(function(a, p){ return a + ((ALERTS.counts || {})[p.id] || 0); }, 0);
+    fresh = fresh || {};
+    var hiddenFresh = hiddenPages.reduce(function(a, p){ return a + (fresh[p.id] || 0); }, 0);
+    paintBadge(more, hidden, hiddenFresh === 0);
   }
 }
 
-function paintBadge(el, n){
+function paintBadge(el, n, seen){
   if (n > 0) {
     el.textContent = n > 99 ? '99+' : n;
     el.style.display = '';
-    el.title = 'ยังค้างอยู่ ' + n + ' รายการ';
+    el.classList.toggle('seen', !!seen);
+    el.title = 'ยังค้างอยู่ ' + n + ' รายการ' + (seen ? ' (เห็นแล้ว)' : '');
   } else {
     el.style.display = 'none';
   }
@@ -1429,11 +1520,15 @@ function paintBell(){
     wrap.insertBefore(slot, wrap.firstChild);
   }
 
-  var n = ALERTS.total || 0;
-  var urgent = ALERTS.urgent || 0;
+  var fresh = unseenAlerts();
+  var n = fresh.length;
+  var total = ALERTS.total || 0;
+  var urgent = fresh.filter(function(a){ return a.level === 'danger'; }).length;
+  var tip = n ? 'มีเรื่องใหม่ ' + n + ' เรื่อง' :
+            (total ? 'ยังค้างอยู่ ' + total + ' เรื่อง (เห็นแล้วทั้งหมด)' : 'ไม่มีงานค้าง');
   slot.innerHTML =
     '<button class="btn icon bell" id="bellBtn" onclick="toggleNotif()" ' +
-      'title="' + (n ? 'มี ' + n + ' เรื่องที่ต้องดู' : 'ไม่มีงานค้าง') + '" ' +
+      'title="' + esc(tip) + '" ' +
       'aria-label="การแจ้งเตือน">🔔' +
       (n ? '<span class="bell-dot' + (urgent ? ' urgent' : '') + '">' + (n > 99 ? '99+' : n) + '</span>' : '') +
     '</button>';
@@ -1447,6 +1542,8 @@ function toggleNotif(){
   panel.id = 'notifPanel';
   panel.className = 'notif';
   wrap.appendChild(panel);
+  NOTIF_NEW = {};
+  markAlertsSeen();                     // เปิดดูแล้ว = เห็นแล้ว ตัวเลขบนกระดิ่งหาย (ป้าย "ใหม่" ยังอยู่ในกล่อง)
   renderNotifPanel();
   setTimeout(function(){ document.addEventListener('click', notifOutside, true); }, 0);
   refreshAlerts();                      // เปิดทีไรก็ดึงของล่าสุดมาให้ด้วย
@@ -1455,6 +1552,7 @@ function toggleNotif(){
 function closeNotif(){
   var p = document.getElementById('notifPanel');
   if (p) p.remove();
+  NOTIF_NEW = {};
   document.removeEventListener('click', notifOutside, true);
 }
 
@@ -1464,9 +1562,9 @@ function notifOutside(e){
 }
 
 var NOTIF_GROUPS = [
-  { module:'repairs',   ic:'🔧', label:'งานซ่อมค้าง' },
+  { module:'repairs',   ic:'🔧', label:'งานซ่อมห้องที่ยังไม่เสร็จ' },
   { module:'ac',        ic:'❄️', label:'ล้างแอร์ถึงกำหนด' },
-  { module:'building',  ic:'🏢', label:'งานตึกส่วนกลาง' },
+  { module:'building',  ic:'🏢', label:'งานตึกส่วนกลางที่ยังค้าง' },
   { module:'purchases', ic:'🛡️', label:'ประกันใกล้หมด' },
   { module:'finance',   ic:'🧾', label:'บิลรายเดือน' }
 ];
@@ -1476,9 +1574,11 @@ function renderNotifPanel(){
   if (!panel) return;
   var items = ALERTS.items || [];
 
+  var newCount = alertIndex().filter(function(a){ return NOTIF_NEW[a.key]; }).length;
   var head = '<div class="notif-h"><b>การแจ้งเตือน</b>' +
     '<span class="sp">' +
-      (items.length ? '<span class="b ' + (ALERTS.urgent ? 'dgr' : 'warn') + '">' + items.length + ' เรื่อง</span>' : '') +
+      (newCount ? '<span class="b info">ใหม่ ' + newCount + '</span>' : '') +
+      (items.length ? '<span class="b ' + (ALERTS.urgent ? 'dgr' : 'warn') + '">ค้าง ' + (ALERTS.total || items.length) + ' เรื่อง</span>' : '') +
       '<button class="btn sm icon" title="ดึงข้อมูลล่าสุด" onclick="refreshAlerts()">↻</button>' +
     '</span></div>';
 
@@ -1494,21 +1594,24 @@ function renderNotifPanel(){
   NOTIF_GROUPS.forEach(function(g){
     var list = items.filter(function(a){ return a.module === g.module; });
     if (!list.length) return;
-    body += '<div class="notif-sec">' + g.ic + ' ' + esc(g.label) + ' (' + list.length + ')</div>';
+    // จำนวนจริงจากตัวนับ (รายละเอียดส่งมาไม่เกินหน้าละ 40 เรื่อง)
+    var all = Math.max(list.length, (ALERTS.counts || {})[g.module] || 0);
+    body += '<div class="notif-sec">' + g.ic + ' ' + esc(g.label) + ' (' + all + ')</div>';
     list.slice(0, 8).forEach(function(a){
-      body += '<button class="notif-item l-' + esc(a.level) + '" onclick="gotoAlert(' + jsq(a.module) + ')">' +
-        '<div class="tt">' + esc(a.title) + '</div>' +
+      var isNew = !!NOTIF_NEW[a.key];
+      body += '<button class="notif-item l-' + esc(a.level) + (isNew ? ' is-new' : '') + '" onclick="gotoAlert(' + jsq(a.module) + ')">' +
+        '<div class="tt">' + (isNew ? '<span class="new-dot" title="เรื่องใหม่"></span>' : '') + esc(a.title) + '</div>' +
         (a.detail ? '<div class="dd">' + esc(a.detail) + '</div>' : '') +
       '</button>';
     });
-    if (list.length > 8) {
+    if (all > 8) {
       body += '<button class="notif-more" onclick="gotoAlert(' + jsq(g.module) + ')">' +
-        'ดูอีก ' + (list.length - 8) + ' รายการ →</button>';
+        'ดูอีก ' + (all - 8) + ' รายการ →</button>';
     }
   });
 
   panel.innerHTML = head + '<div class="notif-list">' + body + '</div>' +
-    '<div class="notif-f">อัปเดตเมื่อ ' + esc(String(ALERTS.at || '').slice(11, 16) || '–') + ' น. · ' +
+    '<div class="notif-f">รายการจะหายไปเองเมื่อแก้เรื่องนั้นแล้ว · อัปเดต ' + esc(String(ALERTS.at || '').slice(11, 16) || '–') + ' น. · ' +
     '<a href="javascript:void(0)" onclick="closeNotif();go(\'dashboard\')">ดูทั้งหมดในแดชบอร์ด →</a></div>';
 }
 
@@ -2112,7 +2215,7 @@ function showChangePassword(forced){
     var btn = this;
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> กำลังบันทึก…';
-    callApi('auth.changePassword', { oldPassword: o, newPassword: n }).then(function(){
+    callApi('auth.changePassword', { oldPassword: o, newPassword: n, _device: AUTH.device || '' }).then(function(){
       return callApi('auth.me').then(enterApp);
     }).then(function(){
       toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');
@@ -2142,7 +2245,7 @@ function formChangePassword(){
     var btn = this;
     btn.disabled = true;
     callApi('auth.changePassword', {
-      oldPassword: document.getElementById('mcOld').value, newPassword: n
+      oldPassword: document.getElementById('mcOld').value, newPassword: n, _device: AUTH.device || ''
     }).then(function(){
       closeModal();
       toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');
@@ -3568,7 +3671,9 @@ function settingFieldHtml(it){
   } else if (it.type === 'multiline') {
     inner = '<textarea class="ta" id="' + id + '">' + esc(it.value) + '</textarea>';
   } else if (it.type === 'number') {
-    inner = '<input type="number" class="inp" id="' + id + '" value="' + esc(it.value) + '" inputmode="decimal">';
+    inner = '<input type="number" class="inp" id="' + id + '" value="' + esc(it.value) + '" inputmode="decimal"' +
+      (it.min != null ? ' min="' + esc(it.min) + '"' : '') + (it.max != null ? ' max="' + esc(it.max) + '"' : '') + '>' +
+      (it.min != null && it.max != null ? '<div class="hint">ใส่ได้ ' + esc(it.min) + '–' + esc(it.max) + '</div>' : '');
   } else {
     inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(it.value) + '">';
   }

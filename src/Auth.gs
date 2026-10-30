@@ -69,11 +69,14 @@ function shareLinkEnabled_() {
   return String(getSetting_('share_link_enabled', 'ปิด')).trim().indexOf('เปิด') === 0;
 }
 
+var REQUEST_ACTOR_ = null;
+
 function requireRole_(action, payloadOrKey) {
   var payload = (payloadOrKey && typeof payloadOrKey === 'object') ? payloadOrKey : { _key: payloadOrKey };
   if (PUBLIC_ACTIONS.test(action)) return ROLE.NONE;
 
   var actor = resolveActor_(payload);
+  REQUEST_ACTOR_ = actor;      // คำสั่งที่ต้องรู้ว่าใครเรียก ใช้ตัวนี้ได้เลย ไม่ต้องอ่านชีตการเข้าใช้งานซ้ำ
   if (actor.role === ROLE.NONE) throw new Error('กรุณาเข้าสู่ระบบก่อนใช้งาน');
 
   if (ADMIN_ONLY_ACTIONS.test(action) && actor.role !== ROLE.ADMIN) {

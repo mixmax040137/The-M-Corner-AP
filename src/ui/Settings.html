@@ -166,7 +166,9 @@ function settingFieldHtml(it){
   } else if (it.type === 'multiline') {
     inner = '<textarea class="ta" id="' + id + '">' + esc(it.value) + '</textarea>';
   } else if (it.type === 'number') {
-    inner = '<input type="number" class="inp" id="' + id + '" value="' + esc(it.value) + '" inputmode="decimal">';
+    inner = '<input type="number" class="inp" id="' + id + '" value="' + esc(it.value) + '" inputmode="decimal"' +
+      (it.min != null ? ' min="' + esc(it.min) + '"' : '') + (it.max != null ? ' max="' + esc(it.max) + '"' : '') + '>' +
+      (it.min != null && it.max != null ? '<div class="hint">ใส่ได้ ' + esc(it.min) + '–' + esc(it.max) + '</div>' : '');
   } else {
     inner = '<input type="text" class="inp" id="' + id + '" value="' + esc(it.value) + '">';
   }

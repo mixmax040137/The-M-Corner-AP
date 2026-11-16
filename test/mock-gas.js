@@ -78,12 +78,14 @@ class Sheet {
   appendRow(vals) { const r = this.getLastRow() + 1; vals.forEach((v, j) => this.set(r, j + 1, v)); touched(); }
   deleteRow(r) { this.data.splice(r - 1, 1); touched(); }
   setFrozenRows() { return this; } setColumnWidth() { return this; }
+  copyTo(dest) { let nm = 'Copy of ' + this.name; const sh = { getName: () => nm, setName: n => { nm = n; return sh; } }; dest._add(sh); return sh; }
 }
 
 const spreadsheet = {
   getId: () => 'MOCK_SS',
   getUrl: () => 'https://docs.google.com/spreadsheets/d/MOCK_SS/edit',
   getOwner: () => ({ getEmail: () => 'owner@example.com' }),
+  getSheets: () => Array.from(store.sheets.values()),
   getSheetByName: n => store.sheets.get(n) || null,
   insertSheet: n => { const s = new Sheet(n); store.sheets.set(n, s); return s; },
   deleteSheet: sh => { store.sheets.delete(sh.getName ? sh.getName() : String(sh)); },
@@ -96,6 +98,18 @@ global.SpreadsheetApp = {
   newDataValidation: () => ({ requireValueInList: () => ({ setAllowInvalid: () => ({ build: () => ({}) }) }) }),
   getUi: () => { throw new Error('no ui'); }
   , flush: () => {}
+  // ไฟล์ชีตใหม่ (ใช้ตอนทำสำเนาก่อนย้ายข้อมูล) — จดชื่อไฟล์และแผ่นที่ถูกคัดลอกเข้าไป
+  , create: name => {
+    const copy = { name, sheets: [{ getName: () => 'Sheet1' }] };
+    (store.copies = store.copies || []).push(name);
+    (store.copyDetail = store.copyDetail || []).push(copy);
+    return {
+      getId: () => 'COPY_' + name, getName: () => name,
+      getSheets: () => copy.sheets.slice(),
+      deleteSheet: sh => { copy.sheets = copy.sheets.filter(x => x !== sh); },
+      _add: sh => { copy.sheets.push(sh); }
+    };
+  }
 };
 global.PropertiesService = {
   getScriptProperties: () => ({

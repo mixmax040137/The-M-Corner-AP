@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-10-30 06:44 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-11-16 04:07 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.8.0',
+  VERSION: '1.8.1',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -757,6 +757,28 @@ function cleanRoom_(v, required) {
   if (s.length > 40) throw new Error('ชื่อห้อง/พื้นที่ยาวเกินไป (ไม่เกิน 40 ตัวอักษร)');
   if (/[<>"'`\\\u0000-\u001f]/.test(s)) throw new Error('ชื่อห้อง/พื้นที่มีอักขระที่ใช้ไม่ได้: < > " \' ` \\');
   return s;
+}
+
+/**
+ * กรองตามปีที่เลือกดู โดย "งานที่ยังไม่ปิด" ของปีอื่นยังเห็นอยู่เสมอเมื่อดูปีปัจจุบัน
+ *
+ * ปีของงานคิดจากวันนัด/วันทำ นัดซ่อมไว้ 1 ม.ค. ปีหน้า งานจึงเป็นของปีหน้า
+ * ถ้ากรองตามปีตรง ๆ พอบันทึกเสร็จงานจะหายไปจากหน้าจอทันที (ดูปีนี้อยู่) เหมือนบันทึกไม่ติด
+ * แล้วคนก็กรอกซ้ำ งานค้างจากปีก่อนที่ยังไม่ได้ทำก็หายแบบเดียวกัน
+ * แถวที่ยืมมาจากปีอื่นติด otherYear ไว้ให้หน้าเว็บติดป้ายบอก และไม่เอาไปรวมยอดเงินของปีที่ดู
+ *
+ * @param {function(Object):*} yearOfRow  ปีของแถว
+ * @param {function(Object):boolean} isOpen  แถวนี้ยังไม่ปิดงานหรือไม่
+ */
+function inYearOrOpen_(rows, year, yearOfRow, isOpen) {
+  if (!year || year === 'all') return rows;
+  var viewingNow = String(year) === String(new Date().getFullYear());
+  return rows.filter(function (r) {
+    var y = String(yearOfRow(r) || '');
+    if (y === String(year)) return true;
+    if (viewingNow && isOpen(r)) { r.otherYear = y; return true; }
+    return false;
+  });
 }
 
 function toIsoDate_(v) {
@@ -3266,8 +3288,20 @@ function snapshotBeforeMigrate_(from) {
   try {
     var name = 'สำเนาก่อนย้ายข้อมูล-รุ่น' + from + '-' +
       Utilities.formatDate(new Date(), APP.TIMEZONE, 'yyyy-MM-dd-HHmm');
-    var copy = DriveApp.getFileById(getSpreadsheet_().getId()).makeCopy(name, backupFolder_());
-    return copy.getName();
+    // สร้างไฟล์ชีตใหม่แล้วคัดลอกทีละแผ่น — ไม่ใช้ makeCopy ทั้งไฟล์
+    // เพราะ makeCopy คัดลอกโค้ด Apps Script ที่ผูกกับชีตไปด้วย ทุกครั้งที่ย้ายข้อมูล
+    // จะเกิดโปรเจกต์ชื่อเดียวกันเพิ่มอีกอันในรายการโปรเจกต์ จนไม่รู้ว่าอันไหนของจริง
+    // แผ่น Sessions ไม่คัดลอก (มีรหัสการเข้าใช้งานที่ยังใช้ได้อยู่ ไม่ควรไปอยู่ในไฟล์สำรอง)
+    var src = getSpreadsheet_();
+    var dest = SpreadsheetApp.create(name);
+    var blank = dest.getSheets();
+    src.getSheets().forEach(function (sh) {
+      if (!exportable_(sh.getName())) return;
+      sh.copyTo(dest).setName(sh.getName());
+    });
+    blank.forEach(function (sh) { if (dest.getSheets().length > 1) dest.deleteSheet(sh); });
+    try { DriveApp.getFileById(dest.getId()).moveTo(backupFolder_()); } catch (e) { /* อยู่ที่ My Drive ก็ยังใช้กู้ได้ */ }
+    return name;
   } catch (e) {
     console.warn('snapshotBeforeMigrate_: ' + e);
     return '';
@@ -4852,11 +4886,13 @@ function saveRoom_(obj) {
 
 /* ---------- ล้างแอร์ ---------- */
 
+function acYear_(r) { return r.year || yearOf_(r.serviceDate) || yearOf_(r.bookDate); }
+/** นัดไว้แล้วแต่ยังไม่ได้ล้าง (และไม่ได้ยกเลิก) */
+function acOpen_(r) { return !r.serviceDate && !!r.bookDate && r.status !== 'ยกเลิก'; }
+
 function listAcService_(year, room) {
   var rows = readRows_(SHEETS.AC_SERVICE);
-  if (year && year !== 'all') {
-    rows = rows.filter(function (r) { return String(r.year || yearOf_(r.serviceDate) || yearOf_(r.bookDate)) === String(year); });
-  }
+  rows = inYearOrOpen_(rows, year, acYear_, acOpen_);
   if (room && room !== 'all') rows = rows.filter(function (r) { return String(r.room) === String(room); });
 
   rows.sort(function (a, b) {
@@ -4886,9 +4922,7 @@ function acMatrix_(year) {
     var list = byRoom[room].slice().sort(function (a, b) {
       return String(b.serviceDate || b.bookDate || '').localeCompare(String(a.serviceDate || a.bookDate || ''));
     });
-    var inYear = (year && year !== 'all')
-      ? list.filter(function (r) { return String(r.year || yearOf_(r.serviceDate) || yearOf_(r.bookDate)) === String(year); })
-      : list;
+    var inYear = inYearOrOpen_(list, year, acYear_, acOpen_);
 
     var done = list.filter(function (r) { return r.serviceDate; });
     var last = done.length ? done[0].serviceDate : '';
@@ -4941,6 +4975,13 @@ function saveAcService_(obj) {
       logActivity_('แก้ไขล้างแอร์', obj.id, obj.room);
       return updateRow_(SHEETS.AC_SERVICE, found._row, Object.assign({}, found, obj));
     }
+  }
+  // กันกรอกซ้ำ: นัดล้างห้องเดียวกันวันเดียวกันที่ยังไม่ได้ล้าง
+  if (!obj.serviceDate && obj.bookDate) {
+    var twin = readRows_(SHEETS.AC_SERVICE).filter(function (r) {
+      return acOpen_(r) && String(r.room) === String(obj.room) && String(r.bookDate) === String(toIsoDate_(obj.bookDate));
+    })[0];
+    if (twin) throw new Error('ห้อง ' + obj.room + ' มีนัดล้างแอร์วันที่ ' + thDate_(twin.bookDate) + ' อยู่แล้ว — ไม่ได้บันทึกซ้ำ');
   }
   obj.id = obj.id || uid_('AC');
   logActivity_('เพิ่มล้างแอร์', obj.id, obj.room + ' ' + (obj.serviceDate || obj.bookDate));
@@ -4997,10 +5038,20 @@ function bulkBookAc_(payload) {
   var rooms = (payload && payload.rooms) || [];
   var bookDate = payload && payload.bookDate;
   if (!rooms.length || !bookDate) throw new Error('ต้องระบุห้องและวันที่นัด');
-  rooms = rooms.map(function (r) { return cleanRoom_(r, true); });
+  bookDate = cleanDate_(bookDate, 'วันที่นัด', true);
+  var existing = readRows_(SHEETS.AC_SERVICE);
+  // ตัดห้องที่ติ๊กซ้ำ และข้ามห้องที่มีนัดวันนี้อยู่แล้ว (กดสร้างนัดซ้ำสองรอบจะได้ไม่เกิดนัดซ้อน)
+  var seen = {};
+  rooms = rooms.map(function (r) { return cleanRoom_(r, true); }).filter(function (room) {
+    if (seen[room]) return false;
+    seen[room] = true;
+    return !existing.some(function (r) {
+      return acOpen_(r) && String(r.room) === String(room) && String(r.bookDate) === String(bookDate);
+    });
+  });
+  if (!rooms.length) throw new Error('ทุกห้องที่เลือกมีนัดล้างแอร์วันที่ ' + thDate_(bookDate) + ' อยู่แล้ว');
 
   var year = yearOf_(bookDate);
-  var existing = readRows_(SHEETS.AC_SERVICE);
   var rows = rooms.map(function (room) {
     var same = existing.filter(function (r) {
       return String(r.room) === String(room) && String(r.year) === String(year);
@@ -5019,11 +5070,12 @@ function bulkBookAc_(payload) {
 
 /* ---------- แจ้งซ่อมตามห้อง ---------- */
 
+function repairYear_(r) { return r.year || yearOf_(r.repairDate) || yearOf_(r.bookDate) || yearOf_(r.reportDate); }
+function repairOpen_(r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; }
+
 function listRoomRepairs_(year, room, status) {
   var rows = readRows_(SHEETS.ROOM_REPAIRS);
-  if (year && year !== 'all') {
-    rows = rows.filter(function (r) { return String(r.year || yearOf_(r.repairDate) || yearOf_(r.bookDate)) === String(year); });
-  }
+  rows = inYearOrOpen_(rows, year, repairYear_, repairOpen_);
   if (room && room !== 'all') rows = rows.filter(function (r) { return String(r.room) === String(room); });
   if (status && status !== 'all') rows = rows.filter(function (r) { return r.status === status; });
 
@@ -5045,14 +5097,15 @@ function listRoomRepairs_(year, room, status) {
 /** ภาพรวมงานซ่อมรายห้องของปีที่เลือก */
 function repairMatrix_(year) {
   var all = readRows_(SHEETS.ROOM_REPAIRS);
-  var scope = (year && year !== 'all')
-    ? all.filter(function (r) { return String(r.year || yearOf_(r.repairDate)) === String(year); })
-    : all;
+  // shown = งานของปีที่ดู + งานที่ยังไม่เสร็จของปีอื่น (เห็นในผังห้องเสมอ)
+  // scope = เฉพาะของปีที่ดู ใช้รวมจำนวนงานและค่าใช้จ่ายของปีนั้น
+  var shown = inYearOrOpen_(all, year, repairYear_, repairOpen_);
+  var scope = shown.filter(function (r) { return !r.otherYear; });
 
   var byRoom = {};
-  var roomList = roomsInPlay_(scope);
+  var roomList = roomsInPlay_(shown);
   roomList.forEach(function (r) { byRoom[r] = []; });
-  scope.forEach(function (r) { byRoom[String(r.room)].push(r); });
+  shown.forEach(function (r) { byRoom[String(r.room)].push(r); });
 
   var rooms = roomList.map(function (room) {
     var list = byRoom[room].sort(function (a, b) {
@@ -5071,7 +5124,7 @@ function repairMatrix_(year) {
       floor: floorOf_(room),
       count: list.length,
       openCount: open.length,
-      cost: round2_(sum_(list, function (r) { return r.cost; })),
+      cost: round2_(sum_(list.filter(function (r) { return !r.otherYear; }), function (r) { return r.cost; })),
       last: list.length ? (list[0].repairDate || list[0].bookDate || '') : '',
       records: list,
       // นับ "จุด" ที่ยังไม่ได้ทำ ไม่ใช่จำนวนใบงาน — ใบเดียวอาจเหลืออีกหลายจุด
@@ -5084,7 +5137,7 @@ function repairMatrix_(year) {
     years: uniqueYears_(all, ['repairDate', 'bookDate', 'reportDate']),
     rooms: rooms,
     totalJobs: scope.length,
-    openJobs: scope.filter(function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; }).length,
+    openJobs: shown.filter(repairOpen_).length,
     totalCost: round2_(sum_(scope, function (r) { return r.cost; })),
     openTasks: sum_(rooms, function (r) { return r.openTasks; })
   };
@@ -5205,6 +5258,16 @@ function saveRoomRepair_(obj) {
       logActivity_('แก้ไขงานซ่อมห้อง', obj.id, obj.room);
       return updateRow_(SHEETS.ROOM_REPAIRS, found._row, Object.assign({}, found, obj));
     }
+  }
+  // กันกรอกซ้ำ: งานที่ยังไม่เสร็จ ห้องเดียวกัน รายการเดียวกัน วันนัดเดียวกัน = งานเดิม
+  var twin = readRows_(SHEETS.ROOM_REPAIRS).filter(function (r) {
+    return repairOpen_(r) && String(r.room) === String(obj.room) &&
+      String(r.items || '') === String(obj.items || '') &&
+      String(r.bookDate || '') === String(toIsoDate_(obj.bookDate) || '');
+  })[0];
+  if (twin) {
+    throw new Error('มีงานนี้อยู่แล้ว: ห้อง ' + obj.room + (twin.bookDate ? ' นัด ' + thDate_(twin.bookDate) : '') +
+      ' — ไม่ได้บันทึกซ้ำ (งานที่ยังไม่เสร็จดูได้ในผังห้องและในกระดิ่งแจ้งเตือน)');
   }
   obj.id = obj.id || uid_('FIX');
   logActivity_('เพิ่มงานซ่อมห้อง', obj.id, obj.room + ' ' + String(obj.items || '').slice(0, 40));
@@ -5364,9 +5427,9 @@ function uniqueYears_(rows, dateKeys) {
 
 function listBuildingRepairs_(year, zone, status) {
   var rows = readRows_(SHEETS.BUILDING_REPAIRS);
-  if (year && year !== 'all') {
-    rows = rows.filter(function (r) { return String(r.year || yearOf_(r.endDate) || yearOf_(r.startDate)) === String(year); });
-  }
+  rows = inYearOrOpen_(rows, year,
+    function (r) { return r.year || yearOf_(r.endDate) || yearOf_(r.startDate) || yearOf_(r.bookDate); },
+    function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; });
   if (zone && zone !== 'all') rows = rows.filter(function (r) { return r.zone === zone; });
   if (status && status !== 'all') rows = rows.filter(function (r) { return r.status === status; });
 
@@ -5452,6 +5515,14 @@ function saveBuildingRepair_(obj) {
       return updateRow_(SHEETS.BUILDING_REPAIRS, found._row, Object.assign({}, found, obj));
     }
   }
+  // กันกรอกซ้ำ: งานชื่อเดียวกัน วันนัด/วันเริ่มเดียวกัน ที่ยังไม่เสร็จ
+  var twin = readRows_(SHEETS.BUILDING_REPAIRS).filter(function (r) {
+    return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก' &&
+      String(r.title || '').trim() === String(obj.title || '').trim() &&
+      String(r.bookDate || '') === String(toIsoDate_(obj.bookDate) || '') &&
+      String(r.startDate || '') === String(toIsoDate_(obj.startDate) || '');
+  })[0];
+  if (twin && String(obj.title || '').trim()) throw new Error('มีงาน "' + twin.title + '" ที่ยังไม่เสร็จอยู่แล้ว — ไม่ได้บันทึกซ้ำ');
   obj.id = obj.id || uid_('BLD');
   logActivity_('เพิ่มงานซ่อมตึก', obj.id, obj.title);
   return insertRow_(SHEETS.BUILDING_REPAIRS, obj);

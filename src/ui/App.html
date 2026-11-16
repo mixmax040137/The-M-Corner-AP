@@ -912,12 +912,12 @@ function confirmAction(text, onYes){
 
 /* ---------------- toast ---------------- */
 
-function toast(msg, kind){
+function toast(msg, kind, ms){
   var el = document.createElement('div');
   el.className = 'toast ' + (kind||'');
   el.textContent = msg;
   document.getElementById('toastRoot').appendChild(el);
-  setTimeout(function(){ el.remove(); }, kind==='err' ? 5200 : 2800);
+  setTimeout(function(){ el.remove(); }, ms || (kind==='err' ? 5200 : 2800));
 }
 
 /* ---------------- nav (mobile) ---------------- */

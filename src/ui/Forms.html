@@ -489,8 +489,13 @@ function openForm(opts){
       var record = Object.assign({}, opts.base || {}, data);
       if (rec.id) record.id = rec.id;
       return callApi(opts.action, Object.assign({ record: record }, opts.extra || {}));
-    }).then(function(){
+    }).then(function(saved){
       closeModal();
+      // รายการถูกจัดเข้าปีตามวันที่ ถ้าไม่ใช่ปีที่กำลังดูอยู่ บอกให้ชัด — ไม่งั้นดูเหมือนบันทึกไม่ติด
+      if (saved && saved.year && S.year !== 'all' && String(saved.year) !== String(S.year)) {
+        toast('บันทึกแล้ว — รายการนี้อยู่ในปี ' + displayYear(saved.year) +
+          ' (ตอนนี้ดูปี ' + displayYear(S.year) + ' อยู่ เปลี่ยนปีได้ที่มุมขวาบน)', 'ok', 7000);
+      }
       // ตัวบอกสถานะมุมขวาบนขึ้น "บันทึกแล้ว" ให้อยู่แล้ว จึงไม่ต้องเด้ง toast ซ้ำ
       // แล้วซิงก์เงียบ ๆ ไม่ล้างหน้าและไม่เด้งกลับไปบนสุด
       load({ quiet: true });

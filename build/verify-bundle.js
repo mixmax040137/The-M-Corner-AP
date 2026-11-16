@@ -76,6 +76,9 @@ console.log('\n── build/AllInOne.gs ──');
   { const b = readRows_(SHEETS.DEBTS).find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0);
     saveDebt_(Object.assign({}, b, { alsoIn: 'หนี้รอง' })); }
 
+  // งานซ่อมห้อง 211 ที่นัดไว้ปีหน้า — ต้องเห็นในหน้าปีนี้ (เคยหายจากหน้าจอจนผู้ใช้กรอกซ้ำ 3 ครั้ง)
+  saveRoomRepair_({ room: '211', bookDate: (new Date().getFullYear() + 1) + '-01-01', items: '211 ย้ายออก | ทำความสะอาด' });
+
   // เตรียมคำตอบของทุกคำสั่งไว้ล่วงหน้า (เพราะเบราว์เซอร์คุยกับ Node ตรง ๆ ไม่ได้)
   const fx = {};
   const put = (a, p) => { fx[a + '|' + JSON.stringify(p || {})] = api(a, Object.assign({ _key: adminKey }, p)); };
@@ -1018,6 +1021,21 @@ console.log('\n── build/AllInOne.gs ──');
     check('เลขห้องมีโค้ดแฝง: ไม่กลายเป็นแท็ก HTML', xss.imgs === 0, JSON.stringify(xss));
     check('เลขห้องมีโค้ดแฝง: ไม่มีโค้ดไหนถูกรัน', pwned === 0);
     check('เลขห้องมีโค้ดแฝง: ปุ่มยังส่งค่าเดิมครบทุกตัวอักษร', xss.got && xss.text, JSON.stringify(xss));
+
+    // งานที่นัดข้ามปีต้องเห็นในหน้าปีปัจจุบัน ทั้งในผังห้องและในตาราง พร้อมป้ายบอกปี
+    await pg.evaluate(() => { S.year = String(new Date().getFullYear()); go('repairs'); });
+    await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+    const cross = await pg.evaluate(() => {
+      var card = Array.prototype.slice.call(document.querySelectorAll('#view .room'))
+        .filter(function (e) { return e.querySelector('.no').textContent === '211'; })[0];
+      var rows = Array.prototype.slice.call(document.querySelectorAll('#view table.t tbody tr'))
+        .filter(function (tr) { return /211 ย้ายออก/.test(tr.innerText); });
+      return { card: card ? card.innerText : '', rows: rows.length,
+               tag: rows.length ? /ปี \d{4}/.test(rows[0].innerText) : false };
+    });
+    check('ผังห้อง: ห้อง 211 ขึ้นว่ามีงานค้าง (งานนัดปีหน้า)', /ค้าง/.test(cross.card), cross.card);
+    check('ตารางปีนี้มีงานที่นัดปีหน้า', cross.rows === 1, JSON.stringify(cross));
+    check('แถวนั้นมีป้ายบอกว่าเป็นของปีไหน', cross.tag, JSON.stringify(cross));
 
     // กดปุ่ม "เพิ่มรายการ" ต้องได้ฟอร์มเปล่าและไม่มีรหัสเดิม
     await pg.evaluate(() => go('finance'));

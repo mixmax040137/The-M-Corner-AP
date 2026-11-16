@@ -416,6 +416,28 @@ function cleanRoom_(v, required) {
   return s;
 }
 
+/**
+ * กรองตามปีที่เลือกดู โดย "งานที่ยังไม่ปิด" ของปีอื่นยังเห็นอยู่เสมอเมื่อดูปีปัจจุบัน
+ *
+ * ปีของงานคิดจากวันนัด/วันทำ นัดซ่อมไว้ 1 ม.ค. ปีหน้า งานจึงเป็นของปีหน้า
+ * ถ้ากรองตามปีตรง ๆ พอบันทึกเสร็จงานจะหายไปจากหน้าจอทันที (ดูปีนี้อยู่) เหมือนบันทึกไม่ติด
+ * แล้วคนก็กรอกซ้ำ งานค้างจากปีก่อนที่ยังไม่ได้ทำก็หายแบบเดียวกัน
+ * แถวที่ยืมมาจากปีอื่นติด otherYear ไว้ให้หน้าเว็บติดป้ายบอก และไม่เอาไปรวมยอดเงินของปีที่ดู
+ *
+ * @param {function(Object):*} yearOfRow  ปีของแถว
+ * @param {function(Object):boolean} isOpen  แถวนี้ยังไม่ปิดงานหรือไม่
+ */
+function inYearOrOpen_(rows, year, yearOfRow, isOpen) {
+  if (!year || year === 'all') return rows;
+  var viewingNow = String(year) === String(new Date().getFullYear());
+  return rows.filter(function (r) {
+    var y = String(yearOfRow(r) || '');
+    if (y === String(year)) return true;
+    if (viewingNow && isOpen(r)) { r.otherYear = y; return true; }
+    return false;
+  });
+}
+
 function toIsoDate_(v) {
   var d = toDate_(v);
   if (!d) return '';

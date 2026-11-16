@@ -48,8 +48,20 @@ function snapshotBeforeMigrate_(from) {
   try {
     var name = 'สำเนาก่อนย้ายข้อมูล-รุ่น' + from + '-' +
       Utilities.formatDate(new Date(), APP.TIMEZONE, 'yyyy-MM-dd-HHmm');
-    var copy = DriveApp.getFileById(getSpreadsheet_().getId()).makeCopy(name, backupFolder_());
-    return copy.getName();
+    // สร้างไฟล์ชีตใหม่แล้วคัดลอกทีละแผ่น — ไม่ใช้ makeCopy ทั้งไฟล์
+    // เพราะ makeCopy คัดลอกโค้ด Apps Script ที่ผูกกับชีตไปด้วย ทุกครั้งที่ย้ายข้อมูล
+    // จะเกิดโปรเจกต์ชื่อเดียวกันเพิ่มอีกอันในรายการโปรเจกต์ จนไม่รู้ว่าอันไหนของจริง
+    // แผ่น Sessions ไม่คัดลอก (มีรหัสการเข้าใช้งานที่ยังใช้ได้อยู่ ไม่ควรไปอยู่ในไฟล์สำรอง)
+    var src = getSpreadsheet_();
+    var dest = SpreadsheetApp.create(name);
+    var blank = dest.getSheets();
+    src.getSheets().forEach(function (sh) {
+      if (!exportable_(sh.getName())) return;
+      sh.copyTo(dest).setName(sh.getName());
+    });
+    blank.forEach(function (sh) { if (dest.getSheets().length > 1) dest.deleteSheet(sh); });
+    try { DriveApp.getFileById(dest.getId()).moveTo(backupFolder_()); } catch (e) { /* อยู่ที่ My Drive ก็ยังใช้กู้ได้ */ }
+    return name;
   } catch (e) {
     console.warn('snapshotBeforeMigrate_: ' + e);
     return '';

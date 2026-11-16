@@ -403,7 +403,7 @@ ROUTES.ac = {
           return '<tr>' +
             '<td><b>' + esc(x.room) + '</b></td>' +
             '<td class="num">' + (x.round || 1) + '</td>' +
-            '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.bookDate) + otherYearTag(x) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.serviceDate) + '</td>' +
             '<td>' + statusSelect(x, 'ac.setStatus', opt('acStatuses')) + '</td>' +
             '<td class="fs12">' + esc(x.technician || '–') + '</td>' +
@@ -527,7 +527,7 @@ ROUTES.repairs = {
         rows.map(function(x){
           return '<tr>' +
             '<td><b>' + esc(x.room) + '</b></td>' +
-            '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.bookDate) + otherYearTag(x) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.repairDate) + '</td>' +
             '<td class="fs12">' + esc(x.category || '–') + '</td>' +
             '<td style="min-width:280px">' + todoListHtml(x) + '</td>' +
@@ -657,7 +657,7 @@ ROUTES.building = {
             '<td class="fs12"><b>' + esc(x.zone || '–') + '</b></td>' +
             '<td class="fs13"><div class="clip">' + esc(x.title) + '</div>' +
               (x.note ? '<div class="fs12 faint clip">' + esc(x.note) + '</div>' : '') + '</td>' +
-            '<td class="nowrap fs12">' + thDate(x.bookDate) + '</td>' +
+            '<td class="nowrap fs12">' + thDate(x.bookDate) + otherYearTag(x) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.startDate) + '</td>' +
             '<td class="nowrap fs12">' + thDate(x.endDate) + '</td>' +
             '<td>' + statusBadge(x.status) + '</td>' +
@@ -1215,6 +1215,11 @@ function roomFloors(rooms, decorate){
 }
 
 /** ใส่ object ลงใน onclick attribute ได้อย่างปลอดภัย */
+/** งานที่ยังไม่ปิดของปีอื่น ซึ่งแสดงร่วมอยู่ในปีที่กำลังดู — ติดป้ายบอกว่าเป็นของปีไหน */
+function otherYearTag(x){
+  return x && x.otherYear ? ' <span class="b info" title="งานนี้ยังไม่ปิด จึงแสดงในปีนี้ด้วย">ปี ' + esc(displayYear(x.otherYear)) + '</span>' : '';
+}
+
 function attr(obj){
   var clean = {};
   Object.keys(obj).forEach(function(k){

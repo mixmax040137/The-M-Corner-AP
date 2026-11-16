@@ -1701,6 +1701,104 @@ console.log('\n── 33. ตรวจเชิงลึก: การตั้�
   deleteUser_('pwtest', 'ผู้ดูแล', '');
 }
 
+console.log('\n── 34. นัดข้ามปี: งานที่ยังไม่เสร็จต้องเห็นเสมอ และกรอกซ้ำไม่ได้ ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  const Y = new Date().getFullYear(), now = String(Y), next = (Y + 1) + '-01-01';
+  const room = m => m.rooms.find(r => r.room === '211');
+  const before = repairMatrix_(now);
+  const b211 = room(before);
+
+  // เหตุการณ์จริง: ดูปีนี้อยู่ แจ้งซ่อมห้อง 211 นัด 1 ม.ค. ปีหน้า
+  const rec = { room: '211', bookDate: next, items: '211 ย้ายออก | ทำความสะอาด', cost: 1000 };
+  const r1 = api('repair.save', { _key: admKey, record: Object.assign({}, rec) });
+  check('บันทึกงานที่นัดปีหน้าได้', r1.ok, true);
+  check('งานถูกจัดเป็นของปีหน้า (หน้าเว็บใช้ค่านี้บอกผู้ใช้)', r1.data.year, Y + 1);
+
+  const m1 = repairMatrix_(now);
+  check('ผังห้องปีนี้: ห้อง 211 ขึ้นว่ามีงานค้าง', room(m1).openCount, b211.openCount + 1);
+  const shownRec = room(m1).records.find(x => x.id === r1.data.id);
+  check('งานอยู่ในรายการของห้อง พร้อมป้ายบอกปี', !!shownRec && shownRec.otherYear, String(Y + 1));
+  check('ตารางรายการปีนี้เห็นงานนี้', listRoomRepairs_(now, 'all', 'all').some(x => x.id === r1.data.id), true);
+  check('ค่าใช้จ่ายของปีนี้ไม่รวมงานของปีหน้า', m1.totalCost, before.totalCost);
+  check('ค่าใช้จ่ายของห้องในปีนี้ไม่รวมงานของปีหน้า', room(m1).cost, b211.cost);
+  check('จำนวนงานของปีนี้ไม่นับงานของปีหน้า', m1.totalJobs, before.totalJobs);
+  check('ดูปีก่อน ๆ ไม่มีงานนี้ปน', listRoomRepairs_(String(Y - 1), 'all', 'all').some(x => x.id === r1.data.id), false);
+  check('ดูปีหน้า เห็นงานนี้ตามปกติ ไม่มีป้ายปีอื่น',
+    (listRoomRepairs_(String(Y + 1), 'all', 'all').find(x => x.id === r1.data.id) || {}).otherYear, undefined);
+  check('งานค้างในผังห้อง = จำนวนงานซ่อมในกระดิ่ง', m1.openJobs, api('app.alerts', { _key: admKey }).data.counts.repairs);
+
+  // กรอกซ้ำอีกสองครั้งแบบที่เกิดขึ้นจริง
+  const r2 = api('repair.save', { _key: admKey, record: Object.assign({}, rec) });
+  check('กรอกซ้ำถูกปฏิเสธ', r2.ok, false);
+  check('บอกเหตุผลว่ามีงานนี้อยู่แล้ว', /มีงานนี้อยู่แล้ว/.test(r2.error || ''), true);
+  check('ไม่มีรายการซ้ำเพิ่มในชีต', readRows_(SHEETS.ROOM_REPAIRS).filter(x => x.room === '211' && x.bookDate === next).length, 1);
+  check('งานต่างกัน (รายการอื่น) ยังบันทึกได้',
+    (() => { const o = api('repair.save', { _key: admKey, record: { room: '211', bookDate: next, items: 'เปลี่ยนหลอดไฟ' } });
+      if (o.ok) api('repair.delete', { _key: admKey, id: o.data.id }); return o.ok; })(), true);
+  check('แก้ไขงานเดิมไม่โดนกันว่าซ้ำ',
+    api('repair.save', { _key: admKey, record: Object.assign({}, findRow_(SHEETS.ROOM_REPAIRS, r1.data.id), { note: 'โทรยืนยันแล้ว' }) }).ok, true);
+
+  // ทำเสร็จแล้ว = เป็นงานของปีที่ทำจริง ไม่ค้างในปีนี้อีก
+  api('repair.save', { _key: admKey, record: Object.assign({}, findRow_(SHEETS.ROOM_REPAIRS, r1.data.id), { status: 'เสร็จสิ้น', repairDate: next }) });
+  check('ปิดงานแล้วไม่ค้างในผังปีนี้', room(repairMatrix_(now)).openCount, b211.openCount);
+  check('ปิดแล้วกรอกงานแบบเดียวกันรอบใหม่ได้ (ไม่ใช่งานซ้ำ)',
+    (() => { const o = api('repair.save', { _key: admKey, record: Object.assign({}, rec) });
+      if (o.ok) api('repair.delete', { _key: admKey, id: o.data.id }); return o.ok; })(), true);
+  api('repair.delete', { _key: admKey, id: r1.data.id });
+
+  // งานค้างจากปีก่อนก็ต้องเห็นในปีนี้
+  const old = api('repair.save', { _key: admKey, record: { room: '212', reportDate: (Y - 1) + '-12-20', items: 'ประตูฝืด' } });
+  check('งานค้างจากปีก่อนเห็นในปีนี้', listRoomRepairs_(now, 'all', 'all').some(x => x.id === old.data.id), true);
+  api('repair.delete', { _key: admKey, id: old.data.id });
+
+  // ล้างแอร์: นัดปีหน้า
+  const ac0 = acMatrix_(now).rooms.find(r => r.room === '211').bookedInYear;
+  const acDone0 = acMatrix_(now).doneInYear;
+  const a1 = api('ac.save', { _key: admKey, record: { room: '211', bookDate: next } });
+  check('ล้างแอร์: นัดปีหน้าเห็นในผังปีนี้', acMatrix_(now).rooms.find(r => r.room === '211').bookedInYear, ac0 + 1);
+  check('ล้างแอร์: อยู่ในตารางปีนี้พร้อมป้ายปี', (listAcService_(now, 'all').find(x => x.id === a1.data.id) || {}).otherYear, String(Y + 1));
+  check('ล้างแอร์: นัดซ้ำห้องเดิมวันเดิมถูกปฏิเสธ', api('ac.save', { _key: admKey, record: { room: '211', bookDate: next } }).ok, false);
+  check('ล้างแอร์: ยอดล้างแล้วของปีนี้ไม่เปลี่ยน', acMatrix_(now).doneInYear, acDone0);
+  api('ac.delete', { _key: admKey, id: a1.data.id });
+
+  // งานตึก: นัดปีหน้า
+  const b1 = api('building.save', { _key: admKey, record: { title: 'ทาสีรั้ว', zone: 'อื่น ๆ', bookDate: next } });
+  check('งานตึก: นัดปีหน้าเห็นในตารางปีนี้', (listBuildingRepairs_(now, 'all', 'all').find(x => x.id === b1.data.id) || {}).otherYear, String(Y + 1));
+  check('งานตึก: กรอกซ้ำถูกปฏิเสธ', api('building.save', { _key: admKey, record: { title: 'ทาสีรั้ว', zone: 'อื่น ๆ', bookDate: next } }).ok, false);
+  api('building.delete', { _key: admKey, id: b1.data.id });
+}
+
+console.log('\n── 35. รอบตรวจ bug: นัดหลายห้อง และสำเนาก่อนย้ายข้อมูล ──');
+{
+  const st = require('./mock-gas.js').store;
+  const admKey = getSetting_('admin_token', '');
+  const day = (new Date().getFullYear() + 1) + '-02-10';
+  const n0 = readRows_(SHEETS.AC_SERVICE).length;
+  const r1 = api('ac.bulkBook', { _key: admKey, rooms: ['311', '312', '311'], bookDate: day });
+  check('นัดหลายห้อง: ห้องที่ติ๊กซ้ำนับครั้งเดียว', r1.data, 2);
+  const r2 = api('ac.bulkBook', { _key: admKey, rooms: ['311', '312', '314'], bookDate: day });
+  check('กดสร้างนัดซ้ำ: เพิ่มเฉพาะห้องที่ยังไม่มีนัด', r2.data, 1);
+  check('ไม่มีนัดซ้อน', readRows_(SHEETS.AC_SERVICE).length, n0 + 3);
+  check('ทุกห้องมีนัดแล้ว: บอกชัด ไม่สร้างอะไร', api('ac.bulkBook', { _key: admKey, rooms: ['311', '312'], bookDate: day }).ok, false);
+  check('วันที่นัดที่ไม่มีจริงถูกปฏิเสธ', api('ac.bulkBook', { _key: admKey, rooms: ['315'], bookDate: '2027-02-30' }).ok, false);
+  readRows_(SHEETS.AC_SERVICE).filter(r => r.bookDate === day).forEach(r => deleteAcService_(r.id));
+  check('ล้างข้อมูลทดสอบแล้ว', readRows_(SHEETS.AC_SERVICE).length, n0);
+
+  // สำเนาก่อนย้ายข้อมูล: คัดลอกทีละแผ่น (ไม่พาโค้ด Apps Script ไปด้วย) และไม่มีแผ่น Sessions
+  st.copies = []; st.copyDetail = [];
+  props_().setProperty('SCHEMA_VERSION', '9');
+  runMigrations_();
+  const snap = st.copyDetail[0];
+  const names = snap ? snap.sheets.map(x => x.getName()) : [];
+  check('ทำสำเนาเป็นไฟล์ชีตใหม่ 1 ไฟล์', st.copies.length, 1);
+  check('สำเนามีแผ่นข้อมูลหลักครบ', [SHEETS.DEBTS, SHEETS.DEBT_PAYMENTS, SHEETS.ROOM_REPAIRS, SHEETS.FINANCE].every(n => names.indexOf(n) >= 0), true);
+  check('แผ่นในสำเนาใช้ชื่อเดิม (ไม่มีคำว่า Copy of)', names.some(n => /^Copy of/.test(n)), false);
+  check('สำเนาไม่มีแผ่น Sessions (รหัสการเข้าใช้งาน)', names.indexOf(SHEETS.SESSIONS), -1);
+  check('แผ่นเปล่าที่ติดมากับไฟล์ใหม่ถูกลบ', names.indexOf('Sheet1'), -1);
+  saveDebt_(Object.assign({}, readRows_(SHEETS.DEBTS).find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0), { alsoIn: '' }));
+}
+
 console.log('\n════════════════════════════');
 console.log(`ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
 process.exit(fail ? 1 : 0);

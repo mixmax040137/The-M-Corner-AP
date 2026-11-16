@@ -4,9 +4,9 @@
 
 function listBuildingRepairs_(year, zone, status) {
   var rows = readRows_(SHEETS.BUILDING_REPAIRS);
-  if (year && year !== 'all') {
-    rows = rows.filter(function (r) { return String(r.year || yearOf_(r.endDate) || yearOf_(r.startDate)) === String(year); });
-  }
+  rows = inYearOrOpen_(rows, year,
+    function (r) { return r.year || yearOf_(r.endDate) || yearOf_(r.startDate) || yearOf_(r.bookDate); },
+    function (r) { return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก'; });
   if (zone && zone !== 'all') rows = rows.filter(function (r) { return r.zone === zone; });
   if (status && status !== 'all') rows = rows.filter(function (r) { return r.status === status; });
 
@@ -92,6 +92,14 @@ function saveBuildingRepair_(obj) {
       return updateRow_(SHEETS.BUILDING_REPAIRS, found._row, Object.assign({}, found, obj));
     }
   }
+  // กันกรอกซ้ำ: งานชื่อเดียวกัน วันนัด/วันเริ่มเดียวกัน ที่ยังไม่เสร็จ
+  var twin = readRows_(SHEETS.BUILDING_REPAIRS).filter(function (r) {
+    return r.status !== 'เสร็จสิ้น' && r.status !== 'ยกเลิก' &&
+      String(r.title || '').trim() === String(obj.title || '').trim() &&
+      String(r.bookDate || '') === String(toIsoDate_(obj.bookDate) || '') &&
+      String(r.startDate || '') === String(toIsoDate_(obj.startDate) || '');
+  })[0];
+  if (twin && String(obj.title || '').trim()) throw new Error('มีงาน "' + twin.title + '" ที่ยังไม่เสร็จอยู่แล้ว — ไม่ได้บันทึกซ้ำ');
   obj.id = obj.id || uid_('BLD');
   logActivity_('เพิ่มงานซ่อมตึก', obj.id, obj.title);
   return insertRow_(SHEETS.BUILDING_REPAIRS, obj);

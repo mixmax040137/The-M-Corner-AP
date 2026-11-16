@@ -66,6 +66,9 @@ fx['auth.me|{}'] = {
 
 put('app.bootstrap', {});
 put('app.alerts', {});
+// ปฏิทินงานรวม: เตรียมไว้ 2 ปีรอบเดือนนี้ ให้กดเลื่อนเดือนในตัวอย่างได้
+for (let k = -12; k <= 14; k++) { const d = new Date(new Date().getFullYear(), new Date().getMonth() + k, 1);
+  put('calendar.month', { ym: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') }); }
 ['all'].concat(YEARS).forEach(y => {
   const year = String(y);
   put('app.dashboard', { year });

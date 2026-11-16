@@ -793,6 +793,50 @@ button.sync-pill:active{transform:translateY(1px)}
   .st-sel{padding:7px 26px 7px 12px;font-size:13px}
 }
 
+/* ============ ปฏิทินงานรวม ============ */
+.cal-title{margin:0;font-size:17px;font-family:var(--font-display);min-width:170px;text-align:center}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--line-2);border-radius:var(--r);overflow:hidden}
+.cal-wd{background:var(--surface-2);padding:7px 4px;text-align:center;font-size:11.5px;font-weight:600;color:var(--muted)}
+.cal-c{background:var(--surface);border:0;min-height:104px;padding:6px 6px 7px;text-align:left;font:inherit;color:inherit;
+  display:flex;flex-direction:column;gap:3px;cursor:pointer;min-width:0}
+.cal-c.off{background:var(--surface-2);cursor:default}
+.cal-c:not(.off):hover{background:var(--brand-soft)}
+.cal-c:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.cal-n{font-size:12.5px;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums;
+  width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:99px}
+.cal-c.today .cal-n{background:var(--brand);color:var(--brand-ink)}
+.cal-ev{display:block;font-size:11px;line-height:1.35;padding:2px 6px;border-radius:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.cal-ev.ok{background:var(--ok-soft);color:var(--ok)}
+.cal-ev.info{background:var(--info-soft);color:var(--info)}
+.cal-ev.dgr{background:var(--danger-soft);color:var(--danger);font-weight:600}
+.cal-more{font-size:10.5px;color:var(--muted);padding-left:4px}
+.cal-dots{display:none;gap:3px;align-items:center;flex-wrap:wrap}
+.cal-dots i{width:7px;height:7px;border-radius:99px;display:inline-block}
+.cal-dots i.ok{background:var(--ok)} .cal-dots i.info{background:var(--info)} .cal-dots i.dgr{background:var(--danger)}
+.cal-dots em{font-style:normal;font-size:10px;color:var(--muted)}
+.cal-agenda{display:flex;flex-direction:column}
+.cal-day{padding:10px 14px;border-bottom:1px solid var(--line-2)}
+.cal-day:last-child{border-bottom:0}
+.cal-day.today{background:var(--surface-2)}
+.cal-date{font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.cal-row{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:0;border:0;
+  padding:6px 4px;border-radius:var(--r-sm);cursor:pointer;font:inherit;color:inherit;min-width:0}
+.cal-row:hover{background:var(--brand-soft)}
+.cal-row .ic{flex:none;width:22px;text-align:center}
+.cal-row .tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.cal-row .tt{font-size:13px;font-weight:500;overflow-wrap:anywhere}
+.cal-row .dd{font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.cal-row .b{flex:none}
+@media (max-width:760px){
+  /* จอแคบ: ช่องวันเหลือเลขวันกับจุดสี รายละเอียดอ่านจากรายการข้างล่างหรือแตะที่วัน */
+  .cal-c{min-height:54px;padding:4px 3px;align-items:center}
+  .cal-ev,.cal-more{display:none}
+  .cal-dots{display:flex;justify-content:center}
+  .cal-title{min-width:0;flex:1;font-size:15.5px}
+  .cal-day{padding:9px 10px}
+}
+
 /* ============ กราฟ ============ ------------------------------------
    เส้นตารางกับแกนเป็นเส้นบางทึบ ไม่ใช้เส้นประ (เส้นประอ่านเหมือนเส้นคาดการณ์)
    แท่งหนาไม่เกิน 24px ปลายด้านข้อมูลมนเล็กน้อย ด้านฐานเหลี่ยม
@@ -910,6 +954,7 @@ var ALL_DEBTS = [];
 
 var PAGES = [
   { id:'dashboard', ic:'📊', label:'ภาพรวม',              sub:'แดชบอร์ดรวมทุกส่วนของหอพัก',        sec:'ภาพรวม', tab:'ภาพรวม' },
+  { id:'calendar',  ic:'🗓️', label:'ปฏิทินงาน',            sub:'นัดซ่อม ล้างแอร์ งานตึก และกำหนดผ่อน ดูต่อเนื่องข้ามปีได้' },
   { id:'debtMain',  ic:'💰', label:'รายการสรุปรวม',       sub:'บัญชีโอนใช้หนี้หลักของหอพัก',        sec:'การเงิน' },
   { id:'debtSub',   ic:'🧾', label:'หนี้สิน',              sub:'บัญชีโอนใช้หนี้รองของหอพัก' },
   { id:'purchases', ic:'🛒', label:'รายการซื้อของ',        sub:'ของเข้าหอพัก ราคา ประกัน และสลิป' },
@@ -3494,6 +3539,142 @@ function roomFloors(rooms, decorate){
 }
 
 /** ใส่ object ลงใน onclick attribute ได้อย่างปลอดภัย */
+/* ============================================================
+   ปฏิทินงานรวม
+   ------------------------------------------------------------
+   เดือนที่ดูอยู่เก็บแยกจากตัวเลือกปีบนแถบหัว (S.calYm) เลื่อนข้ามปีได้ต่อเนื่อง
+   จอกว้าง: ตารางเดือน มีชื่องานในช่องวัน · จอแคบ: ช่องวันเหลือจุดสี รายละเอียดอยู่ในรายการข้างล่าง
+   (โครง HTML ชุดเดียวกัน สลับด้วย CSS)
+   ============================================================ */
+var TH_MONTH_FULL = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+                     'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+var CAL_KINDS = [
+  { module:'repairs',   ic:'🔧', label:'ซ่อมห้อง' },
+  { module:'ac',        ic:'❄️', label:'ล้างแอร์' },
+  { module:'building',  ic:'🏢', label:'งานตึก' },
+  { module:'debt',      ic:'💰', label:'ผ่อนหนี้' },
+  { module:'purchases', ic:'🛡️', label:'ประกัน' }
+];
+var CAL = { hide: {}, data: null };
+
+function calNowYm(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
+function calShift(ym, delta){
+  var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) - 1 + delta;
+  y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+  return y + '-' + ('0' + (m + 1)).slice(-2);
+}
+function calGo(delta){ S.calYm = delta === 0 ? calNowYm() : calShift(S.calYm || calNowYm(), delta); load(); }
+function calToggle(module){ CAL.hide[module] = !CAL.hide[module]; document.getElementById('view').innerHTML = ROUTES.calendar.render(CAL.data); labelCells(document.getElementById('view')); applyReadOnly(document.getElementById('view')); }
+function calShown(){ return (CAL.data.events || []).filter(function(e){ return !CAL.hide[e.module]; }); }
+function calStateLabel(s){ return s === 'done' ? 'เสร็จแล้ว' : (s === 'late' ? 'เลยกำหนด' : 'รอทำ'); }
+function calStateCls(s){ return s === 'done' ? 'ok' : (s === 'late' ? 'dgr' : 'info'); }
+
+ROUTES.calendar = {
+  load: function(){
+    if (!S.calYm) S.calYm = calNowYm();
+    return callApi('calendar.month', { ym: S.calYm }).then(function(d){
+      // หน้านี้ไม่ใช้ตัวเลือกปี — ส่งปีที่เลือกค้างไว้กลับไป ตัวเลือกจะได้ไม่ถูกรีเซ็ต
+      d.years = S.year !== 'all' ? [Number(S.year)] : [];
+      return d;
+    });
+  },
+  render: function(d){
+    CAL.data = d;
+    var ev = calShown();
+    var byDay = {};
+    ev.forEach(function(e){ (byDay[e.date] = byDay[e.date] || []).push(e); });
+    var late = ev.filter(function(e){ return e.state === 'late'; }).length;
+    var due  = ev.filter(function(e){ return e.state === 'due'; }).length;
+    var done = ev.filter(function(e){ return e.state === 'done'; }).length;
+
+    var head = '<div class="card mb12"><div class="card-b">' +
+      '<div class="row">' +
+        '<button class="btn icon" title="เดือนก่อน" aria-label="เดือนก่อน" onclick="calGo(-1)">◀</button>' +
+        '<h3 class="cal-title" id="calTitle">' + TH_MONTH_FULL[d.month - 1] + ' ' + esc(displayYear(d.year)) + '</h3>' +
+        '<button class="btn icon" title="เดือนถัดไป" aria-label="เดือนถัดไป" onclick="calGo(1)">▶</button>' +
+        (d.ym !== calNowYm() ? '<button class="btn sm" onclick="calGo(0)">กลับมาเดือนนี้</button>' : '') +
+        '<span class="sp"></span>' +
+        (late ? '<span class="b dgr">เลยกำหนด ' + late + '</span>' : '') +
+        '<span class="b info">รอทำ ' + due + '</span>' +
+        '<span class="b ok">เสร็จแล้ว ' + done + '</span>' +
+      '</div>' +
+      '<div class="chips mt12">' + CAL_KINDS.map(function(k){
+        var n = (d.events || []).filter(function(e){ return e.module === k.module; }).length;
+        return '<button class="chip ' + (CAL.hide[k.module] ? '' : 'on') + '" aria-pressed="' + (!CAL.hide[k.module]) + '" ' +
+          'onclick="calToggle(' + jsq(k.module) + ')">' + k.ic + ' ' + esc(k.label) + ' (' + n + ')</button>';
+      }).join('') + '</div>' +
+    '</div></div>';
+
+    // ตารางเดือน: เริ่มสัปดาห์วันอาทิตย์ตามปฏิทินไทย
+    var first = new Date(d.year, d.month - 1, 1).getDay();
+    var cells = '';
+    ['อา','จ','อ','พ','พฤ','ศ','ส'].forEach(function(w){ cells += '<div class="cal-wd">' + w + '</div>'; });
+    for (var i = 0; i < first; i++) cells += '<div class="cal-c off"></div>';
+    for (var day = 1; day <= d.days; day++) {
+      var iso = d.ym + '-' + ('0' + day).slice(-2);
+      var list = byDay[iso] || [];
+      var cls = 'cal-c' + (iso === d.today ? ' today' : '') + (list.length ? ' has' : '');
+      cells += '<button type="button" class="' + cls + '" onclick="openCalDay(' + jsq(iso) + ')" ' +
+        'aria-label="วันที่ ' + day + (list.length ? ' มี ' + list.length + ' รายการ' : '') + '">' +
+        '<span class="cal-n">' + day + '</span>' +
+        list.slice(0, 3).map(function(e){
+          return '<span class="cal-ev ' + calStateCls(e.state) + '">' + e.icon + ' ' + esc(e.title) + '</span>';
+        }).join('') +
+        (list.length > 3 ? '<span class="cal-more">+' + (list.length - 3) + ' รายการ</span>' : '') +
+        '<span class="cal-dots">' + list.slice(0, 5).map(function(e){
+          return '<i class="' + calStateCls(e.state) + '"></i>';
+        }).join('') + (list.length > 5 ? '<em>+' + (list.length - 5) + '</em>' : '') + '</span>' +
+      '</button>';
+    }
+    for (var t = (first + d.days) % 7; t > 0 && t < 7; t++) cells += '<div class="cal-c off"></div>';   // เติมท้ายเดือนให้เต็มแถว
+    var grid = '<div class="card mb12"><div class="card-b flush"><div class="cal">' + cells + '</div></div></div>';
+
+    // รายการทั้งเดือน เรียงตามวัน — บนมือถือนี่คือที่อ่านรายละเอียดหลัก
+    var days = Object.keys(byDay).sort();
+    var agenda = card('📋 รายการของเดือนนี้ (' + ev.length + ')',
+      days.length ? '<div class="cal-agenda">' + days.map(function(iso){
+        return '<div class="cal-day' + (iso === d.today ? ' today' : '') + '">' +
+          '<div class="cal-date">' + thDate(iso) + (iso === d.today ? ' <span class="b info">วันนี้</span>' : '') + '</div>' +
+          byDay[iso].map(calRow).join('') + '</div>';
+      }).join('') + '</div>'
+      : emptyBox('เดือนนี้ไม่มีรายการ' + (ev.length !== (d.events || []).length ? 'ในประเภทที่เลือก' : ''),
+          '<button class="btn pri" onclick="openCalDay(' + jsq(d.ym + '-01') + ')">+ เพิ่มนัด</button>'),
+      '', true);
+
+    return head + grid + agenda;
+  }
+};
+
+function calRow(e){
+  return '<button type="button" class="cal-row" onclick="calOpen(' + jsq(e.module) + ',' + jsq(e.date) + ',' + jsq(e.state) + ')">' +
+    '<span class="ic">' + e.icon + '</span>' +
+    '<span class="tx"><span class="tt">' + esc(e.title) + '</span>' +
+      (e.detail ? '<span class="dd">' + esc(e.detail) + '</span>' : '') + '</span>' +
+    '<span class="b ' + calStateCls(e.state) + '">' + calStateLabel(e.state) + '</span>' +
+  '</button>';
+}
+
+/** กดที่วัน: ดูรายการของวันนั้น และเพิ่มนัดใหม่โดยใส่วันที่ให้เลย */
+function openCalDay(iso){
+  var list = calShown().filter(function(e){ return e.date === iso; });
+  openModal('🗓️ ' + thDate(iso),
+    (list.length ? '<div class="cal-agenda">' + list.map(calRow).join('') + '</div>'
+                 : '<div class="empty" style="padding:18px">ยังไม่มีรายการในวันนี้</div>'),
+    '<button class="btn sm" onclick="closeModal();formRepair({bookDate:' + jsq(iso) + ',reportDate:today(),priority:\'ปกติ\'})">+ นัดซ่อมห้อง</button>' +
+    '<button class="btn sm" onclick="closeModal();formAc({bookDate:' + jsq(iso) + '})">+ นัดล้างแอร์</button>' +
+    '<button class="btn sm" onclick="closeModal();formBuilding({bookDate:' + jsq(iso) + '})">+ นัดงานตึก</button>' +
+    '<button class="btn" onclick="closeModal()">ปิด</button>');
+}
+
+/** กดที่รายการ: ไปหน้าของงานนั้น ในปีที่จะเห็นงานนั้นแน่ ๆ */
+function calOpen(module, date, state){
+  closeModal();
+  var cur = String(new Date().getFullYear());
+  // งานที่ยังไม่เสร็จเห็นในปีปัจจุบันเสมอ · งานที่เสร็จแล้วและรายการโอนอยู่ในปีของมันเอง · ประกันอยู่ในปีที่ซื้อ จึงดูทุกปี
+  S.year = module === 'purchases' ? 'all' : ((module === 'debt' || state === 'done') ? String(date).slice(0, 4) : cur);
+  go(module === 'debt' ? 'debtMain' : module);
+}
+
 /** งานที่ยังไม่ปิดของปีอื่น ซึ่งแสดงร่วมอยู่ในปีที่กำลังดู — ติดป้ายบอกว่าเป็นของปีไหน */
 function otherYearTag(x){
   return x && x.otherYear ? ' <span class="b info" title="งานนี้ยังไม่ปิด จึงแสดงในปีนี้ด้วย">ปี ' + esc(displayYear(x.otherYear)) + '</span>' : '';
@@ -4512,7 +4693,11 @@ function ocrApplyAll(id, onlyEmpty){
 
 function roomOptions(){ return S.boot ? S.boot.rooms : []; }
 function opt(name){ return (S.boot && S.boot.schema[name]) || []; }
-function today(){ return new Date().toISOString().slice(0,10); }
+/** วันนี้ตามเวลาในเครื่อง — ห้ามใช้ toISOString() เพราะเป็นเวลา UTC ช่วงเที่ยงคืน–7 โมงเช้าเวลาไทยจะได้วันที่ของเมื่อวาน */
+function today(){
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
 
 /* ============================================================
    ฟอร์ม: ก้อนหนี้

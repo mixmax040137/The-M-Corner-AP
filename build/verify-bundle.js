@@ -26,7 +26,7 @@ check('สร้างครบ 13 ชีต', Object.keys(SHEETS).length === 13
 check('รายการซื้อ 94 รายการ', readRows_(SHEETS.PURCHASES).length === 94);
 check('ยอดชำระหนี้ 5,049,654', Math.round(debtSummary_('หนี้หลัก', 'all').paid) === 5049654);
 check('รายรับ-รายจ่าย 32 รายการ', readRows_(SHEETS.FINANCE).length === 32);
-check('มีคำสั่ง API ครบ 77 คำสั่ง', Object.keys(API_ROUTES).length === 77);
+check('มีคำสั่ง API ครบ 78 คำสั่ง', Object.keys(API_ROUTES).length === 78);
 check('มีบัญชีผู้ดูแลคนแรกให้ล็อกอิน', !!findUser_('admin'), true);
 const adminKey = getSetting_('admin_token', ''), viewKey = getSetting_('view_token', '');
 check('มีกุญแจผู้ดูแลและกุญแจแชร์', !!(adminKey && viewKey && adminKey !== viewKey), true);
@@ -108,6 +108,9 @@ console.log('\n── build/AllInOne.gs ──');
   setSetting_('admin_code', SECRET_PROBE + '-ADMIN');
   put('settings.list', {}); put('auth.devices', {}); put('user.list', {});
   put('app.alerts', {});
+  // ปฏิทินงานรวม: เตรียมไว้ 2 ปีรอบเดือนนี้ ให้กดเลื่อนเดือนในตัวอย่างได้
+  for (let k = -12; k <= 14; k++) { const d = new Date(new Date().getFullYear(), new Date().getMonth() + k, 1);
+    put('calendar.month', { ym: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') }); }
 
   // auth.me ต้องตอบว่าล็อกอินแล้ว ไม่งั้นหน้าเว็บจะค้างอยู่ที่หน้าล็อกอิน
   // คำตอบปลอมของคำสั่งที่ "บันทึกข้อมูล" ไว้ทดสอบว่าหน้าเว็บจดรุ่นข้อมูลใหม่หลังบันทึก
@@ -197,9 +200,9 @@ console.log('\n── build/AllInOne.gs ──');
   check('canEdit() คืน true สำหรับผู้ดูแล', vars.edit === true, 'ได้ ' + JSON.stringify(vars.edit));
   check('CSS ถูกฝังมาด้วย', await pg.evaluate(() => getComputedStyle(document.querySelector('.nav')).width) !== 'auto');
   const navCount = await pg.$$eval('.nav-item', e => e.length);
-  check('เมนู 11 หน้า', navCount === 11, 'ได้ ' + navCount);
+  check('เมนู 12 หน้า', navCount === 12, 'ได้ ' + navCount);
 
-  for (const p of ['dashboard','debtMain','debtSub','purchases','finance','ac','repairs','building','rooms','reports','settings']) {
+  for (const p of ['dashboard','calendar','debtMain','debtSub','purchases','finance','ac','repairs','building','rooms','reports','settings']) {
     await pg.evaluate(x => go(x), p);
     await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
     const t = await pg.$eval('#view', e => e.innerText);
@@ -1036,6 +1039,67 @@ console.log('\n── build/AllInOne.gs ──');
     check('ผังห้อง: ห้อง 211 ขึ้นว่ามีงานค้าง (งานนัดปีหน้า)', /ค้าง/.test(cross.card), cross.card);
     check('ตารางปีนี้มีงานที่นัดปีหน้า', cross.rows === 1, JSON.stringify(cross));
     check('แถวนั้นมีป้ายบอกว่าเป็นของปีไหน', cross.tag, JSON.stringify(cross));
+
+    // ---- ปฏิทินงานรวม ----
+    await pg.evaluate(() => { S.calYm = ''; go('calendar'); });
+    await pg.waitForFunction(() => !!document.querySelector('.cal'), { timeout: 5000 });
+    const calNow = await pg.evaluate(() => ({
+      title: document.getElementById('calTitle').textContent,
+      days: document.querySelectorAll('.cal-c:not(.off)').length,
+      today: document.querySelectorAll('.cal-c.today').length,
+      evs: document.querySelectorAll('.cal-ev').length,
+      rows: document.querySelectorAll('.cal-agenda .cal-row').length,
+      expectDays: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(),
+      total: CAL.data.events.length
+    }));
+    check('ปฏิทิน: จำนวนช่องวันตรงกับเดือนจริง', calNow.days === calNow.expectDays, JSON.stringify(calNow));
+    check('ปฏิทิน: เน้นวันนี้ไว้หนึ่งช่อง', calNow.today === 1);
+    check('ปฏิทิน: รายการข้างล่างครบทุกเหตุการณ์ของเดือน', calNow.rows === calNow.total && calNow.total > 0, JSON.stringify(calNow));
+    // เลื่อนไปเดือน ม.ค. ปีหน้า ต้องเห็นนัดซ่อมห้อง 211 โดยไม่ต้องแตะตัวเลือกปี
+    const steps = await pg.evaluate(() => 12 - new Date().getMonth());
+    for (let i = 0; i < steps; i++) {
+      await pg.evaluate(() => calGo(1));
+      await pg.waitForFunction(() => !/กำลังโหลดข้อมูล/.test(document.getElementById('view').innerText), { timeout: 5000 });
+    }
+    const jan = await pg.evaluate(() => ({
+      title: document.getElementById('calTitle').textContent,
+      text: document.getElementById('view').innerText,
+      back: /กลับมาเดือนนี้/.test(document.getElementById('view').innerText)
+    }));
+    check('ปฏิทิน: เลื่อนข้ามปีได้ต่อเนื่อง', /มกราคม/.test(jan.title) && jan.title.indexOf(String(new Date().getFullYear() + 1)) >= 0, jan.title);
+    check('ปฏิทิน: เห็นนัดซ่อมห้อง 211 ของปีหน้า', /นัดซ่อม ห้อง 211/.test(jan.text));
+    check('ปฏิทิน: มีปุ่มกลับมาเดือนนี้', jan.back);
+    // ตัวกรองประเภทงาน
+    const filtered = await pg.evaluate(() => { calToggle('repairs'); return /นัดซ่อม ห้อง 211/.test(document.querySelector('.cal-agenda') ? document.querySelector('.cal-agenda').innerText : ''); });
+    check('ปฏิทิน: ปิดประเภท "ซ่อมห้อง" แล้วงานซ่อมหายจากรายการ', filtered === false);
+    await pg.evaluate(() => calToggle('repairs'));
+    // กดที่วัน: เห็นรายการของวันนั้น และปุ่มเพิ่มนัดใส่วันที่ให้เลย
+    const dayIso = (new Date().getFullYear() + 1) + '-01-01';
+    await pg.evaluate(iso => openCalDay(iso), dayIso);
+    const dayModal = await pg.evaluate(() => ({
+      title: document.querySelector('.modal-h h3').textContent,
+      rows: document.querySelectorAll('.modal .cal-row').length,
+      add: document.querySelectorAll('.modal-f [onclick*="formRepair"]').length
+    }));
+    check('ปฏิทิน: กดวันแล้วเห็นรายการของวันนั้น', dayModal.rows >= 1, JSON.stringify(dayModal));
+    await pg.evaluate(() => document.querySelector('.modal-f [onclick*="formRepair"]').click());
+    await pg.waitForTimeout(200);
+    check('ปฏิทิน: ปุ่มเพิ่มนัดซ่อมใส่วันที่ของวันนั้นให้เลย',
+      await pg.evaluate(() => (document.getElementById('f_bookDate') || {}).value) === dayIso);
+    check('ปฏิทิน: เป็นฟอร์มเพิ่มใหม่ ไม่ใช่แก้ของเดิม', await pg.evaluate(() => !FORM.rec));
+    await pg.evaluate(() => closeModal());
+    // กดรายการแล้วไปหน้างานนั้น
+    await pg.evaluate(() => calOpen('repairs', CAL.data.ym + '-01', 'due'));
+    await pg.waitForTimeout(400);
+    check('ปฏิทิน: กดรายการแล้วไปหน้างานซ่อม ในปีปัจจุบัน',
+      await pg.evaluate(() => S.page === 'repairs' && S.year === String(new Date().getFullYear())));
+    await pg.evaluate(() => { S.calYm = ''; go('calendar'); });
+    await pg.waitForFunction(() => !!document.querySelector('.cal'), { timeout: 5000 });
+    await pg.screenshot({ path: OUT + '/bundle-calendar.png' });
+    // ช่องวันที่ในฟอร์มตั้งต้นเป็น "วันนี้" ตามเวลาในเครื่อง ไม่ใช่ UTC
+    check('today() ใช้วันที่ตามเวลาในเครื่อง', await pg.evaluate(() => {
+      var d = new Date(); return today() === d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    }));
 
     // กดปุ่ม "เพิ่มรายการ" ต้องได้ฟอร์มเปล่าและไม่มีรหัสเดิม
     await pg.evaluate(() => go('finance'));

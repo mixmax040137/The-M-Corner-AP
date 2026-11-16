@@ -414,7 +414,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 77);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 78);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);
@@ -1797,6 +1797,77 @@ console.log('\n── 35. รอบตรวจ bug: นัดหลายห้
   check('สำเนาไม่มีแผ่น Sessions (รหัสการเข้าใช้งาน)', names.indexOf(SHEETS.SESSIONS), -1);
   check('แผ่นเปล่าที่ติดมากับไฟล์ใหม่ถูกลบ', names.indexOf('Sheet1'), -1);
   saveDebt_(Object.assign({}, readRows_(SHEETS.DEBTS).find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0), { alsoIn: '' }));
+}
+
+console.log('\n── 36. ปฏิทินงานรวม ──');
+{
+  const admKey = getSetting_('admin_token', '');
+  const today = todayIso_(), Y = new Date().getFullYear();
+  const thisYm = today.slice(0, 7), nextJan = (Y + 1) + '-01';
+  const cal = ym => api('calendar.month', { _key: admKey, ym: ym }).data;
+  const has = (c, mod, re, state) => c.events.some(e => e.module === mod && re.test(e.title) && (!state || e.state === state));
+
+  const c0 = cal(thisYm);
+  check('เรียกปฏิทินเดือนนี้ได้', c0.ym, thisYm);
+  check('บอกจำนวนวันของเดือนถูก', c0.days, new Date(Y, Number(thisYm.slice(5)), 0).getDate());
+  check('ทุกเหตุการณ์อยู่ในเดือนที่ขอ', c0.events.every(e => e.date.slice(0, 7) === thisYm), true);
+  check('ทุกเหตุการณ์มีสถานะที่รู้จัก', c0.events.every(e => ['done', 'due', 'late'].indexOf(e.state) >= 0), true);
+  check('เรียงตามวันที่', c0.events.every((e, i, a) => i === 0 || a[i - 1].date <= e.date), true);
+  check('เดือนที่ส่งมามั่ว ๆ ใช้เดือนนี้แทน', cal('2026-13').ym, thisYm);
+  check('ไม่ส่งเดือน ใช้เดือนนี้', cal('').ym, thisYm);
+
+  // งานที่นัดปีหน้า เห็นในปฏิทินเดือน ม.ค. ปีหน้า โดยไม่ต้องสลับปี
+  const fix = api('repair.save', { _key: admKey, record: { room: '211', bookDate: nextJan + '-01', items: '211 ย้ายออก | ทำความสะอาด' } }).data;
+  const acb = api('ac.save', { _key: admKey, record: { room: '212', bookDate: nextJan + '-05' } }).data;
+  const bld = api('building.save', { _key: admKey, record: { title: 'ล้างถังเก็บน้ำ', zone: 'อื่น ๆ', bookDate: nextJan + '-10' } }).data;
+  const cj = cal(nextJan);
+  check('นัดซ่อมปีหน้าขึ้นในปฏิทิน', has(cj, 'repairs', /นัดซ่อม ห้อง 211/, 'due'), true);
+  check('รายละเอียดงานซ่อมอ่านง่าย (ไม่มี [ ] ติดมา)', (cj.events.find(e => e.ref === fix.id) || {}).detail, '211 ย้ายออก');
+  check('นัดล้างแอร์ปีหน้าขึ้นในปฏิทิน', has(cj, 'ac', /นัดล้างแอร์ ห้อง 212/, 'due'), true);
+  check('นัดงานตึกปีหน้าขึ้นในปฏิทิน', has(cj, 'building', /ล้างถังเก็บน้ำ/, 'due'), true);
+  check('งานของเดือนอื่นไม่ปนมาเดือนนี้', c0.events.some(e => e.ref === fix.id), false);
+
+  // ทำเสร็จแล้ว ย้ายไปอยู่วันที่ทำจริง และขึ้นว่าเสร็จ
+  api('repair.save', { _key: admKey, record: Object.assign({}, findRow_(SHEETS.ROOM_REPAIRS, fix.id), { status: 'เสร็จสิ้น', repairDate: nextJan + '-03' }) });
+  const done = cal(nextJan).events.find(e => e.ref === fix.id);
+  check('ซ่อมเสร็จ: ย้ายไปวันที่ซ่อมจริง และขึ้นว่าเสร็จ', done && done.date + ' ' + done.state, nextJan + '-03 done');
+  // ยกเลิกแล้วไม่ขึ้น
+  api('ac.setStatus', { _key: admKey, id: acb.id, status: 'ยกเลิก' });
+  check('นัดที่ยกเลิกแล้วไม่ขึ้นในปฏิทิน', cal(nextJan).events.some(e => e.ref === acb.id), false);
+
+  // นัดที่เลยวันแล้วยังไม่ได้ทำ = เลยกำหนด
+  const lateJob = api('repair.save', { _key: admKey, record: { room: '214', bookDate: thisYm + '-01', items: 'เลยนัดแล้ว' } }).data;
+  if (today > thisYm + '-01') check('นัดที่เลยวันแล้วยังไม่ทำ ขึ้นว่าเลยกำหนด', cal(thisYm).events.find(e => e.ref === lateJob.id).state, 'late');
+
+  // หนี้: วันครบกำหนดผ่อนของก้อนที่ยังไม่ปิด ขึ้นทุกเดือนตั้งแต่เดือนนี้ · ก้อนที่จ่ายครบไม่ขึ้น
+  check('วันครบกำหนดผ่อนค่าก่อสร้างขึ้นในเดือนหน้า ๆ', has(cj, 'debt', /ครบกำหนดผ่อน: ค่าก่อสร้าง/), true);
+  check('ก้อนที่จ่ายครบแล้ว (ที่ดิน) ไม่ขึ้นให้ผ่อนอีก', has(cj, 'debt', /ครบกำหนดผ่อน: ซื้อที่ดิน/), false);
+  check('เดือนที่ผ่านไปแล้วไม่สร้างกำหนดผ่อนย้อนหลัง', has(cal((Y - 1) + '-03'), 'debt', /ครบกำหนดผ่อน/), false);
+  const due = cal(thisYm).events.find(e => /ครบกำหนดผ่อน: ค่าก่อสร้าง/.test(e.title));
+  check('วันครบกำหนดตรงกับวันที่ตั้งไว้ในก้อนหนี้ (วันที่ 20)', due && due.date, thisYm + '-20');
+  const build = readRows_(SHEETS.DEBTS).find(d => d.title.indexOf('ค่าก่อสร้าง') >= 0);
+  const pay = saveDebtPayment_({ ledger: 'หนี้หลัก', debtId: build.id, payDate: thisYm + '-15', principal: 80000 });
+  const c1 = cal(thisYm);
+  check('โอนของเดือนนี้แล้ว: วันครบกำหนดขึ้นว่าเรียบร้อย', c1.events.find(e => /ครบกำหนดผ่อน: ค่าก่อสร้าง/.test(e.title)).state, 'done');
+  check('รายการที่โอนจริงขึ้นในวันที่โอน', c1.events.some(e => e.ref === pay.id && e.date === thisYm + '-15' && e.state === 'done'), true);
+  deleteDebtPayment_(pay.id);
+  // เดือนที่มี 28–30 วัน กำหนดวันที่ 31 ต้องไม่หลุดเดือน
+  const d31 = saveDebt_({ ledger: 'หนี้รอง', title: 'ทดสอบสิ้นเดือน', principal: 1000, dueDay: 31, status: 'กำลังผ่อน' });
+  const feb = cal((Y + 1) + '-02');
+  check('กำหนดวันที่ 31 ในเดือน ก.พ. เลื่อนมาวันสุดท้ายของเดือน',
+    (feb.events.find(e => /ทดสอบสิ้นเดือน/.test(e.title)) || {}).date, (Y + 1) + '-02-' + feb.days);
+  deleteDebt_(d31.id);
+
+  // สิทธิ์: คนดูอย่างเดียวดูได้ ยังไม่ล็อกอินดูไม่ได้
+  setSetting_('share_link_enabled', 'เปิด');
+  check('ผู้ที่เปิดดูอย่างเดียวดูปฏิทินได้', api('calendar.month', { _key: getSetting_('view_token', ''), ym: thisYm }).ok, true);
+  setSetting_('share_link_enabled', 'ปิด');
+  const o = global.Session.getActiveUser; global.Session.getActiveUser = () => ({ getEmail: () => '' });
+  check('ยังไม่ล็อกอิน ดูปฏิทินไม่ได้', api('calendar.month', { ym: thisYm }).ok, false);
+  global.Session.getActiveUser = o;
+
+  [fix.id, lateJob.id].forEach(id => api('repair.delete', { _key: admKey, id: id }));
+  api('ac.delete', { _key: admKey, id: acb.id }); api('building.delete', { _key: admKey, id: bld.id });
 }
 
 console.log('\n════════════════════════════');

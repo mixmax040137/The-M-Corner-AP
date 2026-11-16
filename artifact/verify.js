@@ -56,7 +56,7 @@ const check = (n, ok, extra) => { if (ok) { pass++; console.log('  ✓ ' + n); }
   check('สถานะ = พร้อมบันทึก (ไม่ใช่อ่านอย่างเดียว)',
     !(await g1.pg.$eval('#saveState', e => e.textContent)).includes('ดูอย่างเดียว'));
 
-  const pages = ['dashboard','debtMain','debtSub','purchases','finance','ac','repairs','building','rooms','reports','settings'];
+  const pages = ['dashboard','calendar','debtMain','debtSub','purchases','finance','ac','repairs','building','rooms','reports','settings'];
   for (const p of pages) {
     await g1.pg.evaluate(x => go(x), p);
     await g1.pg.waitForTimeout(450);

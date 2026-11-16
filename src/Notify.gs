@@ -112,9 +112,6 @@ function pushLine_(text) {
   }
 }
 
-function fmtMoney_(n) {
-  return Utilities.formatString('%s', (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }));
-}
 
 function escapeHtml_(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

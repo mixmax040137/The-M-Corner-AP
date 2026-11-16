@@ -438,6 +438,11 @@ function inYearOrOpen_(rows, year, yearOfRow, isOpen) {
   });
 }
 
+/** จำนวนเงินแบบมีจุลภาค ไม่มีทศนิยม — ใช้ในข้อความ (อีเมลสรุป ปฏิทิน) */
+function fmtMoney_(n) {
+  return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
 function toIsoDate_(v) {
   var d = toDate_(v);
   if (!d) return '';

@@ -97,6 +97,7 @@ var API_ROUTES = {
   'app.dashboard': function (p) { return dashboard_(p.year); },
 
   /** เบา — หน้าเว็บเรียกบ่อยเพื่ออัปเดตตัวเลขบนเมนูและกล่องแจ้งเตือน */
+  'calendar.month': function (p) { return calendarMonth_(p.ym); },
   'app.alerts': function (p) { return alertCenter_(p); },
   // ไม่ได้เขียนชีต (เก็บใน Script Properties) จึงไม่ต้องเข้าคิวเขียน และไม่ทำให้เครื่องอื่นโหลดใหม่
   'app.alertsSeen': function (p) { return markAlertsSeen_(p); },

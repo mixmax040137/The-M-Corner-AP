@@ -683,7 +683,11 @@ function ocrApplyAll(id, onlyEmpty){
 
 function roomOptions(){ return S.boot ? S.boot.rooms : []; }
 function opt(name){ return (S.boot && S.boot.schema[name]) || []; }
-function today(){ return new Date().toISOString().slice(0,10); }
+/** วันนี้ตามเวลาในเครื่อง — ห้ามใช้ toISOString() เพราะเป็นเวลา UTC ช่วงเที่ยงคืน–7 โมงเช้าเวลาไทยจะได้วันที่ของเมื่อวาน */
+function today(){
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
 
 /* ============================================================
    ฟอร์ม: ก้อนหนี้

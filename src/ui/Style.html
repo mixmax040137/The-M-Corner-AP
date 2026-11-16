@@ -783,6 +783,50 @@ button.sync-pill:active{transform:translateY(1px)}
   .st-sel{padding:7px 26px 7px 12px;font-size:13px}
 }
 
+/* ============ ปฏิทินงานรวม ============ */
+.cal-title{margin:0;font-size:17px;font-family:var(--font-display);min-width:170px;text-align:center}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--line-2);border-radius:var(--r);overflow:hidden}
+.cal-wd{background:var(--surface-2);padding:7px 4px;text-align:center;font-size:11.5px;font-weight:600;color:var(--muted)}
+.cal-c{background:var(--surface);border:0;min-height:104px;padding:6px 6px 7px;text-align:left;font:inherit;color:inherit;
+  display:flex;flex-direction:column;gap:3px;cursor:pointer;min-width:0}
+.cal-c.off{background:var(--surface-2);cursor:default}
+.cal-c:not(.off):hover{background:var(--brand-soft)}
+.cal-c:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.cal-n{font-size:12.5px;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums;
+  width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:99px}
+.cal-c.today .cal-n{background:var(--brand);color:var(--brand-ink)}
+.cal-ev{display:block;font-size:11px;line-height:1.35;padding:2px 6px;border-radius:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.cal-ev.ok{background:var(--ok-soft);color:var(--ok)}
+.cal-ev.info{background:var(--info-soft);color:var(--info)}
+.cal-ev.dgr{background:var(--danger-soft);color:var(--danger);font-weight:600}
+.cal-more{font-size:10.5px;color:var(--muted);padding-left:4px}
+.cal-dots{display:none;gap:3px;align-items:center;flex-wrap:wrap}
+.cal-dots i{width:7px;height:7px;border-radius:99px;display:inline-block}
+.cal-dots i.ok{background:var(--ok)} .cal-dots i.info{background:var(--info)} .cal-dots i.dgr{background:var(--danger)}
+.cal-dots em{font-style:normal;font-size:10px;color:var(--muted)}
+.cal-agenda{display:flex;flex-direction:column}
+.cal-day{padding:10px 14px;border-bottom:1px solid var(--line-2)}
+.cal-day:last-child{border-bottom:0}
+.cal-day.today{background:var(--surface-2)}
+.cal-date{font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.cal-row{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:0;border:0;
+  padding:6px 4px;border-radius:var(--r-sm);cursor:pointer;font:inherit;color:inherit;min-width:0}
+.cal-row:hover{background:var(--brand-soft)}
+.cal-row .ic{flex:none;width:22px;text-align:center}
+.cal-row .tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.cal-row .tt{font-size:13px;font-weight:500;overflow-wrap:anywhere}
+.cal-row .dd{font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.cal-row .b{flex:none}
+@media (max-width:760px){
+  /* จอแคบ: ช่องวันเหลือเลขวันกับจุดสี รายละเอียดอ่านจากรายการข้างล่างหรือแตะที่วัน */
+  .cal-c{min-height:54px;padding:4px 3px;align-items:center}
+  .cal-ev,.cal-more{display:none}
+  .cal-dots{display:flex;justify-content:center}
+  .cal-title{min-width:0;flex:1;font-size:15.5px}
+  .cal-day{padding:9px 10px}
+}
+
 /* ============ กราฟ ============ ------------------------------------
    เส้นตารางกับแกนเป็นเส้นบางทึบ ไม่ใช้เส้นประ (เส้นประอ่านเหมือนเส้นคาดการณ์)
    แท่งหนาไม่เกิน 24px ปลายด้านข้อมูลมนเล็กน้อย ด้านฐานเหลี่ยม

@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-11-16 04:07 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-11-16 04:25 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -22,7 +22,7 @@
 var APP = {
   NAME: 'The M Corner AP',
   SUBTITLE: 'ระบบบริหารหอพัก',
-  VERSION: '1.8.1',
+  VERSION: '1.9.0',
   TIMEZONE: 'Asia/Bangkok',
   CURRENCY: 'THB'
 };
@@ -779,6 +779,11 @@ function inYearOrOpen_(rows, year, yearOfRow, isOpen) {
     if (viewingNow && isOpen(r)) { r.otherYear = y; return true; }
     return false;
   });
+}
+
+/** จำนวนเงินแบบมีจุลภาค ไม่มีทศนิยม — ใช้ในข้อความ (อีเมลสรุป ปฏิทิน) */
+function fmtMoney_(n) {
+  return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 function toIsoDate_(v) {
@@ -5978,6 +5983,109 @@ function costPerRoom_(year) {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/*  ปฏิทินงานรวม                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * เหตุการณ์ทั้งหมดของเดือนหนึ่ง รวมทุกโมดูล — ไม่ผูกกับตัวเลือกปีบนแถบหัว
+ * เลื่อนข้ามปีได้ต่อเนื่อง งานที่นัดไว้ปีหน้าจึงเห็นได้โดยไม่ต้องสลับปี
+ *
+ * state: done = ทำแล้ว · due = ยังไม่ถึง/ถึงกำหนดวันนี้ · late = เลยวันแล้วยังไม่ได้ทำ
+ *
+ * @param {string} ym 'YYYY-MM' (ว่าง = เดือนนี้)
+ */
+function calendarMonth_(ym) {
+  var today = todayIso_();
+  var m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12 || Number(m[1]) < 2000 || Number(m[1]) > 2100) {
+    ym = today.slice(0, 7);
+    m = ym.match(/^(\d{4})-(\d{2})$/);
+  }
+  var y = Number(m[1]), mo = Number(m[2]);
+  var lastDay = new Date(y, mo, 0).getDate();
+  var events = [];
+
+  function inMonth(d) { return !!d && String(d).slice(0, 7) === ym; }
+  function add(date, module, icon, title, detail, done, ref) {
+    if (!inMonth(date)) return;
+    events.push({
+      date: String(date).slice(0, 10), module: module, icon: icon,
+      title: title, detail: detail || '', ref: ref || '',
+      state: done ? 'done' : (String(date).slice(0, 10) < today ? 'late' : 'due')
+    });
+  }
+
+  // งานซ่อมห้อง: วันที่ซ่อมจริงถ้าเสร็จแล้ว ไม่งั้นวันนัด
+  readRows_(SHEETS.ROOM_REPAIRS).forEach(function (r) {
+    if (r.status === 'ยกเลิก') return;
+    var detail = parseTodo_(r.items).map(function (t) { return t.name; }).join(' · ').slice(0, 90);
+    if (!repairOpen_(r)) add(r.repairDate || r.bookDate, 'repairs', '🔧', 'ซ่อม ห้อง ' + r.room, detail, true, r.id);
+    else add(r.bookDate, 'repairs', '🔧', 'นัดซ่อม ห้อง ' + r.room, detail, false, r.id);
+  });
+
+  // ล้างแอร์: ล้างแล้ว / นัดไว้ / ครบรอบที่ยังไม่ได้นัด
+  var booked = {};
+  readRows_(SHEETS.AC_SERVICE).forEach(function (r) {
+    if (r.status === 'ยกเลิก') return;
+    if (r.serviceDate) add(r.serviceDate, 'ac', '❄️', 'ล้างแอร์ ห้อง ' + r.room, r.technician, true, r.id);
+    else if (r.bookDate) {
+      booked[String(r.room)] = true;
+      add(r.bookDate, 'ac', '❄️', 'นัดล้างแอร์ ห้อง ' + r.room, r.technician, false, r.id);
+    }
+  });
+  acMatrix_('all').rooms.forEach(function (r) {
+    if (!r.nextDue || booked[String(r.room)]) return;       // นัดไว้แล้วไม่ต้องเตือนซ้ำ
+    add(r.nextDue, 'ac', '❄️', 'ครบรอบล้างแอร์ ห้อง ' + r.room, 'ล้างล่าสุด ' + thDate_(r.lastService), false, r.room);
+  });
+
+  // งานตึก: เสร็จแล้ว / นัดหรือเริ่ม / ครบกำหนดรอบถัดไป
+  readRows_(SHEETS.BUILDING_REPAIRS).forEach(function (r) {
+    if (r.status === 'ยกเลิก') return;
+    var open = r.status !== 'เสร็จสิ้น';
+    if (!open) add(r.endDate || r.startDate || r.bookDate, 'building', '🏢', r.title, r.zone, true, r.id);
+    else add(r.bookDate || r.startDate, 'building', '🏢', 'นัดงานตึก: ' + r.title, r.zone, false, r.id);
+    if (r.nextDue) add(r.nextDue, 'building', '🏢', 'ครบรอบ: ' + r.title, r.zone, false, r.id);
+  });
+
+  // หนี้: รายการที่โอนจริง + วันครบกำหนดผ่อนของก้อนที่ยังไม่ปิด (เดือนนี้เป็นต้นไป)
+  var debts = readRows_(SHEETS.DEBTS);
+  var pays = listDebtPayments_(null, 'all');
+  var g = debtGraph_(debts, pays);
+  var paidThisMonth = {};
+  pays.forEach(function (p) {
+    if (!inMonth(p.payDate)) return;
+    (p._toDebts || []).forEach(function (id) { paidThisMonth[id] = true; });
+    if (isAdjustment_(p)) return;
+    add(p.payDate, 'debt', '💰', 'โอนใช้หนี้ ' + fmtMoney_(p.amount) + ' บาท',
+      p.installment ? 'งวด ' + p.installment : '', true, p.id);
+  });
+  if (ym >= today.slice(0, 7)) {
+    debts.forEach(function (d) {
+      var day = toNumber_(d.dueDay);
+      if (!day || d.status === 'ปิดหนี้แล้ว' || d.status === 'พักชำระ') return;
+      var principal = toNumber_(d.principal) || 0;
+      if (principal > 0 && g.paidOf(d).principal >= principal - 0.005) return;   // ชำระครบแล้ว
+      var date = ym + '-' + ('0' + Math.min(Math.max(1, day), lastDay)).slice(-2);
+      add(date, 'debt', '💰', 'ครบกำหนดผ่อน: ' + d.title,
+        d.planPerMonth ? 'แผนผ่อน ' + fmtMoney_(d.planPerMonth) + ' บาท' : '', !!paidThisMonth[String(d.id)], d.id);
+    });
+  }
+
+  // ประกันหมดอายุ
+  readRows_(SHEETS.PURCHASES).forEach(function (p) {
+    var w = warrantyState_(p, today);
+    if (!w.has || !w.end) return;
+    add(w.end, 'purchases', '🛡️', 'ประกันหมด: ' + String(p.item).slice(0, 50), p.vendor, w.end < today, p.id);
+  });
+
+  var rank = { late: 0, due: 1, done: 2 };
+  events.sort(function (a, b) {
+    return a.date.localeCompare(b.date) || rank[a.state] - rank[b.state] || a.module.localeCompare(b.module);
+  });
+  return { ym: ym, year: y, month: mo, days: lastDay, today: today, events: events };
+}
+
 
 /* ══════════════════════════════════════════════════════════════
    Api.gs
@@ -6082,6 +6190,7 @@ var API_ROUTES = {
   'app.dashboard': function (p) { return dashboard_(p.year); },
 
   /** เบา — หน้าเว็บเรียกบ่อยเพื่ออัปเดตตัวเลขบนเมนูและกล่องแจ้งเตือน */
+  'calendar.month': function (p) { return calendarMonth_(p.ym); },
   'app.alerts': function (p) { return alertCenter_(p); },
   // ไม่ได้เขียนชีต (เก็บใน Script Properties) จึงไม่ต้องเข้าคิวเขียน และไม่ทำให้เครื่องอื่นโหลดใหม่
   'app.alertsSeen': function (p) { return markAlertsSeen_(p); },
@@ -6354,9 +6463,6 @@ function pushLine_(text) {
   }
 }
 
-function fmtMoney_(n) {
-  return Utilities.formatString('%s', (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }));
-}
 
 function escapeHtml_(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

@@ -1215,6 +1215,142 @@ function roomFloors(rooms, decorate){
 }
 
 /** ใส่ object ลงใน onclick attribute ได้อย่างปลอดภัย */
+/* ============================================================
+   ปฏิทินงานรวม
+   ------------------------------------------------------------
+   เดือนที่ดูอยู่เก็บแยกจากตัวเลือกปีบนแถบหัว (S.calYm) เลื่อนข้ามปีได้ต่อเนื่อง
+   จอกว้าง: ตารางเดือน มีชื่องานในช่องวัน · จอแคบ: ช่องวันเหลือจุดสี รายละเอียดอยู่ในรายการข้างล่าง
+   (โครง HTML ชุดเดียวกัน สลับด้วย CSS)
+   ============================================================ */
+var TH_MONTH_FULL = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+                     'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+var CAL_KINDS = [
+  { module:'repairs',   ic:'🔧', label:'ซ่อมห้อง' },
+  { module:'ac',        ic:'❄️', label:'ล้างแอร์' },
+  { module:'building',  ic:'🏢', label:'งานตึก' },
+  { module:'debt',      ic:'💰', label:'ผ่อนหนี้' },
+  { module:'purchases', ic:'🛡️', label:'ประกัน' }
+];
+var CAL = { hide: {}, data: null };
+
+function calNowYm(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
+function calShift(ym, delta){
+  var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) - 1 + delta;
+  y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+  return y + '-' + ('0' + (m + 1)).slice(-2);
+}
+function calGo(delta){ S.calYm = delta === 0 ? calNowYm() : calShift(S.calYm || calNowYm(), delta); load(); }
+function calToggle(module){ CAL.hide[module] = !CAL.hide[module]; document.getElementById('view').innerHTML = ROUTES.calendar.render(CAL.data); labelCells(document.getElementById('view')); applyReadOnly(document.getElementById('view')); }
+function calShown(){ return (CAL.data.events || []).filter(function(e){ return !CAL.hide[e.module]; }); }
+function calStateLabel(s){ return s === 'done' ? 'เสร็จแล้ว' : (s === 'late' ? 'เลยกำหนด' : 'รอทำ'); }
+function calStateCls(s){ return s === 'done' ? 'ok' : (s === 'late' ? 'dgr' : 'info'); }
+
+ROUTES.calendar = {
+  load: function(){
+    if (!S.calYm) S.calYm = calNowYm();
+    return callApi('calendar.month', { ym: S.calYm }).then(function(d){
+      // หน้านี้ไม่ใช้ตัวเลือกปี — ส่งปีที่เลือกค้างไว้กลับไป ตัวเลือกจะได้ไม่ถูกรีเซ็ต
+      d.years = S.year !== 'all' ? [Number(S.year)] : [];
+      return d;
+    });
+  },
+  render: function(d){
+    CAL.data = d;
+    var ev = calShown();
+    var byDay = {};
+    ev.forEach(function(e){ (byDay[e.date] = byDay[e.date] || []).push(e); });
+    var late = ev.filter(function(e){ return e.state === 'late'; }).length;
+    var due  = ev.filter(function(e){ return e.state === 'due'; }).length;
+    var done = ev.filter(function(e){ return e.state === 'done'; }).length;
+
+    var head = '<div class="card mb12"><div class="card-b">' +
+      '<div class="row">' +
+        '<button class="btn icon" title="เดือนก่อน" aria-label="เดือนก่อน" onclick="calGo(-1)">◀</button>' +
+        '<h3 class="cal-title" id="calTitle">' + TH_MONTH_FULL[d.month - 1] + ' ' + esc(displayYear(d.year)) + '</h3>' +
+        '<button class="btn icon" title="เดือนถัดไป" aria-label="เดือนถัดไป" onclick="calGo(1)">▶</button>' +
+        (d.ym !== calNowYm() ? '<button class="btn sm" onclick="calGo(0)">กลับมาเดือนนี้</button>' : '') +
+        '<span class="sp"></span>' +
+        (late ? '<span class="b dgr">เลยกำหนด ' + late + '</span>' : '') +
+        '<span class="b info">รอทำ ' + due + '</span>' +
+        '<span class="b ok">เสร็จแล้ว ' + done + '</span>' +
+      '</div>' +
+      '<div class="chips mt12">' + CAL_KINDS.map(function(k){
+        var n = (d.events || []).filter(function(e){ return e.module === k.module; }).length;
+        return '<button class="chip ' + (CAL.hide[k.module] ? '' : 'on') + '" aria-pressed="' + (!CAL.hide[k.module]) + '" ' +
+          'onclick="calToggle(' + jsq(k.module) + ')">' + k.ic + ' ' + esc(k.label) + ' (' + n + ')</button>';
+      }).join('') + '</div>' +
+    '</div></div>';
+
+    // ตารางเดือน: เริ่มสัปดาห์วันอาทิตย์ตามปฏิทินไทย
+    var first = new Date(d.year, d.month - 1, 1).getDay();
+    var cells = '';
+    ['อา','จ','อ','พ','พฤ','ศ','ส'].forEach(function(w){ cells += '<div class="cal-wd">' + w + '</div>'; });
+    for (var i = 0; i < first; i++) cells += '<div class="cal-c off"></div>';
+    for (var day = 1; day <= d.days; day++) {
+      var iso = d.ym + '-' + ('0' + day).slice(-2);
+      var list = byDay[iso] || [];
+      var cls = 'cal-c' + (iso === d.today ? ' today' : '') + (list.length ? ' has' : '');
+      cells += '<button type="button" class="' + cls + '" onclick="openCalDay(' + jsq(iso) + ')" ' +
+        'aria-label="วันที่ ' + day + (list.length ? ' มี ' + list.length + ' รายการ' : '') + '">' +
+        '<span class="cal-n">' + day + '</span>' +
+        list.slice(0, 3).map(function(e){
+          return '<span class="cal-ev ' + calStateCls(e.state) + '">' + e.icon + ' ' + esc(e.title) + '</span>';
+        }).join('') +
+        (list.length > 3 ? '<span class="cal-more">+' + (list.length - 3) + ' รายการ</span>' : '') +
+        '<span class="cal-dots">' + list.slice(0, 5).map(function(e){
+          return '<i class="' + calStateCls(e.state) + '"></i>';
+        }).join('') + (list.length > 5 ? '<em>+' + (list.length - 5) + '</em>' : '') + '</span>' +
+      '</button>';
+    }
+    for (var t = (first + d.days) % 7; t > 0 && t < 7; t++) cells += '<div class="cal-c off"></div>';   // เติมท้ายเดือนให้เต็มแถว
+    var grid = '<div class="card mb12"><div class="card-b flush"><div class="cal">' + cells + '</div></div></div>';
+
+    // รายการทั้งเดือน เรียงตามวัน — บนมือถือนี่คือที่อ่านรายละเอียดหลัก
+    var days = Object.keys(byDay).sort();
+    var agenda = card('📋 รายการของเดือนนี้ (' + ev.length + ')',
+      days.length ? '<div class="cal-agenda">' + days.map(function(iso){
+        return '<div class="cal-day' + (iso === d.today ? ' today' : '') + '">' +
+          '<div class="cal-date">' + thDate(iso) + (iso === d.today ? ' <span class="b info">วันนี้</span>' : '') + '</div>' +
+          byDay[iso].map(calRow).join('') + '</div>';
+      }).join('') + '</div>'
+      : emptyBox('เดือนนี้ไม่มีรายการ' + (ev.length !== (d.events || []).length ? 'ในประเภทที่เลือก' : ''),
+          '<button class="btn pri" onclick="openCalDay(' + jsq(d.ym + '-01') + ')">+ เพิ่มนัด</button>'),
+      '', true);
+
+    return head + grid + agenda;
+  }
+};
+
+function calRow(e){
+  return '<button type="button" class="cal-row" onclick="calOpen(' + jsq(e.module) + ',' + jsq(e.date) + ',' + jsq(e.state) + ')">' +
+    '<span class="ic">' + e.icon + '</span>' +
+    '<span class="tx"><span class="tt">' + esc(e.title) + '</span>' +
+      (e.detail ? '<span class="dd">' + esc(e.detail) + '</span>' : '') + '</span>' +
+    '<span class="b ' + calStateCls(e.state) + '">' + calStateLabel(e.state) + '</span>' +
+  '</button>';
+}
+
+/** กดที่วัน: ดูรายการของวันนั้น และเพิ่มนัดใหม่โดยใส่วันที่ให้เลย */
+function openCalDay(iso){
+  var list = calShown().filter(function(e){ return e.date === iso; });
+  openModal('🗓️ ' + thDate(iso),
+    (list.length ? '<div class="cal-agenda">' + list.map(calRow).join('') + '</div>'
+                 : '<div class="empty" style="padding:18px">ยังไม่มีรายการในวันนี้</div>'),
+    '<button class="btn sm" onclick="closeModal();formRepair({bookDate:' + jsq(iso) + ',reportDate:today(),priority:\'ปกติ\'})">+ นัดซ่อมห้อง</button>' +
+    '<button class="btn sm" onclick="closeModal();formAc({bookDate:' + jsq(iso) + '})">+ นัดล้างแอร์</button>' +
+    '<button class="btn sm" onclick="closeModal();formBuilding({bookDate:' + jsq(iso) + '})">+ นัดงานตึก</button>' +
+    '<button class="btn" onclick="closeModal()">ปิด</button>');
+}
+
+/** กดที่รายการ: ไปหน้าของงานนั้น ในปีที่จะเห็นงานนั้นแน่ ๆ */
+function calOpen(module, date, state){
+  closeModal();
+  var cur = String(new Date().getFullYear());
+  // งานที่ยังไม่เสร็จเห็นในปีปัจจุบันเสมอ · งานที่เสร็จแล้วและรายการโอนอยู่ในปีของมันเอง · ประกันอยู่ในปีที่ซื้อ จึงดูทุกปี
+  S.year = module === 'purchases' ? 'all' : ((module === 'debt' || state === 'done') ? String(date).slice(0, 4) : cur);
+  go(module === 'debt' ? 'debtMain' : module);
+}
+
 /** งานที่ยังไม่ปิดของปีอื่น ซึ่งแสดงร่วมอยู่ในปีที่กำลังดู — ติดป้ายบอกว่าเป็นของปีไหน */
 function otherYearTag(x){
   return x && x.otherYear ? ' <span class="b info" title="งานนี้ยังไม่ปิด จึงแสดงในปีนี้ด้วย">ปี ' + esc(displayYear(x.otherYear)) + '</span>' : '';

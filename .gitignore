@@ -21,3 +21,7 @@ dist/
 build/seed.json
 build/db.b64
 build/*.xlsx
+
+# Cloudflare (wrangler dev/deploy)
+.wrangler/
+.dev.vars

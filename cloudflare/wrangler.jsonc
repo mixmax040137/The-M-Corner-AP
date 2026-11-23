@@ -1,0 +1,16 @@
+{
+  // The M Corner AP — ตัวหลักบน Cloudflare (แผนฟรี)
+  // Worker ส่งทุกคำขอให้ Durable Object ตัวเดียว ที่เก็บข้อมูลใน SQLite ในตัว
+  "name": "m-corner-ap",
+  "main": "server.mjs",
+  "compatibility_date": "2025-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "durable_objects": {
+    "bindings": [{ "name": "APP", "class_name": "MCornerAP" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MCornerAP"] }
+  ],
+  "observability": { "enabled": true }
+}

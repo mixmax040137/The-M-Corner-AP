@@ -9,10 +9,83 @@
 
 var CF_TZ = 'Asia/Bangkok';
 
+/* ---------- Date ที่ "เวลาท้องถิ่น" เป็นเวลาไทย ----------
+   Apps Script ตั้งเขตเวลาของสคริปต์เป็น Asia/Bangkok ทั้ง new Date(ปี, เดือน, วัน),
+   getDate(), getHours(), setDate() ฯลฯ จึงคิดตามเวลาไทย แต่เครื่องของ Cloudflare เป็น UTC
+   ถ้าใช้ Date ธรรมดา ช่วงตี 0–7 ของไทย "วันนี้" จะเป็นเมื่อวาน และวันที่ในชีตจะเลื่อน
+   ประเทศไทยไม่มีเวลาออมแสง จึงเลื่อนคงที่ +7 ชั่วโมงได้ตลอด (มีชุดทดสอบเทียบกับ Date ของ Node ที่ตั้ง TZ ไทย) */
+var Date = (function (N) {
+  var OFF = 7 * 3600 * 1000;
+  var DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var LOCAL_ISO = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+  function fromLocal(y, mo, d, h, mi, s, ms) {
+    return N.UTC(y, mo, d, h, mi, s, ms) - OFF;   // ปี 0–99 → 1900+ เหมือน new Date() จริง
+  }
+  function parse(s) {
+    var m = String(s).trim().match(LOCAL_ISO);   // ไม่มีเขตเวลาต่อท้าย = เวลาท้องถิ่น (ไทย)
+    if (m) return fromLocal(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0), +((m[7] || '0') + '00').slice(0, 3));
+    return N.parse(s);
+  }
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  class BkkDate extends N {
+    constructor() {
+      var a = arguments;
+      if (a.length === 0) super();
+      else if (a.length === 1) {
+        var v = a[0];
+        if (typeof v === 'string') super(parse(v));
+        else super(v instanceof N ? v.getTime() : v);
+      } else {
+        super(fromLocal(+a[0], +a[1], a.length > 2 ? +a[2] : 1, +(a[3] || 0), +(a[4] || 0), +(a[5] || 0), +(a[6] || 0)));
+      }
+    }
+    _l() { return new N(this.getTime() + OFF); }
+    getFullYear() { return this._l().getUTCFullYear(); }
+    getMonth() { return this._l().getUTCMonth(); }
+    getDate() { return this._l().getUTCDate(); }
+    getDay() { return this._l().getUTCDay(); }
+    getHours() { return this._l().getUTCHours(); }
+    getMinutes() { return this._l().getUTCMinutes(); }
+    getSeconds() { return this._l().getUTCSeconds(); }
+    getMilliseconds() { return this._l().getUTCMilliseconds(); }
+    getYear() { return this.getFullYear() - 1900; }
+    getTimezoneOffset() { return -420; }
+    _set(i, args) {
+      if (isNaN(this.getTime())) return NaN;
+      var l = this._l();
+      var c = [l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate(), l.getUTCHours(), l.getUTCMinutes(), l.getUTCSeconds(), l.getUTCMilliseconds()];
+      for (var k = 0; k < args.length && i + k < 7; k++) c[i + k] = +args[k];
+      return this.setTime(N.UTC(c[0], c[1], c[2], c[3], c[4], c[5], c[6]) - OFF);
+    }
+    setFullYear() { return this._set(0, arguments); }
+    setMonth() { return this._set(1, arguments); }
+    setDate() { return this._set(2, arguments); }
+    setHours() { return this._set(3, arguments); }
+    setMinutes() { return this._set(4, arguments); }
+    setSeconds() { return this._set(5, arguments); }
+    setMilliseconds() { return this._set(6, arguments); }
+    toDateString() {
+      if (isNaN(this.getTime())) return 'Invalid Date';
+      var l = this._l();
+      return DAY[l.getUTCDay()] + ' ' + MON[l.getUTCMonth()] + ' ' + p2(l.getUTCDate()) + ' ' +
+        String(l.getUTCFullYear()).padStart(4, '0');
+    }
+    toTimeString() {
+      if (isNaN(this.getTime())) return 'Invalid Date';
+      var l = this._l();
+      return p2(l.getUTCHours()) + ':' + p2(l.getUTCMinutes()) + ':' + p2(l.getUTCSeconds()) + ' GMT+0700 (Indochina Time)';
+    }
+    toString() { return isNaN(this.getTime()) ? 'Invalid Date' : this.toDateString() + ' ' + this.toTimeString(); }
+    static parse(s) { return parse(s); }
+  }
+  return BkkDate;
+})(globalThis.Date);
+
 /* ---------- วันเวลา: ต้องคิดตามเวลาไทยเสมอ (เครื่องของ Cloudflare เป็นเวลา UTC) ---------- */
 var CF_FMT_CACHE = {};
 function cfFormatDate(d, tz, pattern) {
-  if (!(d instanceof Date) || isNaN(d.getTime())) throw new Error('formatDate: วันที่ไม่ถูกต้อง');
+  if (Object.prototype.toString.call(d) !== '[object Date]' || isNaN(d.getTime())) throw new Error('formatDate: วันที่ไม่ถูกต้อง');
   tz = tz || CF_TZ;
   var f = CF_FMT_CACHE[tz] || (CF_FMT_CACHE[tz] = new Intl.DateTimeFormat('en-GB', {
     timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -111,11 +184,13 @@ var Utilities = {
 
 /* ---------- แผ่นงาน: ตารางในหน่วยความจำที่ HOST บันทึกลงฐานข้อมูล ---------- */
 
+function cfIsDate(v) { return Object.prototype.toString.call(v) === '[object Date]'; }
+
 /** ชีตจริงเก็บข้อความที่ขึ้นต้นด้วย ' เป็นข้อความ (ไม่เก็บ ' ไว้) — ทำเหมือนกัน */
 function cfCellIn(v) {
   if (v === null || v === undefined) return '';
   if (typeof v === 'string' && v.charAt(0) === "'") return v.slice(1);
-  if (v instanceof Date) return new Date(v.getTime());
+  if (Object.prototype.toString.call(v) === '[object Date]') return new Date(v.getTime());
   return v;
 }
 
@@ -144,13 +219,13 @@ function cfSheet(name, grid) {
           var row = [];
           for (var j = 0; j < nc; j++) {
             var v = cell(r + i, c + j);
-            row.push(v instanceof Date ? new Date(v.getTime()) : v);
+            row.push(cfIsDate(v) ? new Date(v.getTime()) : v);
           }
           out.push(row);
         }
         return out;
       },
-      getValue: function () { var v = cell(r, c); return v instanceof Date ? new Date(v.getTime()) : v; },
+      getValue: function () { var v = cell(r, c); return cfIsDate(v) ? new Date(v.getTime()) : v; },
       setValues: function (m) {
         m.forEach(function (row, i) { row.forEach(function (v, j) { set(r + i, c + j, v); }); });
         touch(); return rg;

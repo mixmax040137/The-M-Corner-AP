@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ตั้งค่าการเชื่อมต่อ · The M Corner AP</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f1729;--card:#17213a;--line:#26324f;--ink:#e6ecf7;--mute:#8d9ab3;--acc:#4f8cff;--ok:#2fbf71;--bad:#ef5a5a;--warn:#f0b429}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans Thai',system-ui,sans-serif;line-height:1.6}
+  .wrap{max-width:720px;margin:0 auto;padding:24px 16px 64px}
+  h1{font-size:22px;margin:4px 0 2px}
+  .sub{color:var(--mute);font-size:14px;margin-bottom:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0}
+  .card h2{font-size:16px;margin:0 0 10px}
+  label{display:block;font-size:13px;color:var(--mute);margin:12px 0 4px}
+  input{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0c1324;color:var(--ink);font:inherit;font-size:15px}
+  input:focus{outline:2px solid var(--acc);border-color:transparent}
+  button{margin-top:14px;padding:11px 18px;border-radius:10px;border:0;background:var(--acc);color:#fff;font:inherit;font-weight:600;font-size:15px;cursor:pointer}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  button:disabled{opacity:.55;cursor:wait}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .row:last-child{border-bottom:0}
+  .row span:first-child{color:var(--mute)}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:600}
+  .pill.ok{background:rgba(47,191,113,.15);color:var(--ok)}
+  .pill.bad{background:rgba(239,90,90,.15);color:var(--bad)}
+  .pill.warn{background:rgba(240,180,41,.15);color:var(--warn)}
+  .msg{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:14px;white-space:pre-wrap;display:none}
+  .msg.ok{display:block;background:rgba(47,191,113,.12);color:#9ff0c4}
+  .msg.bad{display:block;background:rgba(239,90,90,.12);color:#ffb3b3}
+  .msg.info{display:block;background:rgba(79,140,255,.12);color:#bcd2ff}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
+  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mute);font-weight:500}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  ol{padding-left:20px;margin:6px 0;color:var(--mute);font-size:14px}
+  ol b{color:var(--ink)}
+  a{color:#8db4ff}
+  small{color:var(--mute)}
+  .hide{display:none}
+  details summary{cursor:pointer;color:var(--mute);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏢 The M Corner AP — Cloudflare</h1>
+  <div class="sub">ตั้งค่าการเชื่อมต่อกับ Apps Script (ตัวสำรอง) · ข้อมูลสองฝั่งตรงกันอัตโนมัติ</div>
+
+  <div class="card">
+    <h2>สถานะ</h2>
+    <div id="status"><div class="row"><span>กำลังตรวจ…</span><span></span></div></div>
+  </div>
+
+  <div class="card" id="pairCard">
+    <h2 id="pairTitle">① เชื่อมกับ Apps Script และย้ายข้อมูล</h2>
+    <ol>
+      <li>ใน Apps Script วางโค้ด <b>AllInOne.gs</b> รุ่นล่าสุด แล้วกด <b>Deploy → Manage deployments → ✏️ → Version: New version → Deploy</b></li>
+      <li>คัดลอก <b>Web app URL</b> (ลงท้ายด้วย <b>/exec</b>) มาวางด้านล่าง</li>
+      <li>ใส่ <b>กุญแจกู้ระบบ</b> (ดูได้ในหน้า ⚙️ ตั้งค่า → ความปลอดภัย ของระบบเดิม)</li>
+    </ol>
+    <form id="pairForm" autocomplete="off">
+      <label for="gasUrl">ลิงก์ Apps Script (Web app URL)</label>
+      <input id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec" inputmode="url" required>
+      <label for="pairKey">กุญแจกู้ระบบ</label>
+      <input id="pairKey" type="password" required>
+      <button type="submit" id="pairBtn">เชื่อมต่อและย้ายข้อมูล</button>
+    </form>
+    <div class="msg" id="pairMsg"></div>
+  </div>
+
+  <div class="card hide" id="verifyCard">
+    <h2>② ตรวจว่าข้อมูลสองฝั่งตรงกัน</h2>
+    <small>เทียบทุกแถวของทุกแผ่นงาน และตัวเลขสรุปที่หน้าระบบแสดง (ยอดหนี้ ค่าใช้จ่าย รายรับ-รายจ่าย ฯลฯ)</small>
+    <form id="verifyForm" autocomplete="off">
+      <label for="verifyKey">กุญแจกู้ระบบ</label>
+      <input id="verifyKey" type="password" required>
+      <button type="submit" id="verifyBtn">ตรวจเดี๋ยวนี้</button>
+    </form>
+    <div class="msg" id="verifyMsg"></div>
+    <div id="verifyOut"></div>
+    <details style="margin-top:14px">
+      <summary>ซ่อมเมื่อไม่ตรง</summary>
+      <p><small>ส่งข้อมูลทั้งหมดของ Cloudflare (ตัวหลัก) ไปทับ Apps Script</small></p>
+      <button class="ghost" id="pushBtn" type="button">ส่งข้อมูลทั้งหมดไปทับ Apps Script</button>
+      <div class="msg" id="pushMsg"></div>
+    </details>
+  </div>
+
+  <div class="card hide" id="openCard">
+    <h2>③ เปิดใช้งาน</h2>
+    <p style="margin:0 0 6px"><a href="/" id="openLink">เปิดระบบบน Cloudflare →</a></p>
+    <small>ล็อกอินด้วยชื่อผู้ใช้และรหัสผ่านเดิมได้เลย (PIN ประจำเครื่องต้องตั้งใหม่ในเครื่องที่เปิดลิงก์นี้)
+    · บนมือถือกด "เพิ่มลงหน้าจอโฮม" แล้วใช้เหมือนแอป</small>
+  </div>
+</div>
+
+<script>
+var $ = function (id) { return document.getElementById(id); };
+function post(path, body) {
+  return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+    .then(function (r) { return r.json(); });
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function msg(id, cls, text) { var m = $(id); m.className = 'msg ' + cls; m.textContent = text; }
+function busy(btn, on, text) { btn.disabled = on; if (text) btn.textContent = text; }
+function row(k, v) { return '<div class="row"><span>' + esc(k) + '</span><span>' + v + '</span></div>'; }
+
+function loadStatus() {
+  return post('/setup/status').then(function (s) {
+    var h = '';
+    h += row('การเชื่อมต่อ', s.paired ? '<span class="pill ok">เชื่อมกับ Apps Script แล้ว</span>' : '<span class="pill warn">ยังไม่ได้เชื่อม</span>');
+    if (s.paired) {
+      h += row('Apps Script', esc(s.peer));
+      h += row('ย้ายข้อมูลเมื่อ', esc(s.pairedAt || '-'));
+      h += row('ส่งสำเร็จล่าสุด', esc(s.lastOk || '-'));
+      h += row('รอส่ง', s.pending ? '<span class="pill warn">' + s.pending + ' ชุด</span>' : '<span class="pill ok">ไม่มี</span>');
+      if (s.lastError && s.pending) h += row('ปัญหาล่าสุด', '<span style="color:var(--bad)">' + esc(s.lastError) + '</span>');
+    }
+    h += row('รุ่นโปรแกรม', esc(s.version));
+    $('status').innerHTML = h;
+    $('verifyCard').classList.toggle('hide', !s.paired);
+    $('openCard').classList.toggle('hide', !s.paired);
+    if (s.paired) {
+      $('pairTitle').textContent = 'ดึงข้อมูลจาก Apps Script มาทับใหม่ (ไม่ค่อยได้ใช้)';
+      $('pairBtn').textContent = 'ดึงข้อมูลใหม่ทั้งหมด';
+    }
+  }).catch(function () { $('status').innerHTML = row('สถานะ', '<span class="pill bad">ติดต่อไม่ได้</span>'); });
+}
+
+$('pairForm').onsubmit = function (e) {
+  e.preventDefault();
+  var btn = $('pairBtn'), old = btn.textContent;
+  busy(btn, true, 'กำลังย้ายข้อมูล… (อาจใช้เวลา 1–2 นาที)');
+  msg('pairMsg', 'info', 'กำลังติดต่อ Apps Script และคัดลอกข้อมูลทุกแผ่นงาน อย่าปิดหน้านี้');
+  post('/setup/pair', { gasUrl: $('gasUrl').value.trim(), adminKey: $('pairKey').value.trim() }).then(function (r) {
+    if (!r.ok) return msg('pairMsg', 'bad', '❌ ' + r.error);
+    var lines = Object.keys(r.counts || {}).map(function (k) { return '• ' + k + ': ' + r.counts[k] + ' แถว'; });
+    msg('pairMsg', 'ok', '✅ ย้ายข้อมูลเรียบร้อย\n' + lines.join('\n') + '\n\nต่อไปกด "ตรวจเดี๋ยวนี้" เพื่อเทียบตัวเลขสองฝั่ง');
+    $('verifyKey').value = $('pairKey').value;
+    loadStatus();
+  }).catch(function (err) { msg('pairMsg', 'bad', '❌ ' + err); })
+    .then(function () { busy(btn, false, old); loadStatus(); });
+};
+
+$('verifyForm').onsubmit = function (e) {
+  e.preventDefault();
+  var btn = $('verifyBtn');
+  busy(btn, true, 'กำลังเทียบ…');
+  $('verifyOut').innerHTML = '';
+  msg('verifyMsg', 'info', 'กำลังดึงข้อมูลจาก Apps Script มาเทียบทีละแถว…');
+  post('/setup/verify', { adminKey: $('verifyKey').value.trim() }).then(function (r) {
+    if (!r.ok) return msg('verifyMsg', 'bad', '❌ ' + r.error);
+    msg('verifyMsg', r.allSame ? 'ok' : 'bad', r.allSame ? '✅ ข้อมูลสองฝั่งตรงกันทุกแถว และตัวเลขสรุปตรงกันทุกตัว' : '⚠️ พบจุดที่ไม่ตรงกัน (ดูตารางด้านล่าง)');
+    var fmt = function (n) { return Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 }); };
+    var h = '<table><tr><th>แผ่นงาน</th><th class="n">Cloudflare</th><th class="n">Apps Script</th><th>ผล</th></tr>';
+    r.sheets.forEach(function (s) {
+      h += '<tr><td>' + esc(s.name) + (s.note ? '<br><small>' + esc(s.note) + '</small>' : '') +
+        (s.diff && s.diff.length ? '<br><small>' + s.diff.map(esc).join('<br>') + '</small>' : '') + '</td><td class="n">' + s.cf +
+        '</td><td class="n">' + s.gas + '</td><td>' + (s.same ? '<span class="pill ok">ตรง</span>' : '<span class="pill bad">ไม่ตรง</span>') + '</td></tr>';
+    });
+    h += '</table><table><tr><th>ตัวเลขบนหน้าระบบ</th><th>ผล</th></tr>';
+    r.figures.forEach(function (f) {
+      h += '<tr><td>' + esc(f.name) + '</td><td>' + (f.same ? '<span class="pill ok">ตรง</span>' : '<span class="pill bad">ไม่ตรง</span>') + '</td></tr>';
+    });
+    h += '</table>';
+    var a = r.headline.cf, b = r.headline.gas;
+    h += '<table><tr><th>ยอดสำคัญ</th><th class="n">Cloudflare</th><th class="n">Apps Script</th></tr>' +
+      '<tr><td>หนี้หลัก ชำระแล้ว</td><td class="n">' + fmt(a.mainPaid) + '</td><td class="n">' + fmt(b.mainPaid) + '</td></tr>' +
+      '<tr><td>หนี้หลัก คงเหลือ</td><td class="n">' + fmt(a.mainRemaining) + '</td><td class="n">' + fmt(b.mainRemaining) + '</td></tr>' +
+      '<tr><td>หนี้รอง ชำระแล้ว</td><td class="n">' + fmt(a.subPaid) + '</td><td class="n">' + fmt(b.subPaid) + '</td></tr>' +
+      '<tr><td>หนี้รอง คงเหลือ</td><td class="n">' + fmt(a.subRemaining) + '</td><td class="n">' + fmt(b.subRemaining) + '</td></tr></table>';
+    $('verifyOut').innerHTML = h;
+  }).catch(function (err) { msg('verifyMsg', 'bad', '❌ ' + err); })
+    .then(function () { busy(btn, false, 'ตรวจเดี๋ยวนี้'); loadStatus(); });
+};
+
+$('pushBtn').onclick = function () {
+  if (!confirm('ส่งข้อมูลทั้งหมดของ Cloudflare ไปเขียนทับข้อมูลใน Apps Script ใช่ไหม?')) return;
+  var btn = $('pushBtn');
+  busy(btn, true, 'กำลังส่ง…');
+  post('/setup/push', { adminKey: $('verifyKey').value.trim() }).then(function (r) {
+    msg('pushMsg', r.ok ? 'ok' : 'bad', r.ok ? '✅ ส่งครบแล้ว กด "ตรวจเดี๋ยวนี้" อีกครั้งได้' : '❌ ' + (r.error || 'ยังส่งไม่สำเร็จ'));
+  }).catch(function (err) { msg('pushMsg', 'bad', '❌ ' + err); })
+    .then(function () { busy(btn, false, 'ส่งข้อมูลทั้งหมดไปทับ Apps Script'); loadStatus(); });
+};
+
+loadStatus();
+</script>
+</body>
+</html>

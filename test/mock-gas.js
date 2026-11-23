@@ -207,7 +207,7 @@ global.Session = {
 global.MailApp = { sendEmail: o => { store.lastMail = o; } };
 const chain = () => {
   const o = {};
-  ['timeBased','onWeekDay','atHour','everyDays','everyMinutes','inTimezone'].forEach(k => { o[k] = () => chain(); });
+  ['timeBased','onWeekDay','atHour','everyDays','everyMinutes','inTimezone','forSpreadsheet','onEdit','onChange'].forEach(k => { o[k] = () => chain(); });
   o.create = () => {};
   return o;
 };

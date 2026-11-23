@@ -6,7 +6,8 @@ const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const OUT = '/tmp/claude-0/-home-user-The-M-Corner-AP/65c75192-251f-5eb3-bc74-3f88e098978a/scratchpad';
+const OUT = process.env.TEST_OUT || require('os').tmpdir() + '/mcorner-test';
+require('fs').mkdirSync(OUT, { recursive: true });
 const content = fs.readFileSync(path.join(ROOT, 'dist', 'the-m-corner-ap.html'), 'utf8');
 
 // ห่อเหมือนที่ระบบ Artifact ห่อให้ตอนเผยแพร่

@@ -1,6 +1,6 @@
 /**
  * The M Corner AP — ระบบบริหารหอพัก
- * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-11-23 09:38 UTC
+ * ไฟล์นี้สร้างอัตโนมัติจากโฟลเดอร์ src/ เมื่อ 2026-11-23 10:00 UTC
  *
  * ⚠️ อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ src/ แล้วรัน  node build/bundle.js
  *
@@ -6486,9 +6486,11 @@ function syncEnd_() {
 
 /**
  * @param {Array} ops
- * @param {{accept?:function(Object):boolean, keepNewer?:function(string,string,number):boolean}=} opts
- *   accept     รับ op แถวนี้ไหม (ฝั่ง Cloudflare ใช้กันข้อมูลเก่ามาทับข้อมูลที่ใหม่กว่า)
- *   keepNewer  ตอนเขียนทั้งชีต แถวไหนของเราใหม่กว่า ให้เก็บของเราไว้
+ * @param {{accept?:function(Object):boolean, keepNewer?:function(string,string,number):boolean,
+ *          dropIncoming?:function(string,string,number):boolean}=} opts
+ *   accept        รับ op แถวนี้ไหม (ฝั่ง Cloudflare ใช้กันข้อมูลเก่ามาทับข้อมูลที่ใหม่กว่า)
+ *   keepNewer     ตอนเขียนทั้งชีต แถวไหนของเราใหม่กว่า ให้เก็บของเราไว้
+ *   dropIncoming  ตอนเขียนทั้งชีต แถวที่เราเพิ่งลบไป (หลังเวลาของชุดนี้) ไม่ต้องเอากลับมา
  * @return {number} จำนวน op ที่เขียนจริง
  */
 function applySyncOps_(ops, opts) {
@@ -6502,7 +6504,12 @@ function applySyncOps_(ops, opts) {
       if (op.add) { insertRow_(name, op.add); n++; return; }
       if (op.all) {
         var merged = {}, order = [];
-        op.all.forEach(function (r) { var k = String(r[key]); if (!(k in merged)) order.push(k); merged[k] = r; });
+        op.all.forEach(function (r) {
+          var k = String(r[key]);
+          if (opts.dropIncoming && opts.dropIncoming(name, k, op.t)) return;
+          if (!(k in merged)) order.push(k);
+          merged[k] = r;
+        });
         if (opts.keepNewer) {
           readRows_(name).forEach(function (r) {
             var k = String(r[key]);
@@ -6644,10 +6651,14 @@ function syncRetry() {
 }
 
 function installSyncTrigger_() {
+  var mine = ['syncRetry', 'syncOnEdit', 'syncOnChange'];
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'syncRetry') ScriptApp.deleteTrigger(t);
+    if (mine.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('syncRetry').timeBased().everyMinutes(5).create();
+  var ss = getSpreadsheet_();
+  ScriptApp.newTrigger('syncOnEdit').forSpreadsheet(ss).onEdit().create();
+  ScriptApp.newTrigger('syncOnChange').forSpreadsheet(ss).onChange().create();
 }
 
 /* ------------------------------------------------------------------ */
@@ -6712,11 +6723,45 @@ function syncProxyApi_(body) {
   if (MUTATING_ACTIONS.test(action) && roleRank_(role) < roleRank_(ROLE.EDITOR)) {
     return { ok: false, error: 'บัญชีนี้เปิดดูได้อย่างเดียว จึงแก้ไขข้อมูลไม่ได้' };
   }
+  // งานพวกนี้อาจเขียนชีตด้วย (เช่น เวลาสำรองข้อมูลล่าสุด) — จดแล้วส่งกลับไป Cloudflare เหมือนคำสั่งปกติ
+  syncBegin_();
   try {
-    return { ok: true, data: API_ROUTES[action](body.payload || {}, role) };
+    return { ok: true, data: withScriptLock_(function () { return API_ROUTES[action](body.payload || {}, role); }, 25000) };
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
+  } finally {
+    try { syncEnd_(); } catch (e2) { console.error('sync -> ' + e2); }
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  ฝั่ง Apps Script: พิมพ์แก้ในชีตโดยตรง                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ตัวตั้งเวลา "เมื่อแก้ไข/เมื่อเปลี่ยนแปลง" ของชีต — ส่งทั้งแผ่นที่ถูกแก้ไปให้ Cloudflare
+ * (การแก้จากโค้ดไม่ทำให้ตัวนี้ทำงาน มีแต่คนพิมพ์ในชีตเท่านั้น จึงไม่ซ้ำกับการซิงก์ปกติ)
+ * แผ่นทั้งแผ่นเพราะการลบ/แทรก/ลากแถวทำให้รู้ไม่ได้ว่าแถวไหนเปลี่ยน
+ */
+function syncOnEdit(e) {
+  if (!syncConfigured_()) return;
+  var names = [];
+  try {
+    var sh = (e && e.range && e.range.getSheet) ? e.range.getSheet() : (e && e.source ? e.source.getActiveSheet() : null);
+    if (sh) names.push(sh.getName());
+  } catch (err) { /* ไม่รู้ว่าแผ่นไหน */ }
+  names = names.filter(function (n) { return syncable_(n) && n !== SHEETS.LOG; });
+  if (!names.length) return;
+  withScriptLock_(function () {
+    var t = Date.now();
+    syncDeliver_(names.map(function (name) {
+      return { s: name, all: readRows_(name).map(function (r) { return syncRowOut_(name, r); }), t: t };
+    }));
+  }, 30000);
+}
+function syncOnChange(e) {
+  if (e && e.changeType === 'EDIT') return;   // แก้ค่าในช่อง ตัว onEdit จัดการแล้ว
+  syncOnEdit(e);
 }
 
 /** สถานะการเชื่อมต่อ (หน้าตั้งค่า) */

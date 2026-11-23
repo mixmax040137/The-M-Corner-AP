@@ -105,6 +105,7 @@ function clearSheet_(name) {
   var sh = ensureSheet_(name);
   var last = sh.getLastRow();
   if (last > 1) sh.getRange(2, 1, last - 1, SCHEMA[name].length).clearContent();
+  syncNoteSheet_(name);
 }
 
 /* ------------------------------------------------------------------ */

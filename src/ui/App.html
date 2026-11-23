@@ -60,25 +60,45 @@ function callApi(action, payload){
   if (mutating) syncSet('saving');
 
   return new Promise(function(resolve, reject){
-    google.script.run
-      .withSuccessHandler(function(res){
-        if (!res) { if (mutating) syncSet('offline'); return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์')); }
-        if (res.ok) {
-          if (mutating) { markSelfChange(); syncSet('saved'); }
-          return resolve(res.data);
-        }
-        // หมดอายุระหว่างใช้งาน — พากลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความค้างไว้เฉย ๆ
-        if (res.needLogin && typeof onSessionLost === 'function') onSessionLost();
-        if (mutating) syncSet('error', res.error);
-        reject(new Error(res.error));
-      })
-      .withFailureHandler(function(err){
-        // เน็ตสะดุด — ของที่กรอกไว้ยังอยู่ในฟอร์ม ไม่หายไปไหน
-        if (mutating) syncSet(isOfflineError(err) ? 'offline' : 'error', (err && err.message) || String(err));
-        reject(err);
-      })
-      .api(action, payload || {});
+    var ok = function(res){
+      if (!res) { if (mutating) syncSet('offline'); return reject(new Error('ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์')); }
+      if (res.ok) {
+        if (mutating) { markSelfChange(); syncSet('saved'); }
+        return resolve(res.data);
+      }
+      // หมดอายุระหว่างใช้งาน — พากลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความค้างไว้เฉย ๆ
+      if (res.needLogin && typeof onSessionLost === 'function') onSessionLost();
+      if (mutating) syncSet('error', res.error);
+      reject(new Error(res.error));
+    };
+    var fail = function(err){
+      // เน็ตสะดุด — ของที่กรอกไว้ยังอยู่ในฟอร์ม ไม่หายไปไหน
+      if (mutating) syncSet(isOfflineError(err) ? 'offline' : 'error', (err && err.message) || String(err));
+      reject(err);
+    };
+    serverCall(action, payload || {}, ok, fail);
   });
+}
+
+/**
+ * ส่งคำสั่งไปเซิร์ฟเวอร์ — หน้าเว็บชุดเดียวกันใช้ได้ทั้งสองที่
+ *   เปิดจาก Apps Script → google.script.run
+ *   เปิดจาก Cloudflare  → POST /api (ได้ผลลัพธ์รูปแบบเดียวกันเป๊ะ)
+ */
+function serverCall(action, payload, ok, fail){
+  if (window.google && google.script && google.script.run) {
+    google.script.run.withSuccessHandler(ok).withFailureHandler(fail).api(action, payload);
+    return;
+  }
+  fetch('/api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: action, payload: payload }),
+    credentials: 'same-origin'
+  }).then(function(r){
+    if (!r.ok && r.status !== 200) throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ (HTTP ' + r.status + ')');
+    return r.json();
+  }).then(ok, function(e){ fail(e && e.message ? e : new Error('network: ' + e)); });
 }
 
 /** เรียกเมื่อเซิร์ฟเวอร์บอกว่ายังไม่ได้ล็อกอิน (หมดอายุ / ถูกให้ออกจากระบบ) */

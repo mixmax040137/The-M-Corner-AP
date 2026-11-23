@@ -16,6 +16,7 @@ var WRITE_ACTIONS = /\.(save|delete|savePayment|deletePayment|reconcile|setStatu
 function api(action, payload) {
   payload = payload || {};
   REQUEST_ACTOR_ = null;
+  syncBegin_();          // จดทุกแถวที่คำสั่งนี้เขียน แล้วส่งให้อีกฝั่งตอนจบ (Sync.gs)
   try {
     // หน้าเว็บที่เปิดค้างไว้ตั้งแต่ก่อน deploy เรียกตรงมาที่นี่โดยไม่ผ่าน doGet
     // ต้องย้ายข้อมูลให้ทันก่อน ไม่งั้นโค้ดใหม่อ่านชีตโครงเก่า (ย้ายแล้ว = อ่าน property ครั้งเดียว)
@@ -41,6 +42,8 @@ function api(action, payload) {
       // หน้าเว็บใช้ธงนี้เด้งกลับไปหน้าล็อกอินแทนที่จะขึ้นข้อความเฉย ๆ
       needLogin: /เข้าสู่ระบบก่อน/.test(String(e && e.message ? e.message : e))
     };
+  } finally {
+    try { syncEnd_(); } catch (e2) { console.error('sync -> ' + e2); }   // ซิงก์พลาดต้องไม่ทำให้คำสั่งหลักพัง
   }
 }
 
@@ -101,6 +104,7 @@ var API_ROUTES = {
   'app.alerts': function (p) { return alertCenter_(p); },
   // ไม่ได้เขียนชีต (เก็บใน Script Properties) จึงไม่ต้องเข้าคิวเขียน และไม่ทำให้เครื่องอื่นโหลดใหม่
   'app.alertsSeen': function (p) { return markAlertsSeen_(p); },
+  'sync.status': function () { return syncStatus_(); },
   'app.search': function (p) { return globalSearch_(p.q); },
 
   /* ---------- หนี้ (ใช้ร่วมกันทั้งหนี้หลักและหนี้รอง) ---------- */

@@ -6,7 +6,7 @@ const SRC = path.join(__dirname, '..', 'src');
 const order = ['Config.gs','Util.gs','Setup.gs','Users.gs','Auth.gs','Settings.gs','Drive.gs','Ocr.gs',
                'Seed.gs','Finance.gs','Backup.gs','Migrate.gs',
                'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs',
-               'Api.gs','Web.gs','Notify.gs'];
+               'Api.gs','Sync.gs','Web.gs','Notify.gs'];
 order.forEach(f => vm.runInThisContext(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f }));
 
 let pass = 0, fail = 0;
@@ -414,7 +414,7 @@ check('api bootstrap สำเร็จ', boot.ok, true);
 check('bootstrap ส่ง 24 ห้อง', boot.data.rooms.length, 24);
 check('bootstrap ส่งตัวเลือกหมวดหมู่', boot.data.schema.purchaseCategories.length > 5, true);
 check('api คำสั่งผิดคืน error', api('ไม่มีจริง').ok, false);
-check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 78);
+check("api ทุก route เรียกได้", Object.keys(API_ROUTES).length, 79);
 
 console.log('\n── 10. รายรับ-รายจ่ายรายเดือน ──');
 check('นำเข้า 32 รายการ', readRows_(SHEETS.FINANCE).length, 32);

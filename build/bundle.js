@@ -13,7 +13,7 @@ const SRC = path.join(ROOT, 'src');
 const GS_ORDER = ['Config.gs','Util.gs','Setup.gs','Users.gs','Auth.gs','Settings.gs','Drive.gs','Ocr.gs',
                   'Seed.gs','Finance.gs','Migrate.gs',
                   'Backup.gs','Debt.gs','Purchase.gs','Maintenance.gs','Building.gs',
-                  'Dashboard.gs','Api.gs','Notify.gs','Web.gs'];
+                  'Dashboard.gs','Api.gs','Sync.gs','Notify.gs','Web.gs'];
 
 const read = p => fs.readFileSync(p, 'utf8');
 const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');

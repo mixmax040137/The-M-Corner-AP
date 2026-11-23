@@ -22,10 +22,7 @@ var HASH_ROUNDS = 2000;
 /* ------------------------------------------------------------------ */
 
 function randomToken_(len) {
-  var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  var out = '';
-  for (var i = 0; i < (len || 32); i++) out += abc.charAt(Math.floor(Math.random() * abc.length));
-  return out;
+  return randomString_('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789', len || 32);
 }
 
 function sha256_(text) {

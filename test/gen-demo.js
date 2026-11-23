@@ -20,7 +20,7 @@ const SRC = path.join(ROOT, 'src');
 // ไม่รวม Ocr.gs เพราะต้องพึ่ง Google Drive — หน้าตัวอย่างไม่มีเซิร์ฟเวอร์ให้เรียก
 ['Config.gs','Util.gs','Setup.gs','Users.gs','Auth.gs','Settings.gs','Drive.gs','Seed.gs',
  'Finance.gs','Backup.gs','Migrate.gs','Debt.gs','Purchase.gs','Maintenance.gs',
- 'Building.gs','Dashboard.gs','Api.gs','Web.gs','Notify.gs']
+ 'Building.gs','Dashboard.gs','Api.gs','Sync.gs','Web.gs','Notify.gs']
   .forEach(f => vm.runInThisContext(fs.readFileSync(path.join(SRC, f), 'utf8'), { filename: f }));
 
 QUIET_ = true;

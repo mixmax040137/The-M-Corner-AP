@@ -203,6 +203,7 @@ function rewriteSheet_(name, objects) {
     });
     sh.getRange(2, 1, matrix.length, cols.length).setValues(matrix);
   }
+  syncNoteSheet_(name);
   return objects.length;
 }
 

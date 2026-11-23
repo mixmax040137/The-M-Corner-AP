@@ -207,7 +207,7 @@ global.Session = {
 global.MailApp = { sendEmail: o => { store.lastMail = o; } };
 const chain = () => {
   const o = {};
-  ['timeBased','onWeekDay','atHour','everyDays','inTimezone'].forEach(k => { o[k] = () => chain(); });
+  ['timeBased','onWeekDay','atHour','everyDays','everyMinutes','inTimezone'].forEach(k => { o[k] = () => chain(); });
   o.create = () => {};
   return o;
 };
@@ -239,6 +239,10 @@ const htmlOut = (content) => ({
   setTitle() { return this; }, setFaviconUrl() { return this; },
   addMetaTag() { return this; }, setXFrameOptionsMode() { return this; }
 });
+global.ContentService = {
+  MimeType: { JSON: 'application/json' },
+  createTextOutput: (text) => ({ text, setMimeType() { return this; }, getContent() { return text; } })
+};
 global.HtmlService = {
   // เก็บค่าที่ถูกใส่ลง template ไว้ใน store เพื่อให้เทสต์ตรวจได้ว่า doGet ส่งอะไรไปหน้าเว็บ
   createTemplateFromFile: (name) => {

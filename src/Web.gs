@@ -34,6 +34,17 @@ function doGet(e) {
 }
 
 /**
+ * จุดรับคำขอจากระบบบน Cloudflare (ซิงก์ข้อมูล / จับคู่ / ทำงานที่ต้องใช้ Drive แทน)
+ * ทุกคำขอยกเว้นการจับคู่ต้องมีรหัสลับร่วม ตรวจใน syncHandle_ (Sync.gs)
+ */
+function doPost(e) {
+  var body = {};
+  try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (err) { body = {}; }
+  return ContentService.createTextOutput(JSON.stringify(syncHandle_(body)))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
  * กรองกุญแจให้เหลือเฉพาะตัวอักษรที่ตัวสร้างกุญแจใช้จริง
  * เพื่อให้ฝังลงในหน้าเว็บด้วย <?!= ?> ได้อย่างปลอดภัย
  */

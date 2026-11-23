@@ -14,7 +14,7 @@ const SRC = path.join(ROOT, 'src');
 // ไม่รวม Ocr.gs เพราะการอ่านข้อความจากรูปต้องพึ่ง Google Drive — มีเฉพาะเวอร์ชัน Apps Script
 const GS = ['Config.gs','Util.gs','Setup.gs','Users.gs','Auth.gs','Settings.gs','Drive.gs','Seed.gs',
             'Finance.gs','Backup.gs','Migrate.gs',
-            'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs','Api.gs','Notify.gs'];
+            'Debt.gs','Purchase.gs','Maintenance.gs','Building.gs','Dashboard.gs','Api.gs','Sync.gs','Notify.gs'];
 
 /* ---- 1. เตรียมข้อมูลตั้งต้นด้วย runtime จำลอง ---- */
 GS.concat(['Web.gs']).forEach(f =>

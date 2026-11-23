@@ -70,6 +70,12 @@ function loadStored(done){
       return;
     } catch (e) { /* ใช้ทางปกติ */ }
   }
+  // เปิดจาก Cloudflare: อ่านพารามิเตอร์จากที่อยู่หน้าเว็บตรง ๆ
+  try {
+    var q = new URLSearchParams(location.search);
+    if (q.get('d') && !AUTH.device) { AUTH.device = q.get('d'); lsSet(LS_DEVICE, AUTH.device); }
+    if (q.get('key') && !accessKey()) RESOLVED_KEY = q.get('key');
+  } catch (e2) { /* เบราว์เซอร์เก่ามาก */ }
   done();
 }
 

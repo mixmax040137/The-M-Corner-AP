@@ -26,7 +26,7 @@ var MUTATING_ACTIONS = /^ocr\.read$|\.(save|delete|savePayment|deletePayment|bul
  * คำสั่งที่เฉพาะผู้ดูแลเท่านั้น
  * backup.* ทั้งหมดอยู่ในนี้เพราะไฟล์สำรองมีข้อมูลบัญชีผู้ใช้ติดไปด้วย
  */
-var ADMIN_ONLY_ACTIONS = /^(user\.|share\.|settings\.save|backup\.|auth\.forgetAllDevices)/;
+var ADMIN_ONLY_ACTIONS = /^(user\.|share\.|settings\.save|backup\.|sync\.|auth\.forgetAllDevices)/;
 
 /** ระดับสิทธิ์ ยิ่งมากยิ่งทำได้เยอะ */
 function roleRank_(role) {
@@ -113,10 +113,7 @@ function ownerEmail_() {
 
 /** สุ่มกุญแจใหม่ (ตัวอักษรที่อ่านง่าย ไม่มี 0/O/1/l ปนกัน) */
 function newToken_(len) {
-  var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz';
-  var out = '';
-  for (var i = 0; i < (len || 22); i++) out += abc.charAt(Math.floor(Math.random() * abc.length));
-  return out;
+  return randomString_('ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnpqrstuvwxyz', len || 22);
 }
 
 /** สร้างกุญแจตอนติดตั้ง ถ้ายังไม่มี */

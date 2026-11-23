@@ -139,6 +139,7 @@ function setSetting_(key, value) {
   for (var i = 0; i < rows.length; i++) {
     if (String(rows[i].key) === String(key)) {
       sh.getRange(rows[i]._row, 3).setValue(serializeValue_(String(value), 'text'));   // ใส่ ' กันรหัส 0 นำหน้าหาย/กลายเป็นสูตร
+      syncNote_(SHEETS.SETTINGS, Object.assign({}, rows[i], { value: String(value) }));
       return value;
     }
   }

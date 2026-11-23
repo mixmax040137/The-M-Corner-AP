@@ -87,6 +87,7 @@ function relayoutSheet_(sh, name, existing, headers) {
 
   if (hasData && hasHeader) {
     remapSheet_(sh, name, existing);   // ย้ายข้อมูลตามชื่อหัวตาราง แล้วค่อยเขียนหัวใหม่
+    syncNoteSheet_(name);
     return sh;
   }
 
@@ -255,6 +256,7 @@ function insertRow_(name, obj) {
   var saved = {};
   cols.forEach(function (c, i) { saved[c.key] = echoCell_(row[i], c.type); });
   saved._row = sh.getLastRow();
+  syncNote_(name, saved);
   return saved;
 }
 
@@ -268,13 +270,17 @@ function updateRow_(name, rowNumber, obj) {
   var saved = {};
   cols.forEach(function (c, i) { saved[c.key] = echoCell_(row[i], c.type); });
   saved._row = rowNumber;
+  syncNote_(name, saved);
   return saved;
 }
 
 /** @param {Object=} expect แถวที่อ่านมา (ใส่ไว้เพื่อตรวจว่ายังเป็นรายการเดิมก่อนลบ) */
 function deleteRow_(name, rowNumber, expect) {
   var sh = ensureSheet_(name);
-  sh.deleteRow(verifyRow_(sh, name, rowNumber, expect));
+  var at = verifyRow_(sh, name, rowNumber, expect);
+  var key = sh.getRange(at, 1).getValue();       // รหัสของแถวที่ลบจริง (ส่งให้อีกฝั่งลบตาม)
+  sh.deleteRow(at);
+  syncNote_(name, null, normalizeValue_(key, 'text'));
 }
 
 /**
@@ -320,6 +326,11 @@ function bulkInsert_(name, objects) {
     return cols.map(function (c) { return serializeValue_(o[c.key], c.type); });
   });
   sh.getRange(sh.getLastRow() + 1, 1, matrix.length, cols.length).setValues(matrix);
+  matrix.forEach(function (row) {
+    var saved = {};
+    cols.forEach(function (c, i) { saved[c.key] = echoCell_(row[i], c.type); });
+    syncNote_(name, saved);
+  });
   return matrix.length;
 }
 
@@ -482,6 +493,44 @@ function daysBetween_(fromIso, toIso) {
 function splitList_(v) {
   if (Array.isArray(v)) return v;
   return String(v || '').split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(String);
+}
+
+/**
+ * ไบต์สุ่มสำหรับรหัสลับ (รหัสการเข้าใช้งาน กุญแจ ค่าสุ่มรหัสผ่าน รหัสเชื่อมต่อ)
+ *
+ * ห้ามใช้ Math.random() — มันไม่ได้ออกแบบมาให้เดาไม่ได้ ใครเห็นค่าที่สุ่มออกมาไม่กี่ค่า
+ * อาจเดาค่าถัดไปได้ · Cloudflare (และ Node ตอนทดสอบ) มี crypto.getRandomValues
+ * · Apps Script ไม่มี จึงใช้ Utilities.getUuid() ซึ่งสุ่มด้วยตัวสุ่มที่ปลอดภัยของ Java
+ *   (ตัดไบต์ที่ 6 และ 8 ทิ้ง เพราะมีบิตคงที่บอกรุ่นของ UUID)
+ */
+function secureBytes_(n) {
+  var out = [];
+  if (typeof crypto !== 'undefined' && crypto && typeof crypto.getRandomValues === 'function') {
+    var a = new Uint8Array(n);
+    crypto.getRandomValues(a);
+    for (var i = 0; i < n; i++) out.push(a[i]);
+    return out;
+  }
+  while (out.length < n) {
+    var hex = Utilities.getUuid().replace(/-/g, '');
+    for (var j = 0; j < 16; j++) {
+      if (j === 6 || j === 8) continue;
+      out.push(parseInt(hex.substr(j * 2, 2), 16));
+    }
+  }
+  return out.slice(0, n);
+}
+
+/** สตริงสุ่มจากตัวอักษรที่กำหนด · ตัดไบต์ที่เกินช่วงทิ้ง จะได้ทุกตัวอักษรมีโอกาสเท่ากัน */
+function randomString_(abc, len) {
+  var limit = 256 - (256 % abc.length);
+  var out = '';
+  while (out.length < len) {
+    secureBytes_(len * 2).forEach(function (b) {
+      if (out.length < len && b < limit) out += abc.charAt(b % abc.length);
+    });
+  }
+  return out;
 }
 
 function uid_(prefix) {

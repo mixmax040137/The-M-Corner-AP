@@ -425,6 +425,7 @@ export class MCornerAP {
       }
       if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
       const body = await readJson(request);
+      if (body.adminKey !== undefined) body.adminKey = keyFrom(body.adminKey);
       if (path === '/api') return json(await this.handleApi(body));
       if (path === '/sync/apply') return json(this.handleSyncApply(body));
       if (path === '/setup/status') return json(await this.setupStatus(body));
@@ -653,6 +654,12 @@ async function readJson(request) {
   if (text.length > MAX_BODY) { const e = new Error('ข้อมูลใหญ่เกินไป'); e.status = 413; throw e; }
   try { const v = JSON.parse(text || '{}'); return v && typeof v === 'object' ? v : {}; }
   catch (e) { return {}; }
+}
+/** รับได้ทั้งกุญแจเปล่า ๆ และลิงก์กู้ระบบทั้งเส้น (…/exec?key=XXXX) — ตัดเอาเฉพาะกุญแจ */
+function keyFrom(v) {
+  const s = String(v == null ? '' : v).trim();
+  const m = s.match(/[?&]key=([A-Za-z0-9_-]+)/);
+  return m ? m[1] : s;
 }
 function escapeHtml(v) {
   return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);

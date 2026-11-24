@@ -154,6 +154,7 @@ function makeCtx(db) {
   check('ตัวเลขบนหน้าระบบตรงกันทุกตัว (' + (v.figures || []).length + ' ชุด)', v.ok && v.figures.every(f => f.same), true);
   check('ยอดหนี้หลักชำระแล้วตรงกัน 5,049,654', [Math.round(v.headline.cf.mainPaid), Math.round(v.headline.gas.mainPaid)], [5049654, 5049654]);
   check('กุญแจผิดตรวจไม่ได้', (await post('/setup/verify', { adminKey: 'nope' })).ok, false);
+  check('วางลิงก์กู้ระบบทั้งเส้นแทนกุญแจได้', (await post('/setup/verify', { adminKey: '  ' + GAS_URL + '?key=' + adminKey + '  ' })).ok, true);
 
   /* ================================================================ */
   section('3. หน้าเว็บและล็อกอินบน Cloudflare');

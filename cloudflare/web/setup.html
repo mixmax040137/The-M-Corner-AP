@@ -60,12 +60,13 @@
     <ol>
       <li>ใน Apps Script วางโค้ด <b>AllInOne.gs</b> รุ่นล่าสุด แล้วกด <b>Deploy → Manage deployments → ✏️ → Version: New version → Deploy</b></li>
       <li>คัดลอก <b>Web app URL</b> (ลงท้ายด้วย <b>/exec</b>) มาวางด้านล่าง</li>
-      <li>ใส่ <b>กุญแจกู้ระบบ</b> (ดูได้ในหน้า ⚙️ ตั้งค่า → ความปลอดภัย ของระบบเดิม)</li>
+      <li>วาง <b>ลิงก์กู้ระบบ</b> ทั้งเส้น (ลงท้ายด้วย <b>?key=…</b>) — อยู่ในระบบเดิม หน้า <b>⚙️ ตั้งค่า</b> เลื่อนลงล่างสุดของหัวข้อลิงก์แชร์
+        ตรงบรรทัด <b>🆘 ลิงก์กู้ระบบ</b> · หรือเปิด Google Sheet แผ่น <b>Settings</b> แถว <b>admin_token</b> แล้วคัดลอกช่องค่า</li>
     </ol>
     <form id="pairForm" autocomplete="off">
       <label for="gasUrl">ลิงก์ Apps Script (Web app URL)</label>
       <input id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec" inputmode="url" required>
-      <label for="pairKey">กุญแจกู้ระบบ</label>
+      <label for="pairKey">ลิงก์กู้ระบบ หรือกุญแจกู้ระบบ</label>
       <input id="pairKey" type="password" required>
       <button type="submit" id="pairBtn">เชื่อมต่อและย้ายข้อมูล</button>
     </form>
@@ -76,7 +77,7 @@
     <h2>② ตรวจว่าข้อมูลสองฝั่งตรงกัน</h2>
     <small>เทียบทุกแถวของทุกแผ่นงาน และตัวเลขสรุปที่หน้าระบบแสดง (ยอดหนี้ ค่าใช้จ่าย รายรับ-รายจ่าย ฯลฯ)</small>
     <form id="verifyForm" autocomplete="off">
-      <label for="verifyKey">กุญแจกู้ระบบ</label>
+      <label for="verifyKey">ลิงก์กู้ระบบ หรือกุญแจกู้ระบบ</label>
       <input id="verifyKey" type="password" required>
       <button type="submit" id="verifyBtn">ตรวจเดี๋ยวนี้</button>
     </form>

@@ -1,0 +1,5 @@
+node_modules/
+public/vendor/
+.wrangler/
+test/out/
+src/assets.gen.js

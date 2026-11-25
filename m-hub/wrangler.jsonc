@@ -1,0 +1,13 @@
+{
+  // M Hub — ศูนย์รวมเครื่องมือทำงาน (Worker ตัวใหม่ แยกจากระบบเดิมทั้งหมด)
+  // หน้าเว็บทั้งหมดอยู่ใน public/ แล้วถูกฝังลงสคริปต์ด้วย scripts/embed.mjs ตอน deploy
+  // งานไฟล์ทุกอย่างทำในเบราว์เซอร์ของผู้ใช้ · Worker ตอบหน้าเว็บ + /api/* (แปลภาษาด้วย Workers AI แบบไม่บังคับ)
+  "name": "m-hub",
+  "account_id": "a57de08fa084a63d1a7aa075ca0412c2",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "ai": { "binding": "AI" },
+  "observability": { "enabled": true }
+}

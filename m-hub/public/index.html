@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>M Hub</title>
+  <meta name="description" content="ศูนย์รวมเครื่องมือทำงาน: จัดการรูปเป็นชุด ออกเอกสารจากเทมเพลต ร่างอีเมลประกาศ จัดการ PDF — ทำงานในเครื่องคุณ ไฟล์ไม่ถูกอัปโหลด">
+  <meta name="theme-color" content="#2f4fd6">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/vendor/fonts/fonts.css">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <a class="skip" href="#main">ข้ามไปเนื้อหา</a>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#/">
+        <img src="/icons/icon.svg" width="32" height="32" alt="">
+        <span><b>M Hub</b><small>ศูนย์รวมเครื่องมือทำงาน</small></span>
+      </a>
+      <nav id="nav" aria-label="เครื่องมือ"></nav>
+      <div class="sidebar-foot" id="sidebar-foot"></div>
+    </aside>
+    <div class="content">
+      <header class="topbar">
+        <button class="btn ghost icon-only menu-btn" id="menu-btn" type="button" aria-label="เมนู"></button>
+        <h1 id="page-title">หน้าแรก</h1>
+        <div class="topbar-actions" id="topbar-actions"></div>
+      </header>
+      <main id="main" tabindex="-1"></main>
+    </div>
+  </div>
+  <noscript>ต้องเปิด JavaScript เพื่อใช้งาน M Hub</noscript>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

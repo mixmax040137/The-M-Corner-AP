@@ -768,7 +768,7 @@ function money(n, dec){
   var v = Number(n||0);
   return v.toLocaleString('th-TH',{minimumFractionDigits:dec||0, maximumFractionDigits:dec||0});
 }
-function baht(n){ return money(n) + ' ฿'; }
+function baht(n){ return money(n) + '\u00a0฿'; }   // เว้นวรรคแบบไม่ตัดบรรทัด — ฿ ไม่หลุดไปอยู่บรรทัดใหม่คนเดียว
 function pct(n){ return (Number(n)||0).toFixed(1) + '%'; }
 function num(n){ return n==null||n==='' ? '–' : money(n); }
 

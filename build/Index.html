@@ -80,6 +80,7 @@ body{
   -webkit-font-smoothing:antialiased;
 }
 img{max-width:100%}
+code{overflow-wrap:anywhere}   /* ลิงก์ยาว ๆ ตัดขึ้นบรรทัดใหม่ได้ ไม่ดันจอให้เลื่อนข้าง */
 [hidden]{display:none!important}
 :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:5px}
 @media (prefers-reduced-motion:reduce){
@@ -115,12 +116,18 @@ button,input,select,textarea{font:inherit;color:inherit}
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
 .top{
   position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:1px solid var(--line);
-  padding:11px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  /* แถบหัวกว้างเต็มจอ แต่ของข้างในเรียงตรงแนวเดียวกับเนื้อหาที่อยู่กลางจอ
+     (ขอบซ้ายของชื่อหน้า = ขอบซ้ายของการ์ด) แบบเดียวกับ GitHub / Stripe / Google Admin */
+  padding:11px max(var(--gutter), calc((100% - var(--page-max)) / 2 + var(--gutter)));
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
 }
 .top h1{font-size:17.5px;margin:0;font-weight:600;letter-spacing:-.1px;font-family:var(--font-display);text-wrap:balance}
 .top .sub{font-size:12px;color:var(--muted);margin-top:1px}
 .top-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.content{padding:20px 22px 64px;max-width:1320px;width:100%}
+:root{--page-max:1320px;--gutter:22px}
+/* เนื้อหาอยู่กลางจอ กว้างไม่เกิน 1320px — จอใหญ่จะเหลือที่ว่างสองข้างเท่ากัน ไม่กองชิดซ้าย
+   (เว็บใหญ่ส่วนมากใช้ 1200–1440px: อ่านง่าย ตาไม่ต้องกวาดไกล ตารางไม่ยืดจนตัวเลขห่างกัน) */
+.content{padding:24px var(--gutter) 64px;max-width:var(--page-max);width:100%;margin:0 auto}
 
 .burger{display:none;background:0;border:1px solid var(--line);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer}
 
@@ -173,12 +180,14 @@ button,input,select,textarea{font:inherit;color:inherit}
 .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
-.g-auto{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.g-auto{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 
 /* KPI */
-.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--sh)}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--sh);
+  container-type:inline-size}   /* ให้ตัวเลขข้างในย่อตามความกว้างของกล่องเอง ไม่ว่าจอขนาดไหน */
 .kpi .lbl{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
-.kpi .val{font-size:23px;font-weight:600;letter-spacing:-.4px;margin-top:5px;font-family:var(--font-display);font-variant-numeric:tabular-nums}
+.kpi .val{font-size:23px;font-size:clamp(15px,12.5cqi,23px);font-weight:600;letter-spacing:-.4px;margin-top:5px;
+  font-family:var(--font-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .kpi .cap{font-size:11.5px;color:var(--faint);margin-top:2px;font-variant-numeric:tabular-nums}
 .kpi.accent{background:var(--brand-soft);border-color:transparent}
 .kpi.accent .lbl{color:var(--brand)}
@@ -322,6 +331,10 @@ table.t tbody tr:hover{background:var(--surface-2)}
 @media (max-width:900px){
   .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
   .g3{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* แท็บเล็ต: เมนูข้างกินที่ไปเกือบหนึ่งในสาม การ์ดคู่จะแคบจนตัวเลขอัดกัน — วางทีละใบเต็มความกว้างแทน */
+@media (min-width:761px) and (max-width:1000px){
+  .g2{grid-template-columns:1fr}
 }
 /* แท็บเล็ต/หน้าต่างย่อ: เมนูข้างยังอยู่ ที่เหลือให้แถบหัวเลยแคบ
    บีบช่องค้นหาลงหน่อยจะได้ไม่ตกบรรทัดจนแถบหัวสูงขึ้นอีกเท่าตัว */
@@ -689,13 +702,23 @@ button.sync-pill:active{transform:translateY(1px)}
   .content{padding:14px 14px calc(74px + env(safe-area-inset-bottom))}
   .tabbar ~ .ov,.nav{z-index:60}
 
-  /* ---- แถบหัว: บีบให้เหลือแถวเดียวเท่าที่ไหว ---- */
-  .top{padding:6px 10px;gap:7px;row-gap:6px}
-  .top h1{font-size:15.5px}
+  /* ---- แถบหัว: 2 แถวพอดี แบบแอปมือถือทั่วไป (Gmail, LINE, Google Drive) ----
+     แถว 1: ☰ ชื่อหน้า ........ สถานะ 🔔 🌗 ↻
+     แถว 2: [ ค้นหาทั้งระบบ ............ ] [ ปี ]
+     ไม่แตะ HTML — ปล่อยปุ่มใน .top-right ออกมาเรียงในแถบหัวโดยตรง แล้วจัดลำดับด้วย order */
+  .top{padding:6px 12px 8px;gap:6px;row-gap:7px}
+  .top h1{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .top .sub{display:none}          /* คำอธิบายหน้าไปอยู่ในเมนูข้างแล้ว ไม่ต้องซ้ำ */
-  .top-right{gap:6px;width:100%;margin-left:0}
-  .top-right #searchBox{flex:1 1 110px;width:auto!important;min-width:0}
-  .top-right #yearSel{flex:0 1 auto;max-width:42vw}
+  .top-right{display:contents}
+  .top > .burger{order:1}
+  .top > div:not(.top-right){order:2;flex:1 1 0;min-width:0}
+  .top-right > *{order:6}
+  #liveDot,#saveState{order:3}
+  #bellWrap{order:4}
+  #themeBtn{order:5}
+  .top::after{content:'';order:7;flex-basis:100%;height:0}   /* ขึ้นบรรทัดใหม่ตรงนี้ */
+  .top-right #searchBox{order:8;flex:1 1 0;width:auto!important;min-width:0}
+  .top-right #yearSel{order:9;flex:0 0 auto;max-width:40vw;width:auto}
   .burger{padding:7px 10px}
   /* ช่องกรอกบนแถบหัวเตี้ยลง แต่ยังคง 16px กัน iOS ซูมเอง */
   .top .inp,.top .sel{padding:6px 10px}
@@ -705,9 +728,11 @@ button.sync-pill:active{transform:translateY(1px)}
   .g4,.g3{grid-template-columns:repeat(2,minmax(0,1fr))}
   .g2{grid-template-columns:1fr}
   .kpi{padding:11px 12px}
-  .kpi .v{font-size:19px}
-  .kpi .l{font-size:11px}
-  .kpi .s{font-size:10.5px}
+  .kpi .val{letter-spacing:-.3px}
+  .kpi .lbl{font-size:11.5px}
+  .kpi .cap{font-size:11px}
+  .card-b{padding:13px}
+  .card-h{padding:12px 13px}
 
   /* ---- ตาราง -> การ์ดทีละรายการ ----
      ชื่อคอลัมน์มาจาก data-label ที่ labelCells() ติดไว้ให้หลังวาดหน้า
@@ -721,18 +746,26 @@ button.sync-pill:active{transform:translateY(1px)}
     border-radius:var(--r-sm);padding:9px 12px;margin-bottom:8px;
   }
   .t tbody tr:last-child{margin-bottom:0}
+  /* แต่ละช่อง = 2 คอลัมน์: ชื่อช่อง | ค่า (ค่าหลายบรรทัดเรียงลงล่างในคอลัมน์ขวา ไม่เบียดกันในแถวเดียว) */
   .t tbody td{
-    display:flex;gap:10px;align-items:baseline;
+    display:grid;grid-template-columns:36% minmax(0,1fr);column-gap:10px;align-items:baseline;
     padding:3px 0;border:0;text-align:left!important;white-space:normal;
   }
+  .t tbody td > *{grid-column:2;min-width:0}
+  .t tbody td > .b,.t tbody td > .btn{justify-self:start}   /* ป้ายสถานะ/ปุ่ม กว้างเท่าข้อความ ไม่ยืดเต็มช่อง */
+  .t tbody td:not([data-label]){grid-template-columns:minmax(0,1fr)}
+  .t tbody td:not([data-label]) > *{grid-column:auto}
   .t tbody td:empty,.t tbody td.cell-empty{display:none}
   .t tbody td[data-label]::before{
-    content:attr(data-label);flex:0 0 36%;min-width:0;
+    content:attr(data-label);grid-column:1;grid-row:1 / span 9;min-width:0;
     color:var(--muted);font-size:11.5px;font-weight:500;
   }
   .t tbody td.num{justify-content:flex-start}
+  /* ช่องที่เป็นเช็คลิสต์ยาว: ชื่อช่องอยู่บน รายการเต็มความกว้างข้างล่าง (ไม่บีบเหลือ 2/3 ของการ์ด) */
+  .t tbody td:has(.todo-view){display:block}
+  .t tbody td:has(.todo-view)::before{display:block;margin-bottom:4px}
   .t tbody td.cell-actions{
-    justify-content:flex-end;gap:6px;padding-top:9px;margin-top:6px;
+    display:flex;justify-content:flex-end;gap:6px;padding-top:9px;margin-top:6px;
     border-top:1px solid var(--line-2);
   }
   .t tbody tr.row-wide td{display:block;text-align:center!important}
@@ -758,8 +791,7 @@ button.sync-pill:active{transform:translateY(1px)}
 /* จอเล็กมาก (เครื่องเล็ก / ย่อหน้าต่างแคบสุด) */
 @media (max-width:400px){
   .tab .tl{font-size:9.5px}
-  .kpi .v{font-size:17.5px}
-  .t tbody td[data-label]::before{flex-basis:42%}
+  .t tbody td[data-label]{grid-template-columns:42% minmax(0,1fr)}
 }
 
 @media print{
@@ -1703,7 +1735,7 @@ function money(n, dec){
   var v = Number(n||0);
   return v.toLocaleString('th-TH',{minimumFractionDigits:dec||0, maximumFractionDigits:dec||0});
 }
-function baht(n){ return money(n) + ' ฿'; }
+function baht(n){ return money(n) + '\u00a0฿'; }   // เว้นวรรคแบบไม่ตัดบรรทัด — ฿ ไม่หลุดไปอยู่บรรทัดใหม่คนเดียว
 function pct(n){ return (Number(n)||0).toFixed(1) + '%'; }
 function num(n){ return n==null||n==='' ? '–' : money(n); }
 

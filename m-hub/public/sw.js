@@ -1,10 +1,15 @@
 // M Hub service worker — ใช้งานออฟไลน์ได้ และติดตั้งเป็นโปรแกรมได้
 // โค้ดแอป: เน็ตก่อน (ได้เวอร์ชันใหม่เสมอ) ถ้าออฟไลน์ใช้ของที่เก็บไว้
 // ไลบรารี/ฟอนต์ใน /vendor/: ใช้ของที่เก็บไว้ก่อน (ไฟล์ใหญ่ ไม่ค่อยเปลี่ยน)
-const VERSION = 'm-hub-v1';
-const SHELL = ['/', '/app.js', '/app.css', '/manifest.webmanifest', '/icons/icon.svg', '/vendor/fonts/fonts.css',
-  '/core/ui.js', '/core/icons.js', '/core/store.js', '/core/workspace.js', '/core/output.js', '/core/data.js', '/core/thai.js',
-  '/tools/registry.js'];
+const VERSION = 'm-hub-v1.1';
+const SHELL = [
+  '/', '/app.js', '/app.css', '/manifest.webmanifest', '/icons/icon.svg', '/vendor/fonts/fonts.css',
+  '/core/bus.js', '/core/data.js', '/core/eml.js', '/core/glossary.js', '/core/icons.js', '/core/image.js',
+  '/core/ocr.js', '/core/output.js', '/core/pdf.js', '/core/qr.js', '/core/store.js', '/core/thai.js',
+  '/core/ui.js', '/core/workspace.js', '/tools/announce.js', '/tools/contacts.js', '/tools/docs-designer.js', '/tools/docs.js',
+  '/tools/glossary.js', '/tools/images.js', '/tools/ocr.js', '/tools/pdf.js', '/tools/qr.js', '/tools/registry.js',
+  '/tools/social.js', '/tools/video.js',
+];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

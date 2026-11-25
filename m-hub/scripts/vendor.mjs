@@ -19,6 +19,8 @@ copy('pdfjs-dist/build/pdf.min.mjs', 'pdfjs/pdf.min.mjs');
 copy('pdfjs-dist/build/pdf.worker.min.mjs', 'pdfjs/pdf.worker.min.mjs');
 copy('heic2any/dist/heic2any.min.js', 'heic2any.min.js');
 copy('exifr/dist/lite.esm.mjs', 'exifr-lite.mjs');
+copy('qrcode-generator/dist/qrcode.mjs', 'qrcode.mjs');
+copy('tesseract.js/dist/tesseract.esm.min.js', 'tesseract.esm.min.js');
 
 // AVIF encoder (wasm แบบ single-thread — ไม่ต้องตั้ง COOP/COEP)
 // ตัว wasm ใหญ่ 3.5 MB จึงไม่ฝังใน Worker: Worker ไปดึงจาก jsDelivr ให้ที่ /cdn/avif/ (โหลดเฉพาะตอนเลือก AVIF)
@@ -33,6 +35,12 @@ writeFileSync(join(out, 'avif/encode.js'), enc);
 await build({
   stdin: { contents: "export { default as Docxtemplater } from 'docxtemplater'; export { default as PizZip } from 'pizzip';", resolveDir: root },
   bundle: true, format: 'esm', platform: 'browser', minify: true, outfile: join(out, 'docx.mjs'), logLevel: 'warning',
+});
+
+// mediabunny (ย่อ/ตัดวิดีโอด้วย WebCodecs) — รวมเฉพาะส่วนที่ใช้
+await build({
+  stdin: { contents: "export { Input, ALL_FORMATS, BlobSource, Output, BufferTarget, Mp4OutputFormat, WebMOutputFormat, Conversion, canEncodeVideo, canEncodeAudio } from 'mediabunny';", resolveDir: root },
+  bundle: true, format: 'esm', platform: 'browser', minify: true, outfile: join(out, 'mediabunny.mjs'), logLevel: 'warning',
 });
 
 // ฟอนต์ไทย (Sarabun, Kanit, Prompt, Mitr, Charm) เฉพาะ woff2 ชุด thai + latin

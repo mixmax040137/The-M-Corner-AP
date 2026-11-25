@@ -126,7 +126,7 @@ export function mount(root) {
 
   // ---------- 3) ตั้งชื่อ & จัดโฟลเดอร์ ----------
   const renameBody = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
-  const ds = dataSource({ sample: SAMPLE, onChange: () => { autoExcelColumns(); drawRename(); refresh(); } });
+  const ds = dataSource({ sample: SAMPLE, handoff: null, onChange: () => { autoExcelColumns(); drawRename(); refresh(); } });
   const tokenHelp = () => h('div.chips', h('span.muted.small', 'ตัวแทนที่ใช้ได้:'),
     ['ชื่อเดิม', 'ลำดับ', 'วันที่', 'ปี', 'เดือน', 'เดือนไทย', 'วัน', ...(opts.rename === 'excel' ? ds.state.headers : [])]
       .map((k) => h('button.chip', { type: 'button', onclick: () => copyText(`{{${k}}}`) }, `{{${k}}}`)));

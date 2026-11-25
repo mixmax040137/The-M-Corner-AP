@@ -64,6 +64,28 @@ export function thaiWords(text) {
   return String(text).split(/(\s+)/);
 }
 
+// ตัดบรรทัดข้อความไทย/อังกฤษให้พอดีความกว้าง (ใช้กับ canvas)
+export function wrapText(ctx, str, maxW) {
+  const out = [];
+  for (const para of String(str).replace(/\t/g, '    ').split('\n')) {
+    if (!para.trim()) { out.push(''); continue; }
+    let line = '';
+    // ไม่ให้วงเล็บ/เครื่องหมายคำพูดเปิดค้างท้ายบรรทัด หรือเครื่องหมายปิด/ๆ/ฯ ขึ้นต้นบรรทัด
+    const segs = [];
+    for (const w of thaiWords(para)) {
+      if (segs.length && (/^[”’)\]}.,!?:;ๆฯ%]+$/.test(w) || /[“‘([{]$/.test(segs[segs.length - 1]))) segs[segs.length - 1] += w;
+      else segs.push(w);
+    }
+    for (const w of segs) {
+      const test = line + w;
+      if (line.trim() && ctx.measureText(test).width > maxW) { out.push(line.replace(/\s+$/, '')); line = w.replace(/^\s+/, ''); }
+      else line = test;
+    }
+    if (line) out.push(line);
+  }
+  return out;
+}
+
 // คำนวณ token แบบประมาณ (ไทย ~1 token ต่อ 1–2 ตัวอักษร, อังกฤษ ~4 ตัวอักษร)
 export function estimateTokens(text) {
   const s = String(text || '');

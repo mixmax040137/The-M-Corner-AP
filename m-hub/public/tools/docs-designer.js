@@ -5,7 +5,8 @@ import { icon } from '../core/icons.js';
 import { outputChooser, openSink } from '../core/output.js';
 import * as store from '../core/store.js';
 import { openPdf, renderPdfPage, pdfLib } from '../core/pdf.js';
-import { thaiWords } from '../core/thai.js';
+import { wrapText as wrapLines } from '../core/thai.js';
+import { loadQr, qrMatrix, drawQr } from '../core/qr.js';
 
 const PAGES = {
   a4l: { label: 'A4 แนวนอน (เกียรติบัตร)', w: 297, h: 210 },
@@ -79,27 +80,6 @@ export function gridLayout(w, h, gap = 2, margin = 5) {
   return l.per > p.per ? l : p;
 }
 
-function wrapLines(ctx, str, maxW) {
-  const out = [];
-  for (const para of String(str).replace(/\t/g, '    ').split('\n')) {
-    if (!para.trim()) { out.push(''); continue; }
-    let line = '';
-    // ไม่ให้วงเล็บ/เครื่องหมายคำพูดเปิดค้างท้ายบรรทัด หรือเครื่องหมายปิด/ๆ/ฯ ขึ้นต้นบรรทัด
-    const segs = [];
-    for (const w of thaiWords(para)) {
-      if (segs.length && (/^[”’)\]}.,!?:;ๆฯ%]+$/.test(w) || /[“‘([{]$/.test(segs[segs.length - 1]))) segs[segs.length - 1] += w;
-      else segs.push(w);
-    }
-    for (const w of segs) {
-      const test = line + w;
-      if (line.trim() && ctx.measureText(test).width > maxW) { out.push(line.replace(/\s+$/, '')); line = w.replace(/^\s+/, ''); }
-      else line = test;
-    }
-    if (line) out.push(line);
-  }
-  return out;
-}
-
 // วาดชิ้นงาน 1 ใบลงบน ctx (หน่วย: k พิกเซลต่อมิลลิเมตร) คืนกรอบของแต่ละช่องข้อความ (ใช้ลากย้าย)
 export function renderItem(ctx, design, vars, k, bgImg, { selected = -1 } = {}) {
   const { w, h } = sizeOf(design);
@@ -118,7 +98,26 @@ export function renderItem(ctx, design, vars, k, bgImg, { selected = -1 } = {}) 
     ctx.strokeRect(i2, i2, W - 2 * i2, H - 2 * i2);
   }
   const boxes = [];
+  const outline = (box, idx) => {
+    if (idx !== selected) return;
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = '#2f4fd6';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(box.x - 4, box.y - 4, box.w + 8, box.h + 8);
+    ctx.restore();
+  };
   design.fields.forEach((f, idx) => {
+    if (f.type === 'qr') { // QR Code: x, y = จุดกึ่งกลาง, size = ความกว้าง (มม.)
+      const sz = (+f.size || 20) * k;
+      const box = { idx, x: (f.x / 100) * W - sz / 2, y: (f.y / 100) * H - sz / 2, w: sz, h: sz };
+      const m = qrMatrix(fillTemplate(f.text, vars), 'M');
+      if (m) drawQr(ctx, m, box.x, box.y, sz, { fg: f.color, bg: '#ffffff', margin: 2 });
+      else { ctx.save(); ctx.strokeStyle = '#c0262d'; ctx.strokeRect(box.x, box.y, sz, sz); ctx.restore(); }
+      boxes.push(box);
+      outline(box, idx);
+      return;
+    }
     const str = fillTemplate(f.text, vars);
     let px = f.size * PT * k;
     const weight = f.bold ? BOLD[f.font] || 700 : 400;
@@ -142,21 +141,15 @@ export function renderItem(ctx, design, vars, k, bgImg, { selected = -1 } = {}) 
     const left = f.align === 'left' ? x : f.align === 'right' ? x - width : x - width / 2;
     const box = { idx, x: left, y: y - px * 0.95, w: Math.max(width, 12), h: px * 1.25 + (lines.length - 1) * lh };
     boxes.push(box);
-    if (idx === selected) {
-      ctx.save();
-      ctx.setLineDash([6, 4]);
-      ctx.strokeStyle = '#2f4fd6';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(box.x - 4, box.y - 4, box.w + 8, box.h + 8);
-      ctx.restore();
-    }
+    outline(box, idx);
   });
   return boxes;
 }
 
 async function ensureFonts(design) {
+  if (design.fields.some((f) => f.type === 'qr')) await loadQr();
   const need = new Set();
-  for (const f of design.fields) need.add(`${f.bold ? BOLD[f.font] || 700 : 400} 32px "${f.font}"`);
+  for (const f of design.fields) if (f.type !== 'qr') need.add(`${f.bold ? BOLD[f.font] || 700 : 400} 32px "${f.font}"`);
   await Promise.all([...need].map((s) => document.fonts.load(s, 'กขคงำ่้ ABC').catch(() => {})));
 }
 
@@ -277,9 +270,22 @@ export function designerTab(shared) {
     fieldList.replaceChildren(...design.fields.map((f, i) => {
       if (i !== selected) {
         return h('button.field-item', { type: 'button', style: { textAlign: 'left', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', cursor: 'pointer' }, onclick: () => { selected = i; renderFields(); draw(); } },
-          h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, f.text.replace(/\n/g, ' ') || '(ว่าง)'));
+          h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, (f.type === 'qr' ? 'QR: ' : '') + (f.text.replace(/\n/g, ' ') || '(ว่าง)')));
       }
       const upd = (k) => (v) => { f[k] = v; draw(); };
+      const tools = h('div.row',
+        btn('ทำซ้ำ', () => { design.fields.splice(i + 1, 0, { ...structuredClone(f), y: f.y + 6 }); selected = i + 1; renderFields(); draw(); }, { ic: 'copy', kind: 'sm' }),
+        btn('ลบ', () => { design.fields.splice(i, 1); selected = Math.min(i, design.fields.length - 1); renderFields(); draw(); }, { ic: 'trash', kind: 'sm danger' }));
+      if (f.type === 'qr') {
+        return h('div.field-item.active',
+          field('ข้อมูลใน QR (ใส่ {{ชื่อคอลัมน์}} ได้)', h('textarea', { rows: 2, value: f.text, oninput: (e) => { f.text = e.target.value; draw(); } }), 'เช่น ลิงก์ตรวจสอบเกียรติบัตร https://…?id={{รหัส}}'),
+          h('div.grid4',
+            field('ขนาด (มม.)', num(f.size, upd('size'), { min: 8, max: 200 })),
+            field('สี', h('input', { type: 'color', value: f.color, oninput: (e) => upd('color')(e.target.value) })),
+            field('กึ่งกลาง X (%)', num(f.x, upd('x'), { step: 0.5 })),
+            field('กึ่งกลาง Y (%)', num(f.y, upd('y'), { step: 0.5 }))),
+          tools);
+      }
       const fontOpts = [...FONTS, ...userFonts.map((n) => [n, n + ' (ของฉัน)'])];
       return h('div.field-item.active',
         field('ข้อความ (ใส่ {{ชื่อคอลัมน์}} ได้)', h('textarea', { rows: f.wrap ? 5 : 2, value: f.text, oninput: (e) => { f.text = e.target.value; draw(); } })),
@@ -296,9 +302,7 @@ export function designerTab(shared) {
           field('ตำแหน่ง Y (%)', num(f.y, upd('y'), { step: 0.5 })),
           field('กว้างสุด (%)', num(f.maxWidth, upd('maxWidth'), { min: 5, max: 100 })),
           f.wrap ? field('ระยะบรรทัด', num(f.lineHeight, upd('lineHeight'), { min: 0.8, max: 3, step: 0.05 })) : h('span.hint', 'ชื่อยาวจะย่อขนาดอัตโนมัติให้พอดีความกว้าง')),
-        h('div.row',
-          btn('ทำซ้ำ', () => { design.fields.splice(i + 1, 0, { ...structuredClone(f), y: f.y + 6 }); selected = i + 1; renderFields(); draw(); }, { ic: 'copy', kind: 'sm' }),
-          btn('ลบ', () => { design.fields.splice(i, 1); selected = Math.min(i, design.fields.length - 1); renderFields(); draw(); }, { ic: 'trash', kind: 'sm danger' })));
+        tools);
     }));
   }
 
@@ -450,7 +454,8 @@ export function designerTab(shared) {
         gridInfo),
       h('div.card',
         h('div.row', h('h3.card-title', 'ช่องข้อความ'), h('span.spacer'),
-          btn('เพิ่มข้อความ', () => { design.fields.push(F({ text: '{{ชื่อ}}', y: 50 })); selected = design.fields.length - 1; renderFields(); draw(); }, { ic: 'plus', kind: 'sm' })),
+          btn('เพิ่มข้อความ', () => { design.fields.push(F({ text: '{{ชื่อ}}', y: 50 })); selected = design.fields.length - 1; renderFields(); draw(); }, { ic: 'plus', kind: 'sm' }),
+          btn('เพิ่ม QR', async () => { await loadQr(); design.fields.push(F({ type: 'qr', text: 'https://arts.tu.ac.th', x: 88, y: 80, size: 22, color: '#111111' })); selected = design.fields.length - 1; renderFields(); draw(); }, { ic: 'qr', kind: 'sm' })),
         fieldList,
         h('div.row.wrap', btn('เพิ่มฟอนต์ของฉัน (.ttf / .otf)', async () => {
           const [f] = await pickFiles({ accept: '.ttf,.otf,.woff,.woff2', multiple: false });

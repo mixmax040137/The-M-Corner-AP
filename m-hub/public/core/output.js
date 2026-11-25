@@ -7,12 +7,12 @@ let fflate;
 async function getFflate() { return (fflate ||= await import('../vendor/fflate.mjs')); }
 
 // กล่องเลือกปลายทาง ใช้ซ้ำได้ทุกเครื่องมือ
-export function outputChooser(toolId, { allowSingle = false } = {}) {
+export function outputChooser(toolId, { allowSingle = false, preferFiles = false } = {}) {
   const opts = [];
   if (fsSupported) opts.push(['folder', 'บันทึกลงโฟลเดอร์ในเครื่อง (เลือกตอนกดเริ่ม)']);
   opts.push(['zip', 'ดาวน์โหลดเป็นไฟล์ ZIP']);
-  if (allowSingle) opts.push(['files', 'ดาวน์โหลดทีละไฟล์']);
-  let mode = opts[0][0];
+  if (allowSingle || preferFiles) opts.push(['files', 'ดาวน์โหลดทีละไฟล์']);
+  let mode = preferFiles && !fsSupported ? 'files' : opts[0][0];
   const key = 'output:' + toolId;
   const sel = select(opts, mode, (v) => { mode = v; store.set(key, v); });
   store.get(key).then((v) => { if (v && opts.some((o) => o[0] === v)) { mode = v; sel.value = v; } });

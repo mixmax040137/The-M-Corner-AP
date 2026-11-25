@@ -1,5 +1,6 @@
 // อ่านรายชื่อจาก Excel / CSV / การวางจาก Excel แล้วแสดงตารางตัวอย่าง
 import { h, btn, select, field, loadScript, pickFiles, toast, copyText } from './ui.js';
+import { shared, onShare } from './bus.js';
 
 export async function loadXLSX() {
   await loadScript(new URL('../vendor/xlsx.full.min.js', import.meta.url).href);
@@ -63,7 +64,7 @@ export function guessColumn(headers, patterns) {
  * กล่องข้อมูลรายชื่อ ใช้ซ้ำได้ทุกเครื่องมือ
  * onChange({headers, rows, source}) ถูกเรียกเมื่อข้อมูลเปลี่ยน
  */
-export function dataSource({ onChange, sample, title = 'ข้อมูลรายชื่อ (Excel / CSV)', showChips = true } = {}) {
+export function dataSource({ onChange, sample, showChips = true, handoff = 'contacts' } = {}) {
   const state = { headers: [], rows: [], source: '', sheets: [], sheet: 0, headerRow: 0 };
   const info = h('div.muted');
   const sheetSel = h('span');
@@ -112,7 +113,18 @@ export function dataSource({ onChange, sample, title = 'ข้อมูลรา
     }
   }
 
+  // รับรายชื่อที่ส่งมาจากเครื่องมือ “จัดการรายชื่อ”
+  const handoffBox = h('div');
+  const showHandoff = (v) => {
+    if (!v || !v.rows || !v.rows.length) { handoffBox.replaceChildren(); return; }
+    handoffBox.replaceChildren(h('div.note.info.row.wrap',
+      h('span', `มีรายชื่อที่จัดการแล้วส่งมา ${v.rows.length} แถว (${v.label || 'จัดการรายชื่อ'})`),
+      btn('ใช้รายชื่อนี้', () => { setSheets([{ name: v.label || 'รายชื่อ', grid: [v.headers, ...v.rows.map((r) => v.headers.map((k) => r[k] ?? ''))] }], v.label || 'รายชื่อที่จัดการแล้ว'); handoffBox.replaceChildren(); }, { kind: 'primary sm', ic: 'check' })));
+  };
+  if (handoff) { showHandoff(shared(handoff)); onShare(handoff, showHandoff); }
+
   const el = h('div.data-source',
+    handoffBox,
     h('div.row.wrap',
       btn('เปิดไฟล์ Excel / CSV', async () => {
         const [f] = await pickFiles({ accept: '.xlsx,.xls,.csv,.ods,.tsv,.txt', multiple: false });

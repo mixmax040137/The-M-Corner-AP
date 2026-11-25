@@ -19,11 +19,16 @@ export function startServer(port = 0) {
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({ ok: true, texts: texts.map((t) => '[EN] ' + t) }));
     }
-    if (/^\/cdn\/avif\/avif_enc\.(js|wasm)$/.test(url.pathname)) {
+    const CDN = {
+      '/cdn/avif/': '@jsquash/avif/codec/enc/', '/cdn/tesseract/': 'tesseract.js/dist/', '/cdn/tesseract-core/': 'tesseract.js-core/',
+      '/cdn/tessdata/tha.': '@tesseract.js-data/tha/4.0.0_best_int/tha.', '/cdn/tessdata/eng.': '@tesseract.js-data/eng/4.0.0_best_int/eng.',
+    };
+    const pre = Object.keys(CDN).find((k) => url.pathname.startsWith(k));
+    if (pre) {
       // จำลองสิ่งที่ Worker ทำจริง (ดึงจาก jsDelivr) ด้วยไฟล์ใน node_modules
-      const f = fileURLToPath(new URL('../node_modules/@jsquash/avif/codec/enc/' + url.pathname.split('/').pop(), import.meta.url));
-      res.setHeader('content-type', f.endsWith('.wasm') ? 'application/wasm' : 'text/javascript');
-      return res.end(await readFile(f));
+      const f = fileURLToPath(new URL('../node_modules/' + CDN[pre] + url.pathname.slice(pre.length), import.meta.url));
+      res.setHeader('content-type', f.endsWith('.wasm') ? 'application/wasm' : f.endsWith('.gz') ? 'application/gzip' : 'text/javascript');
+      try { return res.end(await readFile(f)); } catch { res.statusCode = 404; return res.end('not found'); }
     }
     let p = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
     if (p.endsWith('/')) p += 'index.html';

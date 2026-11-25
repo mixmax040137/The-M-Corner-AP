@@ -21,12 +21,12 @@ const ok = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); if 
 const only = process.argv[2];
 
 const { server, url } = await startServer();
-const browser = await chromium.launch();
+const browser = await chromium.launch({ env: { ...process.env, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' } }); // ชื่อไฟล์ไทยต้องใช้ locale UTF-8
 const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 } });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+page.on('console', (m) => { if (m.type() === 'error' && !/Parameter not found/.test(m.text())) errors.push(m.text()); }); // คำเตือนปกติของ Tesseract
 page.on('dialog', (d) => d.accept(d.defaultValue() || 'พรีเซ็ตทดสอบ'));
 
 async function open(hash) {
@@ -387,7 +387,227 @@ async function testMoveAndLayout() {
   await page.screenshot({ path: join(OUT, 'desktop-home.png'), fullPage: false });
 }
 
-const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout };
+// ========== 6) คลังคำแปล ==========
+async function testGlossary() {
+  console.log('คลังคำแปล');
+  await open('#/glossary');
+  const v = view();
+  await v.locator('textarea').first().fill('รองศาสตราจารย์ ดร. คณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์ ปีการศึกษา 2569');
+  await v.getByRole('button', { name: 'แปลด้วยคลังคำ (ไม่ใช้ AI)' }).click();
+  const outText = await v.locator('textarea').nth(1).inputValue();
+  console.log('     →', outText);
+  ok(outText === 'Associate Professor Dr. Faculty of Liberal Arts, Thammasat University Academic Year 2026', 'แปลด้วยคลังคำ: คำยาวก่อน + ปี พ.ศ. → ค.ศ.');
+  await v.getByRole('button', { name: 'เพิ่มคำ' }).click();
+  await v.locator('table input[aria-label="ภาษาไทย"]').first().fill('งานแสดงมุทิตาจิต');
+  await v.locator('table input[aria-label="English"]').first().fill('Retirement Ceremony');
+  await page.waitForTimeout(700);
+  await open('#/glossary');
+  await view().getByPlaceholder('ค้นหาคำ…').fill('มุทิตา');
+  ok((await view().locator('table input[aria-label="English"]').first().inputValue()) === 'Retirement Ceremony', 'เพิ่มคำใหม่แล้วจำไว้หลังเปิดหน้าใหม่');
+  await view().locator('textarea').first().fill('ขอเชิญร่วมงานแสดงมุทิตาจิต');
+  await view().getByRole('button', { name: 'แปลด้วย AI ฟรี (Cloudflare)' }).click();
+  await page.waitForTimeout(600);
+  ok((await view().locator('textarea').nth(1).inputValue()) === '[EN] ขอเชิญร่วมRetirement Ceremony', 'แปลด้วย AI: แทนคำในคลังก่อนส่งแปล');
+}
+
+// ========== 7) จัดการรายชื่อ ==========
+async function testContacts() {
+  console.log('รวม / ทำความสะอาดรายชื่อ');
+  const f1 = join(FIX, 'contacts1.xlsx'), f2 = join(FIX, 'contacts2.xlsx');
+  const mk = (file, rows) => { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Sheet1'); XLSX.writeFile(wb, file); };
+  mk(f1, [['รายชื่อผู้เข้าร่วม'], ['ชื่อ-นามสกุล', 'อีเมล', 'โทรศัพท์'],
+    ['  ผศ.ดร.สมชาย   ใจดี ', 'Somchai@Example.com ', '0812345678'],
+    ['นางสาวสมหญิง รักเรียน', 'somying@example.com', '+66 89 765 4321'],
+    ['MR. JOHN SMITH', 'john@example', '๐๒-๖๑๓-๒๖๐๑']]);
+  mk(f2, [['ชื่อ-นามสกุล', 'อีเมล', 'โทรศัพท์'], ['ผศ.ดร. สมชาย ใจดี', 'somchai@example.com', ''], ['นายปิยะ มีสุข', 'piya@example.com', '0623334444'], ['', '', '']]);
+  await open('#/contacts');
+  await chooseFiles('เพิ่มไฟล์ Excel / CSV', [f1, f2]);
+  await page.waitForTimeout(500);
+  await view().getByRole('button', { name: 'จัดการรายชื่อ' }).click();
+  const rep = await view().locator('.note.ok').first().innerText();
+  console.log('    ', rep);
+  ok(/รวม 5 แถว → เหลือ 4 แถว/.test(rep) && /ลบรายชื่อซ้ำ 1/.test(rep), 'รวม 2 ไฟล์ ลบแถวว่างและรายชื่อซ้ำ (ดูจากอีเมล)');
+  ok((await view().locator('.note.warn').innerText()).includes('อีเมลไม่ถูกต้อง 1'), 'ตรวจพบอีเมลผิดรูปแบบ');
+  const xl = await startAndDownload('ดาวน์โหลด Excel');
+  const rows = XLSX.utils.sheet_to_json(XLSX.read(readFileSync(xl)).Sheets['รายชื่อ'], { defval: '' });
+  const som = rows.find((r) => r['ชื่อ'] === 'สมชาย');
+  const john = rows.find((r) => r['นามสกุล'] === 'Smith');
+  console.log('    ', JSON.stringify(som), '|', JSON.stringify(john));
+  ok(som && som['คำนำหน้า'] === 'ผศ.ดร.' && som['นามสกุล'] === 'ใจดี' && som['อีเมล'] === 'somchai@example.com' && som['โทรศัพท์'] === '081-234-5678', 'แยกคำนำหน้า/ชื่อ/สกุล + อีเมลตัวเล็ก + เบอร์ 081-234-5678');
+  ok(john && john['คำนำหน้า'] === 'Mr.' && john['ชื่อ'] === 'John' && john['โทรศัพท์'] === '02-613-2601' && john['หมายเหตุ'] === 'อีเมลไม่ถูกต้อง', 'ชื่ออังกฤษตัวพิมพ์ถูกต้อง + เลขไทยเป็นเลขอารบิก + หมายเหตุอีเมลผิด');
+  ok(rows.find((r) => r['ชื่อ'] === 'สมหญิง')['โทรศัพท์'] === '089-765-4321', 'เบอร์ +66 แปลงเป็น 0');
+  await view().getByRole('button', { name: 'ส่งไปออกเอกสาร / อีเมล →' }).click();
+  await page.waitForTimeout(800);
+  await view().getByRole('button', { name: 'ใช้รายชื่อนี้' }).click();
+  await page.waitForTimeout(500);
+  ok((await view().locator('.email-card').innerText()).includes('เรียน ผศ.ดร.สมชาย ใจดี'), 'ส่งรายชื่อต่อไปเครื่องมือออกเอกสารได้');
+}
+
+// ========== 8) QR ==========
+async function decodeQr(pngBuf) {
+  await page.addScriptTag({ path: fileURLToPath(new URL('../node_modules/jsqr/dist/jsQR.js', import.meta.url)) });
+  return page.evaluate(async (b64) => {
+    const bmp = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))]));
+    const c = new OffscreenCanvas(bmp.width, bmp.height); const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height);
+    const r = window.jsQR(d.data, d.width, d.height);
+    return r && r.data;
+  }, Buffer.from(pngBuf).toString('base64'));
+}
+
+async function testQr() {
+  console.log('QR Code เป็นชุด');
+  await open('#/qr');
+  await view().getByRole('button', { name: 'ลองด้วยข้อมูลตัวอย่าง' }).click();
+  await page.waitForTimeout(600);
+  await view().locator('select').filter({ hasText: 'ดาวน์โหลดเป็นไฟล์ ZIP' }).selectOption('zip');
+  const z = zipEntries(await startAndDownload('สร้าง QR ทั้งหมด'));
+  const names = Object.keys(z);
+  console.log('    ', names.join(', '));
+  ok(names.length === 3 && names.includes('สมชาย ใจดี.png'), 'QR 3 ไฟล์ ตั้งชื่อตามชื่อ-นามสกุล');
+  ok((await decodeQr(z['สมชาย ใจดี.png'])) === 'https://example.com/checkin?id=A001', 'สแกน QR ได้ข้อมูลถูกต้อง');
+  await view().getByRole('button', { name: 'พิมพ์ทีละบรรทัด' }).click();
+  await view().locator('textarea').first().fill('สวัสดีครับ คณะศิลปศาสตร์ ✓');
+  await page.waitForTimeout(300);
+  const z2 = zipEntries(await startAndDownload('สร้าง QR ทั้งหมด'));
+  ok((await decodeQr(Object.values(z2)[0])) === 'สวัสดีครับ คณะศิลปศาสตร์ ✓', 'QR ภาษาไทย (UTF-8) สแกนได้ถูกต้อง');
+  await view().locator('select').filter({ hasText: 'PNG แยกไฟล์' }).selectOption('sheet');
+  const sheet = await PDFDocument.load(readFileSync(await startAndDownload('สร้าง QR ทั้งหมด')));
+  ok(sheet.getPageCount() === 1 && Math.round(sheet.getPage(0).getSize().width) === 595, 'แผ่น QR A4 พร้อมพิมพ์');
+
+  // QR ในเกียรติบัตร
+  await open('#/docs');
+  await view().getByRole('button', { name: 'ลองด้วยข้อมูลตัวอย่าง' }).click();
+  await view().getByRole('tab', { name: 'เกียรติบัตร / ป้ายชื่อ / จดหมาย PDF' }).click();
+  const designer = view().locator('.tab-body > div:not([hidden])');
+  await designer.getByRole('button', { name: 'เพิ่ม QR' }).click();
+  await designer.getByLabel('ข้อมูลใน QR').fill('https://example.com/verify?email={{อีเมล}}');
+  await page.waitForTimeout(500);
+  await view().locator('.canvas-wrap').screenshot({ path: join(OUT, 'certificate-qr.png') });
+  const pdf = await PDFDocument.load(readFileSync(await startAndDownload('สร้างไฟล์', designer)));
+  ok(pdf.getPageCount() === 5, 'เกียรติบัตรพร้อม QR รายคน สร้าง PDF ได้');
+  await designer.locator('select').filter({ hasText: 'PNG แยกรายคน' }).selectOption('png');
+  await designer.locator('select').filter({ hasText: 'ดาวน์โหลดเป็นไฟล์ ZIP' }).selectOption('zip');
+  const pngs = zipEntries(await startAndDownload('สร้างไฟล์', designer));
+  await page.addScriptTag({ path: fileURLToPath(new URL('../node_modules/jsqr/dist/jsQR.js', import.meta.url)) });
+  const decoded = await page.evaluate(async (b64) => {
+    const bmp = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))]));
+    const k = bmp.width / 297, size = 30 * k; // QR 22 มม. ที่จุด (88%, 80%) + ขอบ
+    const c = new OffscreenCanvas(Math.round(size), Math.round(size)); const g = c.getContext('2d');
+    g.drawImage(bmp, bmp.width * 0.88 - size / 2, bmp.height * 0.80 - size / 2, size, size, 0, 0, size, size);
+    const d = g.getImageData(0, 0, c.width, c.height);
+    const r = window.jsQR(d.data, d.width, d.height);
+    return r && r.data;
+  }, Buffer.from(pngs['สมชาย ใจดี.png']).toString('base64'));
+  ok(decoded === 'https://example.com/verify?email=somchai@example.com', 'QR บนเกียรติบัตรเติมข้อมูลรายคนและสแกนได้');
+}
+
+// ========== 9) ภาพปกโพสต์ ==========
+async function testSocial() {
+  console.log('ภาพปกโพสต์หลายขนาด');
+  await open('#/social');
+  const bg = await makeImage('bg.jpg', 1600, 1000, '#2c3e50');
+  await chooseFiles('เลือกภาพพื้นหลัง', [bg]);
+  await page.waitForTimeout(600);
+  await view().locator('figure').first().locator('..').screenshot({ path: join(OUT, 'social-preview.png') });
+  await view().locator('select').filter({ hasText: 'ดาวน์โหลดเป็นไฟล์ ZIP' }).selectOption('zip');
+  const z = zipEntries(await startAndDownload('สร้างภาพทุกขนาด'));
+  const names = Object.keys(z).sort();
+  console.log('    ', names.join(', '));
+  const dims = await page.evaluate(async (files) => Promise.all(files.map(async (b64) => { const b = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))])); return `${b.width}x${b.height}`; })), names.map((n) => Buffer.from(z[n]).toString('base64')));
+  ok(names.length === 3 && dims.join(',') === '1200x630,1080x1080,1080x1920', 'ได้ภาพ 3 ขนาดตรงสเปก (' + dims.join(', ') + ')');
+  await view().getByText('ทำหลายโพสต์จากรายการใน Excel').click();
+  await view().getByRole('button', { name: 'วางจาก Excel' }).click();
+  await view().getByPlaceholder(/คัดลอกตารางจาก Excel/).fill('ชื่องาน\tวันที่\nสัมมนาภาษาญี่ปุ่น\t1 ธ.ค.\nนิทรรศการภาพถ่าย\t5 ธ.ค.');
+  await view().getByRole('button', { name: 'ใช้ข้อมูลที่วาง' }).click();
+  await page.waitForTimeout(500);
+  const z2 = zipEntries(await startAndDownload('สร้างภาพทุกขนาด'));
+  const n2 = Object.keys(z2);
+  ok(n2.length === 6 && n2.some((n) => n.includes('สัมมนาภาษาญี่ปุ่น')) && n2.some((n) => n.includes('นิทรรศการภาพถ่าย')), 'ทำหลายโพสต์จาก Excel: 2 โพสต์ × 3 ขนาด = 6 ไฟล์');
+}
+
+// ========== 10) OCR ==========
+async function makeTextImage(name, html, width = 900) {
+  const p = await context.newPage();
+  await p.goto(url + '/index.html');
+  await p.setContent(`<link rel="stylesheet" href="${url}/vendor/fonts/fonts.css"><body style="margin:0;background:#fff"><div id=t style="font:28px Sarabun;padding:30px;width:${width}px;line-height:1.6">${html}</div></body>`, { waitUntil: 'networkidle' });
+  await p.evaluate(() => document.fonts.ready);
+  const file = join(FIX, name);
+  await p.locator('#t').screenshot({ path: file });
+  await p.close();
+  return file;
+}
+
+async function testOcr() {
+  console.log('OCR ไทย');
+  const html = 'ประกาศคณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์<br>เรื่อง รับสมัครนักศึกษาเข้าร่วมโครงการแลกเปลี่ยนภาษาและวัฒนธรรม<br>ผู้สนใจสมัครได้ภายในวันที่ 20 ธันวาคม 2569<br>สอบถามโทร. 02-613-2601 อีเมล inter@arts.tu.ac.th';
+  const img = await makeTextImage('scan-text.png', html);
+  await open('#/ocr');
+  await chooseFiles('เลือกไฟล์', [img]);
+  const ta = view().locator('.ocr-doc textarea');
+  await ta.waitFor({ timeout: 120000 });
+  const t = await ta.inputValue();
+  console.log('     ' + t.split('\n').join(' | '));
+  ok(t.includes('รับสมัครนักศึกษาเข้าร่วมโครงการแลกเปลี่ยนภาษาและวัฒนธรรม') && t.includes('20 ธันวาคม 2569') && t.includes('inter@arts.tu.ac.th'), 'อ่านภาษาไทย + อังกฤษจากภาพได้ถูกต้อง');
+  await view().getByRole('button', { name: 'ร่างอีเมลประกาศจากข้อความนี้ →' }).click();
+  await page.waitForTimeout(800);
+  const card = view().locator('section.ann-doc').last();
+  ok((await card.getByLabel('เรื่อง (ไทย)').inputValue()).startsWith('รับสมัครนักศึกษาเข้าร่วมโครงการ'), 'ส่งผล OCR ไปร่างอีเมลประกาศได้');
+
+  // PDF สแกนในเครื่องมือร่างอีเมลประกาศ → ปุ่มอ่านด้วย OCR
+  const pdfPage = await context.newPage();
+  await pdfPage.setContent(`<body style="margin:0"><img src="data:image/png;base64,${readFileSync(img).toString('base64')}" style="width:100%"></body>`);
+  const scanPdf = join(FIX, 'scan-announce.pdf');
+  await pdfPage.pdf({ path: scanPdf, format: 'A4' });
+  await pdfPage.close();
+  await open('#/announce');
+  await chooseFiles('เลือกไฟล์ PDF', [scanPdf]);
+  const c2 = view().locator('section.ann-doc').first();
+  await c2.getByRole('button', { name: 'อ่านด้วย OCR (ไทย + อังกฤษ)' }).click();
+  await view().locator('section.ann-doc').first().getByRole('button', { name: 'อ่านด้วย OCR (ไทย + อังกฤษ)' }).waitFor({ state: 'detached', timeout: 120000 });
+  const title = await view().locator('section.ann-doc').first().getByLabel('เรื่อง (ไทย)').inputValue();
+  console.log('     เรื่อง:', title);
+  ok(title.startsWith('รับสมัครนักศึกษาเข้าร่วมโครงการแลกเปลี่ยน'), 'PDF สแกน: กดอ่านด้วย OCR แล้วดึงหัวเรื่องได้');
+}
+
+// ========== 11) วิดีโอ ==========
+async function testVideo() {
+  console.log('ย่อ / ตัดวิดีโอ');
+  await open('#/video');
+  const b64 = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 1920; c.height = 1080; const g = c.getContext('2d');
+    const ac = new AudioContext(); const osc = ac.createOscillator(); const dst = ac.createMediaStreamDestination(); osc.connect(dst); osc.start();
+    const stream = new MediaStream([...c.captureStream(30).getVideoTracks(), ...dst.stream.getAudioTracks()]);
+    const rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 8e6 });
+    const chunks = []; rec.ondataavailable = (e) => chunks.push(e.data);
+    let f = 0; const t = setInterval(() => { g.fillStyle = `hsl(${f * 5},70%,50%)`; g.fillRect(0, 0, 1920, 1080); g.fillStyle = '#fff'; g.font = '160px sans-serif'; g.fillText('frame ' + f++, 300, 600); }, 33);
+    rec.start(200); await new Promise((r) => setTimeout(r, 3300)); rec.stop(); await new Promise((r) => (rec.onstop = r)); clearInterval(t); osc.stop();
+    const buf = new Uint8Array(await new Blob(chunks).arrayBuffer());
+    let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    return btoa(s);
+  });
+  const clip = join(FIX, 'clip.webm');
+  writeFileSync(clip, Buffer.from(b64, 'base64'));
+  await chooseFiles('เลือกวิดีโอ', [clip]);
+  await view().locator('.video-item').waitFor();
+  await page.waitForTimeout(600);
+  await view().getByLabel('จุดเริ่ม').fill('0:00.5'); await view().getByLabel('จุดเริ่ม').press('Tab');
+  await view().getByLabel('จุดจบ').fill('0:02.5'); await view().getByLabel('จุดจบ').press('Tab');
+  await view().locator('select').filter({ hasText: 'ดาวน์โหลดเป็นไฟล์ ZIP' }).selectOption('files');
+  const outFile = await startAndDownload('เริ่มแปลงวิดีโอ');
+  const info = await page.evaluate(async (b) => {
+    const m = await import('/vendor/mediabunny.mjs');
+    const input = new m.Input({ source: new m.BlobSource(new Blob([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))])), formats: m.ALL_FORMATS });
+    const v = await input.getPrimaryVideoTrack();
+    return { dur: await input.computeDuration(), w: v.displayWidth, h: v.displayHeight, codec: v.codec };
+  }, readFileSync(outFile).toString('base64'));
+  console.log('    ', outFile.split('/').pop(), JSON.stringify(info));
+  ok(Math.abs(info.dur - 2) < 0.15, `ตัดช่วง 0.5–2.5 วินาที (ได้ ${info.dur.toFixed(2)} วินาที)`);
+  ok(info.w === 1280 && info.h === 720, `ย่อจาก 1920×1080 เป็น 720p (${info.w}×${info.h})`);
+  ok(/\.(mp4|webm)$/.test(outFile) && ['avc', 'vp9', 'vp8'].includes(info.codec), 'ได้ไฟล์วิดีโอ ' + info.codec);
+}
+
+const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo };
 for (const [name, fn] of Object.entries(sections)) {
   if (only && only !== name) continue;
   try { await fn(); } catch (e) { failures++; console.log('  ✗ ' + name + ' ล้มเหลว: ' + e.message); await page.screenshot({ path: join(OUT, `fail-${name}.png`), fullPage: true }); }

@@ -9,6 +9,9 @@ import * as store from '../core/store.js';
 import { openPdf, extractText } from '../core/pdf.js';
 import { findThaiDates, thaiDatesToEnglish, thaiDigits, enDate, estimateTokens } from '../core/thai.js';
 import { buildEml, gmailLink, outlookLink } from '../core/eml.js';
+import { recognize } from '../core/ocr.js';
+import { shared, onShare } from '../core/bus.js';
+import { loadGlossary, compileGlossary, applyGlossary, aiTranslate as aiTranslateTexts, hasThai, onGlossaryChange } from '../core/glossary.js';
 
 const DEFAULT_SETTINGS = {
   to: '', cc: '',
@@ -19,22 +22,6 @@ const DEFAULT_SETTINGS = {
   closingTh: 'ขอแสดงความนับถือ\nงานประชาสัมพันธ์\nคณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์',
   closingEn: 'Best regards,\nPublic Relations Unit\nFaculty of Liberal Arts, Thammasat University',
   mode: 'both',
-  glossary: `คณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์ = Faculty of Liberal Arts, Thammasat University
-คณะศิลปศาสตร์ = Faculty of Liberal Arts
-มหาวิทยาลัยธรรมศาสตร์ = Thammasat University
-ท่าพระจันทร์ = Tha Prachan Campus
-ศูนย์รังสิต = Rangsit Campus
-ศูนย์ลำปาง = Lampang Campus
-งานประชาสัมพันธ์ = Public Relations Unit
-งานบริการการศึกษา = Academic Services Unit
-รองคณบดีฝ่ายวิชาการ = Deputy Dean for Academic Affairs
-คณบดี = Dean
-ทุนการศึกษา = scholarship
-ปีการศึกษา = Academic Year
-ภาคเรียนที่ = Semester
-นักศึกษา = students
-คณาจารย์ = faculty members
-บุคลากร = staff`,
 };
 
 // ฟอนต์ไทยบางตัวเก็บวรรณยุกต์ไว้ในรหัสพิเศษ (PUA) → แปลงกลับเป็นตัวอักษรมาตรฐาน
@@ -51,6 +38,7 @@ export function cleanThai(s) {
 }
 
 const STOP_TITLE = /^(ด้วย|ตามที่|ตาม|โดยที่|อาศัย|เนื่องด้วย|เนื่องจาก|เพื่อ|[-_—–.]{3,}|\d+\.|ข้อ\s?\d|ทั้งนี้)/;
+const BODY_LINE = /@|https?:|www\.|โทร|^(ผู้สนใจ|สอบถาม|กำหนด|จึง|โดย|ทั้งนี้|ติดต่อ)/;
 const DEADLINE = /(ภายใน|ไม่เกิน|ก่อน|สิ้นสุด|ปิดรับ|หมดเขต|ถึงวันที่|ถึง|ตั้งแต่|ระหว่าง|ในวันที่|วันที่)/;
 
 // ดึงข้อมูลสำคัญจากข้อความประกาศ
@@ -72,7 +60,7 @@ export function parseAnnouncement(raw, fileName = '') {
     const parts = [lines[ti].replace(/^เรื่อง\s*[:：]?\s*/, '')];
     for (let j = ti + 1; j < lines.length && parts.length < 3; j++) {
       const l = lines[j];
-      if (STOP_TITLE.test(l) || l.length > 90 || /^ประกาศ/.test(l)) break;
+      if (STOP_TITLE.test(l) || l.length > 90 || /^ประกาศ/.test(l) || BODY_LINE.test(l) || findThaiDates(l).length) break;
       parts.push(l);
     }
     out.title = parts.join(' ').replace(/\s+/g, ' ').trim();
@@ -122,24 +110,14 @@ function shorten(s, max) {
   return (sp > max * 0.6 ? cut.slice(0, sp) : cut) + ' …';
 }
 
-function parseGlossary(t) {
-  return String(t).split('\n').map((l) => l.split('=')).filter((p) => p.length >= 2 && p[0].trim() && p[1].trim())
-    .map(([a, ...b]) => [a.trim(), b.join('=').trim()]).sort((x, y) => y[0].length - x[0].length);
-}
-
-// แปลด้วยคลังคำ + วันที่ (ไม่ใช้ AI) — คืนค่าว่างถ้ายังเหลือภาษาไทย
-export function glossaryTranslate(s, glossary) {
-  let r = thaiDatesToEnglish(String(s || ''));
-  for (const [th, en] of glossary) r = r.split(th).join(en);
-  r = r.replace(/Academic Year (25\d\d)/g, (_, y) => 'Academic Year ' + (+y - 543));
-  return r;
-}
-const hasThai = (s) => /[฀-๿]/.test(s);
+// แปลด้วยคลังคำกลาง + วันที่ (ไม่ใช้ AI)
+export const glossaryTranslate = (s, pairs) => applyGlossary(s, pairs);
 
 export async function mount(root) {
   const settings = { ...DEFAULT_SETTINGS, ...((await store.get('announce:settings')) || {}) };
   const save = debounce(() => store.set('announce:settings', settings), 300);
-  let glossary = parseGlossary(settings.glossary);
+  let glossary = compileGlossary(await loadGlossary());
+  onGlossaryChange((list) => (glossary = compileGlossary(list)));
   const docs = []; // {file, path, text, f(fields), drafts, cardEl}
   const list = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } });
   const summaryLine = h('div.muted');
@@ -158,7 +136,7 @@ export async function mount(root) {
         d.text = await extractText(pdf);
         pdf.destroy();
       } catch (e) { d.error = 'เปิดไฟล์ไม่ได้: ' + e.message; }
-      if (!d.error && d.text.replace(/\s/g, '').length < 30) d.error = 'ไฟล์นี้เป็นภาพสแกน ไม่มีข้อความให้ดึง — กรอกข้อมูลเองได้ในช่องด้านล่าง';
+      if (!d.error && d.text.replace(/\s/g, '').length < 30) { d.error = 'ไฟล์นี้เป็นภาพสแกน ไม่มีข้อความให้ดึง — กด “อ่านด้วย OCR” หรือกรอกข้อมูลเองในช่องด้านล่าง'; d.scanned = true; }
       d.f = parseAnnouncement(d.text, file.name);
       initFields(d);
       docs.push(d);
@@ -167,6 +145,32 @@ export async function mount(root) {
     }
     prog.hide();
     summaryLine.textContent = `อ่านแล้ว ${docs.length} ไฟล์`;
+  }
+
+  // รับข้อความจากเครื่องมือ OCR
+  function addFromText(v) {
+    if (!v || !v.text) return;
+    const d = { file: v.file || null, path: v.name + ' (OCR)', text: v.text, f: null, error: '' };
+    d.f = parseAnnouncement(d.text, v.name);
+    initFields(d);
+    docs.push(d);
+    list.append(card(d));
+    summaryLine.textContent = `อ่านแล้ว ${docs.length} ไฟล์`;
+    toast('เพิ่มประกาศจากผล OCR แล้ว', 'ok');
+  }
+
+  async function ocrDoc(d, b) {
+    b.disabled = true;
+    try {
+      const r = await recognize(d.file, { forceOcr: true, onProgress: (s, p) => prog.set(Math.round(p * 100), 100, s) });
+      d.text = r.text; d.error = ''; d.scanned = false;
+      d.f = parseAnnouncement(d.text, d.file.name);
+      initFields(d);
+      const old = d.cardEl;
+      old.replaceWith(card(d));
+      toast('อ่านด้วย OCR แล้ว — ตรวจทานข้อมูลอีกครั้ง', 'ok');
+    } catch (e) { toast('OCR ไม่สำเร็จ: ' + e.message, 'error'); b.disabled = false; }
+    finally { prog.hide(); }
   }
 
   function initFields(d) {
@@ -189,7 +193,8 @@ export async function mount(root) {
     if (f.dates.length) parts.push('', 'กำหนดการสำคัญ', ...f.dates.map((x) => '• ' + x.context));
     if (v.contact) parts.push('', 'สอบถามเพิ่มเติม: ' + v.contact);
     if (v.links) parts.push('', 'ลิงก์ที่เกี่ยวข้อง:', v.links);
-    parts.push('', 'รายละเอียดเพิ่มเติมตามไฟล์ประกาศที่แนบมาพร้อมนี้', '', 'จึงเรียนมาเพื่อโปรดทราบ และขอความอนุเคราะห์ประชาสัมพันธ์ต่อไป', '', settings.closingTh);
+    if (d.file) parts.push('', 'รายละเอียดเพิ่มเติมตามไฟล์ประกาศที่แนบมาพร้อมนี้');
+    parts.push('', 'จึงเรียนมาเพื่อโปรดทราบ และขอความอนุเคราะห์ประชาสัมพันธ์ต่อไป', '', settings.closingTh);
     return parts.join('\n');
   }
   function draftEn(d) {
@@ -200,7 +205,8 @@ export async function mount(root) {
     if (f.dates.length) parts.push('', 'Key dates:', ...f.dates.map((x, i) => '• ' + (v.datesEn[i] || enDate(x.date))));
     if (v.contact) parts.push('', 'For further information, please contact: ' + v.contact);
     if (v.links) parts.push('', 'Related links:', v.links);
-    parts.push('', 'Please see the attached announcement for full details.', '', settings.closingEn);
+    if (d.file) parts.push('', 'Please see the attached announcement for full details.');
+    parts.push('', settings.closingEn);
     return parts.join('\n');
   }
   const subjTh = (d) => settings.subjectTh.replace(/\{\{\s*เรื่อง\s*\}\}/g, d.v.title).replace(/\{\{\s*title\s*\}\}/g, d.v.titleEn || d.v.title);
@@ -218,16 +224,11 @@ export async function mount(root) {
   // ---------- แปลด้วย Workers AI ----------
   async function aiTranslate(d, b) {
     const v = d.v;
-    const pre = (s) => { let r = s; for (const [th, en] of glossary) r = r.split(th).join(en); return thaiDatesToEnglish(r); };
-    const texts = [v.title, v.summary, ...d.f.dates.map((x) => x.context)].map(pre);
     b.disabled = true;
     try {
-      const r = await fetch('/api/translate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ texts, from: 'th', to: 'en' }) });
-      const j = await r.json();
-      if (!r.ok || !j.texts) throw new Error(j.error || r.status);
-      const [t, s, ...dates] = j.texts;
-      v.titleEn = t; v.summaryEn = s; v.datesEn = dates;
-      if (!v.issuerEn) v.issuerEn = pre(v.issuer);
+      const [t, sum, ...dates] = await aiTranslateTexts([v.title, v.summary, ...d.f.dates.map((x) => x.context)], glossary);
+      v.titleEn = t; v.summaryEn = sum; v.datesEn = dates;
+      if (!v.issuerEn) v.issuerEn = applyGlossary(v.issuer, glossary);
       d.refreshFields();
       d.enBox.value = draftEn(d);
       toast('แปลแล้ว — ตรวจทานก่อนส่งทุกครั้ง', 'ok');
@@ -284,7 +285,7 @@ export async function mount(root) {
       links.replaceChildren(
         btn('ดาวน์โหลด .eml (แนบ PDF)', async () => {
           const sink = await openSink('files');
-          for (const e of emailsFor(d)) await sink.write(safeName(splitExt(d.file.name)[0]) + e.tag + '.eml', await emlBlob(d, e));
+          for (const e of emailsFor(d)) await sink.write(safeName(splitExt(d.file ? d.file.name : d.path)[0]) + e.tag + '.eml', await emlBlob(d, e));
         }, { ic: 'mail', kind: 'sm primary' }),
         h('a.btn.sm', { href: gmailLink(mail), target: '_blank', rel: 'noopener', onmouseenter: drawLinks }, icon('external'), 'Gmail'),
         h('a.btn.sm', { href: outlookLink(mail), target: '_blank', rel: 'noopener', onmouseenter: drawLinks }, icon('external'), 'Outlook เว็บ'),
@@ -294,21 +295,22 @@ export async function mount(root) {
     d.thBox.addEventListener('input', debounce(drawLinks, 300));
     d.enBox.addEventListener('input', debounce(drawLinks, 300));
 
-    return h('section.card.ann-doc',
+    const ocrBtn = d.scanned ? btn('อ่านด้วย OCR (ไทย + อังกฤษ)', () => ocrDoc(d, ocrBtn), { ic: 'scan', kind: 'sm primary' }) : null;
+    return (d.cardEl = h('section.card.ann-doc',
       h('div.row.wrap', h('h3.card-title', icon('file'), d.path), h('span.spacer'), h('span.muted.small', `${d.text.length.toLocaleString()} ตัวอักษร`)),
-      d.error ? h('div.note.warn', d.error) : '',
+      d.error ? h('div.note.warn.row.wrap', h('span', d.error), ocrBtn) : '',
       facts, fieldsBox,
       h('div.row.wrap', aiBtn,
         btn('คัดลอกข้อมูลย่อสำหรับ AI', () => { copyText(promptText()); }, { ic: 'sparkles', kind: 'sm' }),
         btn('สร้างร่างใหม่จากข้อมูล', () => { regen(); drawLinks(); }, { ic: 'rotate', kind: 'sm ghost' }),
         h('span.hint', `ข้อมูลย่อใช้ ~${estimateTokens(promptText())} token แทนทั้งไฟล์ ~${fullTokens} token`)),
       t.el, links,
-      h('details', h('summary.muted.small', 'ดูข้อความที่ดึงได้จาก PDF'), h('pre', { style: { whiteSpace: 'pre-wrap', fontSize: '13px', maxHeight: '260px', overflow: 'auto', background: 'var(--surface-2)', padding: '10px', borderRadius: '8px' } }, d.text || '(ไม่มีข้อความ)')));
+      h('details', h('summary.muted.small', 'ดูข้อความที่ดึงได้จาก PDF'), h('pre', { style: { whiteSpace: 'pre-wrap', fontSize: '13px', maxHeight: '260px', overflow: 'auto', background: 'var(--surface-2)', padding: '10px', borderRadius: '8px' } }, d.text || '(ไม่มีข้อความ)'))));
   }
 
   async function emlBlob(d, e) {
-    const data = new Uint8Array(await d.file.arrayBuffer());
-    return new Blob([buildEml({ to: settings.to, cc: settings.cc, subject: e.subject, text: e.text, attachments: [{ name: d.file.name, type: 'application/pdf', data }] })], { type: 'message/rfc822' });
+    const attachments = d.file ? [{ name: d.file.name, type: 'application/pdf', data: new Uint8Array(await d.file.arrayBuffer()) }] : [];
+    return new Blob([buildEml({ to: settings.to, cc: settings.cc, subject: e.subject, text: e.text, attachments })], { type: 'message/rfc822' });
   }
 
   // ---------- ส่งออกทั้งหมด ----------
@@ -319,7 +321,7 @@ export async function mount(root) {
     let sink;
     try { sink = await openSink(out.mode, { zipName: `อีเมลประกาศ-${docs.length}-ไฟล์.zip`, dirId: 'mhub-announce-out' }); }
     catch (e) { if (e.name !== 'AbortError') toast(e.message, 'error'); return; }
-    for (const d of docs) for (const e of emailsFor(d)) await sink.write(safeName(splitExt(d.file.name)[0]) + e.tag + '.eml', await emlBlob(d, e));
+    for (const d of docs) for (const e of emailsFor(d)) await sink.write(safeName(splitExt(d.file ? d.file.name : d.path)[0]) + e.tag + '.eml', await emlBlob(d, e));
     const res = await sink.close();
     resultBox.replaceChildren(h('div.note.ok', `สร้างฉบับร่าง ${res.count} ฉบับ (แนบ PDF แล้ว) → ${res.where}`));
   }
@@ -341,7 +343,7 @@ export async function mount(root) {
       h('div.grid2',
         field('คำลงท้าย / ลายเซ็น (ไทย)', h('textarea', { rows: 3, value: settings.closingTh, oninput: (e) => set('closingTh')(e.target.value) })),
         field('คำลงท้าย / ลายเซ็น (อังกฤษ)', h('textarea', { rows: 3, value: settings.closingEn, oninput: (e) => set('closingEn')(e.target.value) }))),
-      field('คลังคำแปล ไทย = English (ใช้แปลชื่อหน่วยงาน/คำเฉพาะโดยไม่ต้องใช้ AI)', h('textarea', { rows: 6, value: settings.glossary, oninput: (e) => { set('glossary')(e.target.value); glossary = parseGlossary(e.target.value); } })),
+      h('div.note.info', 'ชื่อหน่วยงาน ตำแหน่ง และคำเฉพาะ แปลด้วย ', h('a', { href: '#/glossary' }, 'คลังคำแปลกลาง'), ' (ใช้ร่วมกันทุกเครื่องมือ)'),
       h('div.hint', 'การตั้งค่าใหม่มีผลกับไฟล์ที่เลือกหลังจากนี้ หรือกด “สร้างร่างใหม่จากข้อมูล” ในแต่ละไฟล์')));
 
   const drop = h('div.drop',
@@ -370,4 +372,7 @@ export async function mount(root) {
       h('div.hint', 'ฉบับร่าง .eml แนบไฟล์ประกาศให้แล้ว ดับเบิลคลิกเปิดใน Outlook แล้วกดส่งได้ทันที'),
       resultBox),
   );
+  // รับข้อความจากเครื่องมือ OCR (ทำหลังเตรียมหน้าเสร็จแล้ว)
+  onShare('announce-text', addFromText);
+  if (shared('announce-text')) addFromText(shared('announce-text'));
 }

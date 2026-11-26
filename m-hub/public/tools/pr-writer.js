@@ -12,10 +12,11 @@ const SCREENS = [
   { id: 'compose', label: 'เขียนโพสต์', icon: 'pen', load: () => import('../pr/ui-compose.js') },
   { id: 'events', label: 'งานทั้งหมด', icon: 'list', load: () => import('../pr/ui-events.js') },
   { id: 'calendar', label: 'ปฏิทินโพสต์', icon: 'calendar', load: () => import('../pr/ui-calendar.js') },
+  { id: 'library', label: 'คลังโพสต์', icon: 'book', load: () => import('../pr/ui-library.js') },
   { id: 'poster', label: 'ข้อความโปสเตอร์', icon: 'type', load: () => import('../pr/ui-poster.js') },
   { id: 'templates', label: 'เทมเพลต', icon: 'file', load: () => import('../pr/ui-templates.js') },
   { id: 'staff', label: 'บุคลากร', icon: 'users', load: () => import('../pr/ui-staff.js') },
-  { id: 'style', label: 'แนวทางการเขียน', icon: 'book', load: () => import('../pr/ui-style.js') },
+  { id: 'style', label: 'แนวทางการเขียน', icon: 'award', load: () => import('../pr/ui-style.js') },
   { id: 'qr', label: 'QR Code', icon: 'qr', load: () => import('../pr/ui-qr.js') },
   { id: 'settings', label: 'ตั้งค่า', icon: 'gear', load: () => import('../pr/ui-settings.js') },
 ];

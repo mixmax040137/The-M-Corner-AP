@@ -24,6 +24,19 @@ export function startServer(port = 0) {
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({ ok: true, image: j.image || GRAY_PNG }));
     }
+    if (url.pathname === '/api/ai/chat') {
+      // จำลอง AI ฟรี: เขียน 2 แบบ / ขัดเกลา / แยกข้อมูล ตาม purpose
+      let body = '';
+      for await (const c of req) body += c;
+      const j = JSON.parse(body || '{}');
+      aiCalls.push({ path: url.pathname, purpose: j.purpose, user: j.user, system: j.system });
+      const data = j.purpose === 'extract'
+        ? { title: 'งานทดสอบจาก AI ฟรี', titleEn: 'Free AI Test Event', eventType: 'seminar', date: '2026-12-20', endDate: '', startTime: '10:00', endTime: '12:00', place: 'ห้อง 101', placeEn: 'Room 101', organizer: '', chair: '', guests: [], audience: '', regLink: '', deadline: '', meetingLink: '', meetingId: '', contactName: '', phone: '', email: '', notes: '' }
+        : j.purpose === 'polish' ? { variant1: '[ขัดเกลาฟรี] ' + (String(j.user).split('POST:' + String.fromCharCode(10))[1] || ''), variant2: '', check: [] }
+        : { variant1: 'แบบที่ 1 (AI ฟรี) วันอังคารที่ 15 ธันวาคม 2569', variant2: 'แบบที่ 2 (AI ฟรี)', check: ['ตรวจชื่อวิทยากรอีกครั้ง'] };
+      res.setHeader('content-type', 'application/json');
+      return res.end(JSON.stringify({ ok: true, text: JSON.stringify(data), model: '@cf/test', usage: { input_tokens: 500, output_tokens: 200 } }));
+    }
     if (url.pathname === '/api/linkcheck') {
       // จำลองตัวตรวจลิงก์: มีคำว่า broken = 404, closed = ฟอร์มปิด, อื่น ๆ = 200
       let body = '';

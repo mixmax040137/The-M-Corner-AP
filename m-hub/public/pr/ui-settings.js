@@ -2,9 +2,11 @@
 import { h, setKids, btn, field, select, seg, toast, confirmBox, pickFiles, download, text } from '../core/ui.js';
 import { icon } from '../core/icons.js';
 import { repo, apiKey, newId } from './db.js';
+import { monthUsage, THB_PER_USD } from './ai.js';
 import { TONES, LANGS, CHANNELS, KINDS } from './fields.js';
 
 const MODELS = [
+  ['cf', 'AI ฟรี (Cloudflare) — ไม่ต้องมี key ภาษาไทยด้อยกว่า'],
   ['claude-haiku-5-5', 'Claude Haiku 5.5 — เร็วและถูก (แนะนำสำหรับร่าง)'],
   ['claude-sonnet-5-5', 'Claude Sonnet 5.5 — ภาษาสละสลวยกว่า (แนะนำสำหรับขัดเกลา)'],
   ['claude-opus-5-5', 'Claude Opus 5.5 — ดีที่สุด ราคาสูง'],
@@ -47,18 +49,16 @@ function aiCard() {
     h('div.grid2',
       field('โมเดลสำหรับร่าง', modelSel('draftModel', s.draftModel)),
       field('โมเดลสำหรับขัดเกลา', modelSel('polishModel', s.polishModel))),
-    h('div.hint', 'ก่อนเรียก AI ทุกครั้งจะแสดง token และค่าใช้จ่ายโดยประมาณให้เห็นก่อนกด และข้อมูลชุดเดิมกับตัวเลือกเดิมจะไม่ถูกส่งซ้ำ'),
+    h('div.hint', 'ยังไม่ใส่ key ระบบใช้ AI ฟรีของ Cloudflare ให้อัตโนมัติ (โควตารายวันใช้ร่วมกับการแปลและ AI รูปภาพ รีเซ็ต 07:00 น.) · ก่อนเรียก AI ทุกครั้งจะแสดง token และค่าใช้จ่ายโดยประมาณ และข้อมูลชุดเดิมกับตัวเลือกเดิมจะไม่ถูกส่งซ้ำ'),
     h('h4', 'การใช้ AI เดือนนี้'), st.usage);
 }
 
 async function drawUsage() {
-  const month = new Date().toISOString().slice(0, 7);
-  const logs = (await repo.list('usage')).filter((u) => String(u.at || '').startsWith(month));
-  const sum = logs.reduce((a, u) => ({ n: a.n + (u.cached ? 0 : 1), cached: a.cached + (u.cached ? 1 : 0), inTok: a.inTok + (u.inTok || 0), outTok: a.outTok + (u.outTok || 0), cost: a.cost + (u.costUSD || 0) }), { n: 0, cached: 0, inTok: 0, outTok: 0, cost: 0 });
+  const sum = await monthUsage();
   setKids(st.usage, h('div.facts',
-    h('div.fact', h('div', h('b', `${sum.n} ครั้ง`), h('div.muted.small', `ใช้ผลเดิมจากแคช ${sum.cached} ครั้ง (ไม่เสีย token)`))),
+    h('div.fact', h('div', h('b', `${sum.calls} ครั้ง`), h('div.muted.small', `AI ฟรี ${sum.free} ครั้ง · ใช้ผลเดิมจากแคช ${sum.cached} ครั้ง (ไม่เสีย token)`))),
     h('div.fact', h('div', h('b', `${(sum.inTok + sum.outTok).toLocaleString()} token`), h('div.muted.small', `ส่งไป ${sum.inTok.toLocaleString()} · ได้กลับ ${sum.outTok.toLocaleString()}`))),
-    h('div.fact', h('div', h('b', `$${sum.cost.toFixed(4)}`), h('div.muted.small', `≈ ${(sum.cost * 36).toFixed(2)} บาท (คิด 36 บาท/ดอลลาร์)`)))));
+    h('div.fact', h('div', h('b', `$${sum.usd.toFixed(4)}`), h('div.muted.small', `≈ ${(sum.usd * THB_PER_USD).toFixed(2)} บาท (คิด ${THB_PER_USD} บาท/ดอลลาร์) · เฉพาะ Claude`)))));
 }
 
 // ---------- การเขียน ----------

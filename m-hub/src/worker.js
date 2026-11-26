@@ -3,7 +3,7 @@
 // ไม่มีการเก็บไฟล์หรือข้อมูลของผู้ใช้บนเซิร์ฟเวอร์
 import ASSETS from './assets.gen.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 // ไฟล์ใหญ่ที่ไม่ฝังในสคริปต์: Worker ไปดึงจาก jsDelivr ให้ (เฉพาะไฟล์ในรายการนี้เท่านั้น — ไม่ใช่ proxy เปิด)
 const JS = 'text/javascript; charset=utf-8';
 const CDN = {
@@ -190,6 +190,57 @@ async function linkCheck(req) {
   return json({ ok: true, results: await Promise.all(urls.map(checkOne)) });
 }
 
+// ---------- AI เขียนข้อความฟรี (Workers AI) สำหรับ L'Arts PR Writer ----------
+// ใช้โควตาฟรีของบัญชีเดียวกับการแปลและ AI รูปภาพ · ลองรุ่นถัดไปให้อัตโนมัติถ้ารุ่นแรกใช้ไม่ได้ (ยกเว้นโควตาหมด)
+const TEXT_MODELS = ['@cf/deepseek-ai/deepseek-v4-flash-0731', '@cf/moonshotai/kimi-k2.6', '@cf/meta/llama-3.3-70b-instruct-fp8-fast'];
+const NO_REASONING = { '@cf/deepseek-ai/deepseek-v4-flash-0731': { reasoning_effort: 'none' }, '@cf/moonshotai/kimi-k2.6': { reasoning_effort: 'none' } };
+const MAX_AI_CHARS = 16000;
+
+function textOf(r) {
+  if (!r) return '';
+  if (typeof r === 'string') return r;
+  if (typeof r.response === 'string') return r.response;
+  if (r.response && typeof r.response === 'object') return JSON.stringify(r.response);
+  const c = r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) return c.map((x) => x.text || '').join('');
+  if (typeof r.output_text === 'string') return r.output_text;
+  return '';
+}
+
+async function aiChat(req, env) {
+  if (!env.AI) return json({ error: 'ยังไม่ได้เปิดใช้ Workers AI' }, 501);
+  let body;
+  try { body = await req.json(); } catch { return json({ error: 'ข้อมูลไม่ถูกต้อง' }, 400); }
+  const system = String(body.system || '').slice(0, 6000);
+  const user = String(body.user || '');
+  if (!user.trim()) return json({ error: 'ไม่มีข้อความ' }, 400);
+  if (user.length + system.length > MAX_AI_CHARS) return json({ error: 'ข้อความยาวเกินไปสำหรับ AI ฟรี' }, 413);
+  const maxTokens = Math.max(200, Math.min(4000, +body.max_tokens || 2500));
+  const schema = body.schema && typeof body.schema === 'object' ? body.schema : null;
+  let lastErr = '';
+  for (const model of TEXT_MODELS) {
+    try {
+      const input = {
+        messages: [...(system ? [{ role: 'system', content: system }] : []), { role: 'user', content: user }],
+        max_tokens: maxTokens,
+        ...(NO_REASONING[model] || {}),
+        ...(schema ? { response_format: { type: 'json_schema', json_schema: { name: 'result', schema, strict: false } } } : {}),
+      };
+      const r = await env.AI.run(model, input);
+      const text = textOf(r).trim();
+      if (!text) { lastErr = 'AI ไม่ได้ส่งข้อความกลับมา'; continue; }
+      const u = r.usage || {};
+      return json({ ok: true, text, model, usage: { input_tokens: u.prompt_tokens ?? u.input_tokens ?? null, output_tokens: u.completion_tokens ?? u.output_tokens ?? null } });
+    } catch (e) {
+      const msg = String(e && e.message ? e.message : e);
+      if (isQuota(msg)) return json({ error: QUOTA_MSG, quota: true }, 429);
+      lastErr = msg;
+    }
+  }
+  return json({ error: 'AI ฟรีใช้ไม่ได้ตอนนี้: ' + lastErr.slice(0, 200) }, 502);
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -203,6 +254,11 @@ export default {
       if (req.method !== 'POST') return json({ error: 'ใช้ POST' }, 405);
       if (!sameOrigin(req, url)) return json({ error: 'ไม่อนุญาต' }, 403);
       return imageAI(req, env, url.pathname.endsWith('generate') ? 'generate' : 'edit');
+    }
+    if (url.pathname === '/api/ai/chat') {
+      if (req.method !== 'POST') return json({ error: 'ใช้ POST' }, 405);
+      if (!sameOrigin(req, url)) return json({ error: 'ไม่อนุญาต' }, 403);
+      return aiChat(req, env);
     }
     if (url.pathname === '/api/linkcheck') {
       if (req.method !== 'POST') return json({ error: 'ใช้ POST' }, 405);

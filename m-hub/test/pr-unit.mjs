@@ -155,5 +155,35 @@ ok(!countEmoji(dof.text), 'บรรทัดนำในอีเมลไม�
 const hc = headlineCandidates(SAMPLE_EVENTS[0].fields.title, 'th');
 eq(hc[0], 'ภาษา วัฒนธรรม และ AI', 'พาดหัวโปสเตอร์ที่แนะนำอันแรก ≤ 8 คำ');
 
+console.log('PR Writer เฟส 3: AI คลังโพสต์ การอ่านไฟล์');
+const ai = await import('../public/pr/ai.js');
+const { pickExamples, postToTemplate } = await import('../public/pr/library.js');
+const { heuristics } = await import('../public/pr/extract.js');
+const { SAMPLE_POSTS } = await import('../public/pr/sample.js');
+ok(ai.SYSTEM_PROMPT.startsWith('You are the PR writer for the Faculty of Liberal Arts (คณะศิลปศาสตร์), Thammasat University.') && ai.SYSTEM_PROMPT.includes('8. Output JSON: {"variant1": "...", "variant2": "...", "check": ["..."]}. No other text.'), 'คำสั่งระบบตรงตามที่กำหนด');
+const lib = [...SAMPLE_POSTS, ...Array.from({ length: 6 }, (_, i) => ({ kind: 'invite', channel: 'facebook', tone: 'semi', lang: 'th', eventType: 'seminar', status: 'approved', text: 'สัมมนา ภาษา วัฒนธรรม ' + i }))];
+const ex = pickExamples(lib, { kind: 'invite', channel: 'facebook', tone: 'semi', lang: 'th', fields: SAMPLE_EVENTS[0].fields });
+ok(ex.length === 3 && ex.every((p) => p.kind === 'invite'), 'เลือกตัวอย่างที่คล้ายที่สุดไม่เกิน 3 โพสต์');
+ok(pickExamples(lib.map((p) => ({ ...p, noExample: true })), { kind: 'invite', channel: 'facebook', tone: 'semi', lang: 'th', fields: {} }).length === 0, 'โพสต์ที่ปิด “ใช้เป็นตัวอย่าง” ไม่ถูกเลือก');
+ok(pickExamples([{ ...lib[0], status: 'draft' }], { kind: 'invite', channel: 'facebook', tone: 'semi', lang: 'th', fields: {} }).length === 0, 'โพสต์ร่างไม่ถูกใช้เป็นตัวอย่าง');
+const u = ai.buildWriteUser({ fields: { ...SAMPLE_EVENTS[0].fields, meetingLink: '', meetingId: '' }, kind: 'invite', tone: 'semi', lang: 'th', channel: 'facebook', style, settings: {}, examples: ex });
+ok(u.includes('- Date: วันอังคารที่ 15 ธันวาคม 2569') && !u.includes('Online meeting link') && !u.includes('Meeting ID'), 'ส่งเฉพาะช่องที่กรอก (ไม่มีช่องว่าง)');
+ok((u.match(/^\[\d\] /gm) || []).length === 3 && u.includes('#คณะศิลปศาสตร์'), 'ส่งตัวอย่าง 3 โพสต์ + แฮชแท็กตามช่องทาง');
+const ub = ai.buildWriteUser({ fields: SAMPLE_EVENTS[0].fields, kind: 'invite', tone: 'formal', lang: 'both', channel: 'email', style, settings: {} });
+ok(ub.includes('Tuesday, 15 December 2026') && ub.includes('Thai first, then a natural English version') && ub.includes('หัวเรื่อง: …'), 'สองภาษา: ส่งวันที่ทั้ง พ.ศ./ค.ศ. และให้ใส่หัวเรื่องอีเมล');
+const prevF = { ...SAMPLE_EVENTS[0].fields, date: '2026-12-10' };
+ok(ai.buildWriteUser({ fields: SAMPLE_EVENTS[0].fields, prevFields: prevF, kind: 'change', tone: 'formal', lang: 'th', channel: 'facebook', style, settings: {} }).includes('วันพฤหัสบดีที่ 10 ธันวาคม 2569 → วันอังคารที่ 15 ธันวาคม 2569'), 'แจ้งเปลี่ยนแปลง: ส่งค่าเดิม → ค่าใหม่ให้ AI');
+const est = ai.estimate({ provider: 'claude', model: 'claude-haiku-5-5' }, { system: ai.SYSTEM_PROMPT, user: u, outTok: 900 });
+ok(est.usd > 0.0003 && est.usd < 0.002, `ประมาณค่าใช้จ่าย Haiku ต่อการเขียน 2 แบบ ($${est.usd.toFixed(5)})`);
+ok(ai.estimate({ provider: 'cf', model: 'cf' }, { user: u }).usd === 0, 'AI ฟรีไม่มีค่าใช้จ่าย');
+eq(ai.costOf('claude-sonnet-5-5', 1000000, 100000), 3, 'คำนวณค่าใช้จ่ายจริงจาก token (Sonnet)');
+eq(JSON.stringify(ai.parseJSON('```json\n{"variant1":"a","variant2":"b","check":[]}\n```')), '{"variant1":"a","variant2":"b","check":[]}', 'อ่าน JSON ที่ห่อด้วย ```');
+eq(ai.splitSubject('หัวเรื่อง: ขอเชิญร่วมงาน\n\nเรียน ทุกท่าน').subject, 'ขอเชิญร่วมงาน', 'แยกหัวเรื่องอีเมลออกจากข้อความ AI');
+const hx = heuristics('ขอเชิญร่วมงานเสวนา “อนาคตของการแปล”\nวันพฤหัสบดีที่ ๑๗ ธันวาคม ๒๕๖๙ เวลา 09.30–12.00 น.\nณ ห้องประชุมใหญ่ ชั้น 5\nลงทะเบียน https://forms.gle/abc ภายในวันจันทร์ที่ 14 ธันวาคม 2569\nZoom https://zoom.us/j/123 Meeting ID: 123 456 7890 Passcode: 999\nติดต่อ 02-111-2222 pr@example.com', 2026);
+eq(JSON.stringify([hx.title, hx.eventType, hx.date, hx.deadline, hx.startTime, hx.endTime, hx.place, hx.regLink, hx.meetingLink, hx.meetingId, hx.phone, hx.email]),
+  JSON.stringify(['อนาคตของการแปล', 'seminar', '2026-12-17', '2026-12-14', '09:30', '12:00', 'ห้องประชุมใหญ่ ชั้น 5', 'https://forms.gle/abc', 'https://zoom.us/j/123', '123 456 7890 (Passcode: 999)', '02-111-2222', 'pr@example.com']), 'อ่านข้อมูลจากข้อความประกาศโดยไม่ใช้ AI (เลขไทยด้วย)');
+const tplBody = postToTemplate(renderPost(SAMPLE_EVENTS[0].fields, { kind: 'invite', tone: 'semi', channel: 'facebook', lang: 'th', style, settings: {} }).text, SAMPLE_EVENTS[0].fields, 'th', 'invite');
+ok(tplBody.includes('{{title}}') && tplBody.includes('{{date}}') && tplBody.includes('{{host}}') && !tplBody.includes('2569'), 'แปลงโพสต์เป็นเทมเพลต: แทนข้อมูลงานด้วย {{ตัวแปร}}');
+
 console.log(failures ? `\n✗ ไม่ผ่าน ${failures} ข้อ (ผ่าน ${passed})` : `\n✓ ผ่านทั้งหมด ${passed} ข้อ`);
 process.exit(failures ? 1 : 0);

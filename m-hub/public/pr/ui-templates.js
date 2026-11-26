@@ -21,7 +21,11 @@ export async function mount(el, app) {
   drawSel();
 }
 
-export async function show() { drawBuiltin(); await drawMine(); }
+export async function show(params = {}) {
+  if (params.k && KINDS.some((k) => k.id === params.k) && params.k !== st.kind) { st.kind = params.k; drawSel(); }
+  drawBuiltin();
+  await drawMine();
+}
 
 function drawSel() {
   setKids(st.sel, h('div.grid4',

@@ -87,13 +87,42 @@ export const SAMPLE_STAFF = [
   { titleTh: 'คุณ', nameTh: 'สมศรี เลขานุการ', titleEn: 'Ms.', nameEn: 'Somsri Lekhanukarn', positionTh: 'เลขานุการคณะ', positionEn: 'Faculty Secretary', unit: 'สำนักงานคณบดี', email: 'secretary-sample@example.com', phone: '02-000-0001' },
 ].map((x) => ({ ...x, sample: true }));
 
+// โพสต์ที่ใช้จริงตัวอย่าง (อยู่ในคลังโพสต์ ใช้เป็นตัวอย่างให้ AI) — งาน ชื่อ และลิงก์สมมติ
+export const SAMPLE_POSTS = [
+  { kind: 'invite', channel: 'facebook', tone: 'semi', lang: 'th', eventType: 'seminar', tags: ['วิชาการ'],
+    text: `📢 ขอเชิญร่วมเสวนา “แปลอย่างไรให้ได้ใจ: นักแปลกับวรรณกรรมร่วมสมัย”
+คณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์ ชวนนักศึกษาและผู้สนใจมาฟังมุมมองจากนักแปลมืออาชีพ พร้อมเปิดช่วงถาม–ตอบ
+
+📅 วันพุธที่ 9 กันยายน 2569
+• เวลา 13.30–15.30 น.
+📍 ห้องประชุมชั้น 2 อาคารคณะศิลปศาสตร์ ศูนย์รังสิต
+• ลงทะเบียน: https://forms.gle/SampleOldPost1
+
+เข้าร่วมฟรี ไม่มีค่าใช้จ่าย
+
+#คณะศิลปศาสตร์ #ศิลปศาสตร์ธรรมศาสตร์ #LiberalArtsTU` },
+  { kind: 'recap', channel: 'facebook', tone: 'formal', lang: 'th', eventType: 'lecture', tags: ['บรรยายพิเศษ'],
+    text: `คณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์ จัดการบรรยายพิเศษ “ภาษากับอัตลักษณ์ในโลกออนไลน์” เมื่อวันศุกร์ที่ 16 ตุลาคม 2569 ณ ห้องประชุมคณะ ชั้น 3
+ในโอกาสนี้ ได้รับเกียรติจากผู้ช่วยศาสตราจารย์ ดร.ภาณุ สมมติวงศ์ ร่วมบรรยายและแลกเปลี่ยนความรู้กับนักศึกษากว่า 80 คน (ตัวเลขสมมติ)
+ขอขอบคุณผู้เข้าร่วมทุกท่าน
+
+#คณะศิลปศาสตร์ #ศิลปศาสตร์ธรรมศาสตร์ #LiberalArtsTU` },
+  { kind: 'announce', channel: 'line', tone: 'casual', lang: 'th', eventType: 'admission', tags: ['ทุน'],
+    text: `📢 มีข่าวมาแจ้ง! เปิดรับสมัครทุนสนับสนุนการแลกเปลี่ยนระยะสั้น (ตัวอย่าง)
+นักศึกษาชั้นปีที่ 2–3 สมัครได้ถึงวันจันทร์ที่ 30 พฤศจิกายน 2569 นะ
+📝 สมัคร: https://forms.gle/SampleOldPost3
+สงสัยตรงไหน ทักงานกิจการนักศึกษาได้เลย 🙏
+(จาก คณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์)` },
+].map((p) => ({ ...p, subject: '', status: 'posted', source: 'manual', metrics: {}, sample: true }));
+
 // ใส่ข้อมูลตัวอย่างครั้งแรก และเพิ่มชุดใหม่เมื่ออัปเดตเฟส (ถ้าผู้ใช้ลบข้อมูลตัวอย่างไปแล้วจะไม่ใส่ซ้ำ)
-export const SAMPLE_VERSION = 2;
+export const SAMPLE_VERSION = 3;
 export async function seedIfNeeded() {
   const done = await repo.getMeta('sampleSeed', 0);
   if (done >= SAMPLE_VERSION || (await repo.getMeta('samplesRemoved', false))) return false;
   if (done < 1) for (const e of SAMPLE_EVENTS) await repo.put('events', structuredClone(e), { silent: true });
   if (done < 2) for (const x of SAMPLE_STAFF) await repo.put('staff', structuredClone(x), { silent: true });
+  if (done < 3) for (const x of SAMPLE_POSTS) await repo.put('posts', structuredClone(x), { silent: true });
   await repo.setMeta('sampleSeed', SAMPLE_VERSION);
   return true;
 }

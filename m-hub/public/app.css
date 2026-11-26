@@ -341,3 +341,21 @@ span.pr-chip { display: inline-block; width: auto; }
   .pr-chip { font-size: 10.5px; padding: 1px 3px; }
   .pr-cal-ev { font-size: 10px; }
 }
+
+/* PR Writer เฟส 3 */
+.dialog p { white-space: pre-line; }
+.pr-source > summary { cursor: pointer; list-style: revert; }
+.pr-source[open] { gap: 12px; }
+.pr-drop { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px; border: 2px dashed var(--border); border-radius: 10px; }
+.pr-drop.drag { border-color: var(--accent); background: var(--accent-soft); }
+.pr-srctext { margin-top: 8px; font-size: 14px; }
+.pr-prop td { white-space: normal; }
+.pr-ai-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pr-variant { padding: 12px; gap: 10px; box-shadow: none; }
+.pr-variant .pr-text { min-height: 220px; }
+.pr-lib-item pre { max-height: 220px; }
+.pr-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pr-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; padding: 1px 4px 1px 9px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--border); }
+.pr-tag button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
+.pr-tags input { width: 140px; min-height: 28px; padding: 2px 8px; font-size: 13.5px; }
+@media (max-width: 1300px) { .pr-ai-results { grid-template-columns: 1fr; } }

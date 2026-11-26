@@ -10,6 +10,7 @@ import { buildEml, gmailLink, outlookLink } from '../core/eml.js';
 import { loadGlossary, compileGlossary, aiTranslate, hasThai } from '../core/glossary.js';
 import { staffSuggest, fullName, nameWithPosition } from './staff.js';
 import { snapshot, listVersions, changeSummary } from './versions.js';
+import { createSourcePanel, createAiPanel } from './ui-ai.js';
 
 let st = null;
 let ui = null;
@@ -20,7 +21,7 @@ const STATUS_LABEL = { draft: 'ร่าง', approved: 'อนุมัติ�
 export async function mount(el, app) {
   const s = app.settings;
   st = { app, eventId: null, event: null, fields: emptyFields(), kind: s.kind, tone: s.tone, lang: s.lang, channel: s.channel, templateId: '',
-    edited: false, text: '', subject: '', postId: null, links: {}, userTemplates: [], lastLinkKey: '', prevVersionId: '', versions: [], plannedDate: '' };
+    edited: false, text: '', subject: '', postId: null, links: {}, userTemplates: [], lastLinkKey: '', prevVersionId: '', versions: [], plannedDate: '', mode: 'template' };
   ui = {};
   ui.eventSel = h('select', { 'aria-label': 'เลือกงาน', onchange: (e) => loadEvent(e.target.value) });
   ui.sampleNote = h('div.note.info', { hidden: true }, 'งานตัวอย่าง: ชื่อบุคคล เบอร์โทร อีเมล และลิงก์ทั้งหมดเป็นของสมมติ ใช้ทดลองได้เลย หรือลบได้ที่หน้าตั้งค่า');
@@ -30,6 +31,9 @@ export async function mount(el, app) {
   ui.checks = h('section.card.pr-checks');
   ui.out = h('section.card.pr-outcard');
   ui.allOut = h('div.pr-all', { hidden: true });
+  const ctx = { st, app, opts: () => opts(), checkCtx: () => checkCtx(), applyFields, save: savePostData };
+  ui.source = createSourcePanel(ctx);
+  ui.ai = createAiPanel(ctx);
 
   el.append(
     h('section.card',
@@ -41,8 +45,8 @@ export async function mount(el, app) {
       ui.sampleNote, ui.verNote,
       h('div.hint', 'ข้อมูลในฟอร์มบันทึกอัตโนมัติ เปลี่ยนเป็นงานอื่นแล้วกลับมาได้ตลอด')),
     h('div.pr-cols',
-      ui.form,
-      h('div.pr-outcol', ui.options, ui.checks, ui.out, ui.allOut)),
+      h('div.pr-form', ui.source.el, ui.form),
+      h('div.pr-outcol', ui.options, ui.ai.el, ui.checks, ui.out, ui.allOut)),
   );
   repo.onChange((t) => { if (t === 'events' || t === '*') refreshEventList(); if (t === 'templates' || t === '*') loadTemplates(); });
   await refreshEventList();
@@ -261,8 +265,16 @@ function renderOptions() {
   const customTones = s.customTones || [];
   const tpls = st.userTemplates.filter((t) => t.kind === st.kind);
   ui.tplSel = select([['', 'ต้นแบบ (หรือเทมเพลตที่ตั้งให้ใช้แทน)'], ...tpls.map((t) => [t.id, `${t.name || 'ไม่มีชื่อ'} · ${t.lang === 'en' ? 'EN' : 'TH'}`])], st.templateId, (v) => { st.templateId = v; st.edited = false; regenerate(); });
-  const toneSeg = seg([...TONES.map((t) => [t.id, t.th]), ...customTones.map((t) => [t.id, t.th])], st.tone, (v) => { st.tone = v; st.edited = false; st.postId = null; regenerate(); });
+  const named = (el, name) => { el.setAttribute('aria-label', name); return el; };
+  const toneSeg = named(seg([...TONES.map((t) => [t.id, t.th]), ...customTones.map((t) => [t.id, t.th])], st.tone, (v) => { st.tone = v; st.edited = false; st.postId = null; regenerate(); }), 'โทน');
+  const modeSeg = named(seg([['template', 'เทมเพลต (0 token)'], ['ai', 'AI เขียน 2 แบบ']], st.mode, (v) => {
+    st.mode = v;
+    if (v === 'ai' && st.channel === 'all') st.channel = st.app.settings.channel || 'facebook';
+    renderOptions();
+    regenerate();
+  }), 'วิธีเขียน');
   setKids(ui.options, 
+    field('วิธีเขียน', modeSeg, st.mode === 'ai' ? 'AI ใช้ข้อมูลในฟอร์ม + กฎของคณะ + ตัวอย่างโพสต์ที่ใช้จริง ไม่เกิน 3 โพสต์' : 'เขียนจากเทมเพลตทันที ไม่ใช้ AI'),
     h('div.grid2',
       field('ประเภทโพสต์', select(KINDS.map((k) => [k.id, k.th]), st.kind, (v) => { st.kind = v; st.templateId = ''; st.edited = false; st.postId = null; renderOptions(); renderForm(); scheduleSave(); regenerate(); })),
       field('เทมเพลต', ui.tplSel)),
@@ -270,10 +282,9 @@ function renderOptions() {
       ...st.versions.map((v) => [v.id, `เวอร์ชัน ${v.versionNo} · บันทึก ${new Date(v.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}`])], st.prevVersionId, (v) => { st.prevVersionId = v; st.edited = false; regenerate(); }),
       'ข้อความจะบอกค่าเดิม → ค่าใหม่ของช่องที่เปลี่ยน และใส่ “(ไม่เปลี่ยนแปลง)” ให้ข้อมูลสำคัญที่คงเดิม') : null,
     field('โทน', toneSeg, toneOf(st.tone, customTones).desc),
-    field('ภาษา', seg(LANGS.map((l) => [l.id, l.th]), st.lang, (v) => { st.lang = v; st.edited = false; st.postId = null; renderForm(); regenerate(); })),
-    field('ช่องทาง', seg([...CHANNELS.map((c) => [c.id, c.th]), ['all', 'ทุกช่องทาง']], st.channel, (v) => { st.channel = v; st.edited = false; st.postId = null; regenerate(); })),
+    field('ภาษา', named(seg(LANGS.map((l) => [l.id, l.th]), st.lang, (v) => { st.lang = v; st.edited = false; st.postId = null; renderForm(); regenerate(); }), 'ภาษา')),
+    field('ช่องทาง', named(seg([...CHANNELS.map((c) => [c.id, c.th]), ...(st.mode === 'ai' ? [] : [['all', 'ทุกช่องทาง']])], st.channel, (v) => { st.channel = v; st.edited = false; st.postId = null; regenerate(); }), 'ช่องทาง')),
   );
-  ui.options.querySelectorAll('.seg').forEach((x, i) => x.setAttribute('aria-label', ['โทน', 'ภาษา', 'ช่องทาง'][i]));
 }
 
 // ---------- สร้างข้อความ ----------
@@ -288,6 +299,12 @@ function opts(channel = st.channel) {
 
 function regenerate() {
   drawVerNote();
+  if (st.mode === 'ai') {
+    ui.allOut.hidden = true; ui.checks.hidden = true; ui.out.hidden = true;
+    ui.ai.show(true);
+    return;
+  }
+  ui.ai.show(false);
   if (st.channel === 'all') return renderAll();
   ui.allOut.hidden = true;
   ui.checks.hidden = false;
@@ -424,23 +441,41 @@ function renderAll() {
 
 // ---------- บันทึกโพสต์ ----------
 async function savePost(status) {
+  st.postId = await savePostData({ status, text: st.text, subject: st.subject, postId: st.postId });
+}
+
+// บันทึกโพสต์ (ใช้ทั้งโหมดเทมเพลตและโหมด AI) → คืน id
+async function savePostData({ status, text, subject, postId = null, source, ai = null }) {
   await flushSave();
   if (!st.eventId) await saveEvent();
-  const prev = st.postId ? await repo.get('posts', st.postId) : null;
+  const prev = postId ? await repo.get('posts', postId) : null;
   const t = new Date().toISOString();
   const rec = await repo.put('posts', {
     ...(prev || {}),
-    id: st.postId || undefined,
+    id: postId || undefined,
     eventId: st.eventId, kind: st.kind, tone: st.tone, channel: st.channel, lang: st.lang, eventType: st.fields.eventType,
-    text: st.text, subject: st.subject, status, source: (prev && prev.source) || 'template', edited: st.edited, prevVersionId: st.kind === 'change' ? st.prevVersionId : '',
-    templateId: (st.used || []).find((u) => u.id)?.id || null,
+    text, subject, status, source: source || (prev && prev.source) || 'template', edited: source === 'ai' ? true : st.edited, prevVersionId: st.kind === 'change' ? st.prevVersionId : '',
+    templateId: source === 'ai' ? null : (st.used || []).find((u) => u.id)?.id || null,
+    ai: ai || (prev && prev.ai) || null,
     approvedAt: status === 'approved' ? t : prev && prev.approvedAt,
     plannedDate: st.plannedDate || (prev && prev.plannedDate) || '',
     metrics: (prev && prev.metrics) || {},
     sample: !!(st.event && st.event.sample),
   });
-  st.postId = rec.id;
-  toast(status === 'approved' ? 'บันทึกเป็นโพสต์ที่ใช้จริงแล้ว (ดูได้ที่ “งานทั้งหมด”)' : 'บันทึกร่างแล้ว', 'ok');
+  toast(status === 'approved' ? 'บันทึกเป็นโพสต์ที่ใช้จริงแล้ว — เก็บในคลังโพสต์ ใช้เป็นตัวอย่างให้ AI ครั้งต่อไป' : 'บันทึกร่างแล้ว', 'ok');
+  return rec.id;
+}
+
+// ใส่ข้อมูลที่อ่านจากไฟล์/AI ลงฟอร์ม
+function applyFields(patch) {
+  for (const [k, v] of Object.entries(patch)) {
+    if (k === 'guests') st.fields.guests = (v || []).map((g) => ({ name: g.name || '', role: g.role || '', nameEn: g.nameEn || '', roleEn: g.roleEn || '' }));
+    else st.fields[k] = v;
+  }
+  st.edited = false;
+  renderForm();
+  scheduleSave();
+  regenerate();
 }
 
 export { STATUS_LABEL };

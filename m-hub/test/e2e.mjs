@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { unzipSync, strFromU8 } from 'fflate';
+import { unzipSync, strFromU8, zipSync, strToU8 } from 'fflate';
 import { startServer, aiCalls } from './server.mjs';
 
 const require = createRequire(import.meta.url);
@@ -26,7 +26,7 @@ const context = await browser.newContext({ acceptDownloads: true, viewport: { wi
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error' && !/Parameter not found/.test(m.text())) errors.push(m.text()); }); // คำเตือนปกติของ Tesseract
+page.on('console', (m) => { if (m.type() === 'error' && !/Parameter not found|status of 401/.test(m.text())) errors.push(m.text()); }); // คำเตือนปกติของ Tesseract
 page.on('dialog', (d) => d.accept(d.defaultValue() || 'พรีเซ็ตทดสอบ'));
 
 async function open(hash) {
@@ -914,7 +914,7 @@ async function testPrWriter() {
   await bk.saveAs(bkPath);
   const raw = readFileSync(bkPath, 'utf8');
   const backup = JSON.parse(raw);
-  ok(backup.app === 'larts-pr-writer' && backup.data.events.length === 3 && backup.data.posts.length === 1 && backup.data.templates.length === 1, 'ส่งออกครบ (งาน 3 · โพสต์ 1 · เทมเพลต 1)');
+  ok(backup.app === 'larts-pr-writer' && backup.data.events.length === 3 && backup.data.posts.length === 4 && backup.data.templates.length === 1 && backup.data.staff.length === 7, 'ส่งออกครบ (งาน 3 · โพสต์ 4 รวมตัวอย่างในคลัง 3 · เทมเพลต 1 · บุคลากร 7)');
   ok(!raw.includes('SECRET123'), 'API key ไม่อยู่ในไฟล์สำรอง');
   await view().getByRole('button', { name: 'ล้างข้อมูลทั้งหมดในเบราว์เซอร์นี้' }).click();
   await page.locator('dialog.dialog').getByRole('button', { name: 'ล้างทั้งหมด' }).click();
@@ -922,7 +922,7 @@ async function testPrWriter() {
   await view().getByText('งาน 0 · โพสต์ 0').waitFor();
   const [fc] = await Promise.all([page.waitForEvent('filechooser'), view().getByRole('button', { name: /นำเข้าจากไฟล์/ }).click()]);
   await fc.setFiles(bkPath);
-  await view().getByText('งาน 3 · โพสต์ 1 · เทมเพลตของฉัน 1').waitFor();
+  await view().getByText('งาน 3 · โพสต์ 4 · เทมเพลตของฉัน 1').waitFor();
   ok(true, 'ล้างข้อมูลแล้วนำเข้าไฟล์สำรองกลับมาครบ');
   ok(await page.evaluate(() => localStorage.getItem('larts-pr:anthropic-key')) === 'sk-ant-test-SECRET123', 'API key ยังอยู่ในเบราว์เซอร์นี้ (ไม่ถูกล้างไปกับข้อมูล)');
 
@@ -1066,7 +1066,115 @@ async function testPrWriter2() {
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
-const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop, pr: testPrWriter, pr2: testPrWriter2 };
+// ========== L'Arts PR Writer เฟส 3 (AI) ==========
+async function testPrWriter3() {
+  console.log("L'Arts PR Writer เฟส 3 (AI)");
+  await open('#/');
+  await page.evaluate(() => { localStorage.removeItem('larts-pr:anthropic-key'); return new Promise((r) => { const q = indexedDB.deleteDatabase('larts-pr-writer'); q.onsuccess = q.onerror = q.onblocked = () => r(); }); });
+  aiCalls.length = 0;
+  await open('#/pr-writer?s=compose');
+  await view().locator('[data-out]').waitFor();
+  const group = (name) => view().getByRole('group', { name });
+
+  // ---- AI ฟรี (ยังไม่มี key)
+  await group('วิธีเขียน').getByRole('button', { name: 'AI เขียน 2 แบบ' }).click();
+  await view().getByText('ยังไม่ได้ใส่ Claude API key จึงใช้ AI ฟรี').waitFor();
+  ok(await view().getByText('ตัวอย่างโพสต์ที่ใช้จริง 2 โพสต์').isVisible(), 'เลือกตัวอย่างจากคลังโพสต์ที่คล้ายกันให้อัตโนมัติ');
+  await view().getByRole('button', { name: 'ให้ AI เขียน 2 แบบ' }).click();
+  await view().locator('[data-variant="1"]').waitFor();
+  ok((await view().locator('[data-variant="1"]').inputValue()).includes('(AI ฟรี)') && (await view().locator('[data-variant="2"]').inputValue()).includes('(AI ฟรี)'), 'AI ฟรีเขียน 2 แบบ แสดงเทียบกัน');
+  const call = aiCalls.filter((c) => c.path === '/api/ai/chat').pop();
+  ok(call && call.purpose === 'write' && call.system.startsWith('You are the PR writer for the Faculty of Liberal Arts') && (call.user.match(/^\[\d\] /gm) || []).length === 2 && !/Meeting ID/.test(call.user), 'ส่งคำสั่งระบบ + เฉพาะช่องที่กรอก + ตัวอย่างไม่เกิน 3 โพสต์');
+  ok(await view().getByText('AI ฝากตรวจ: ตรวจชื่อวิทยากรอีกครั้ง').isVisible(), 'แสดงรายการที่ AI ฝากให้ตรวจ');
+  const n = aiCalls.length;
+  await view().getByRole('button', { name: 'ใช้ผลเดิม (ไม่เสีย token)' }).click();
+  await view().getByText('ผลเดิมจากแคช (ไม่เสีย token)').waitFor();
+  ok(aiCalls.length === n, 'ข้อมูลและตัวเลือกเดิม ไม่เรียก AI ซ้ำ (ใช้แคช)');
+  await view().locator('[data-variant="2"]').fill('แบบที่ 2 ที่แก้แล้ว วันอังคารที่ 15 ธันวาคม 2569 #ทดสอบคลัง');
+  await view().locator('[data-variant-card="2"]').getByRole('button', { name: 'ใช้จริง' }).click();
+  await page.waitForTimeout(400);
+
+  // ---- อ่านไฟล์ Word → ดึงข้อมูลลงฟอร์ม (0 token)
+  const xml = (lines) => `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${lines.map((l) => `<w:p><w:r><w:t xml:space="preserve">${l}</w:t></w:r></w:p>`).join('')}</w:body></w:document>`;
+  const docx = zipSync({ 'word/document.xml': strToU8(xml(['ขอเชิญร่วมงานเสวนา “อนาคตของการแปล”', 'วันพฤหัสบดีที่ 17 ธันวาคม 2569 เวลา 09.30–12.00 น.', 'ณ ห้องประชุมใหญ่ ชั้น 5', 'ลงทะเบียน https://forms.gle/DocxTest ภายในวันจันทร์ที่ 14 ธันวาคม 2569', 'ติดต่อ 02-111-2222 pr@example.com'])) });
+  const docxPath = join(FIX, 'announcement.docx');
+  writeFileSync(docxPath, docx);
+  await view().getByRole('button', { name: 'งานใหม่' }).click();
+  await view().locator('.pr-source > summary').first().click();
+  await chooseFiles('เลือกไฟล์', [docxPath]);
+  await view().getByText('อ่านจากไฟล์ Word').waitFor();
+  ok((await view().locator('.pr-prop tbody tr').count()) >= 8, 'อ่าน Word แล้วพบข้อมูลหลายช่องโดยไม่ใช้ AI');
+  await view().getByRole('button', { name: 'ใส่ลงฟอร์มที่เลือก' }).click();
+  await page.waitForTimeout(400);
+  ok((await view().locator('[data-f="title"]').inputValue()) === 'อนาคตของการแปล' && (await view().locator('[data-f="date"]').inputValue()) === '2026-12-17'
+    && (await view().locator('[data-f="startTime"]').inputValue()) === '09:30' && (await view().locator('[data-f="deadline"]').inputValue()) === '2026-12-14'
+    && (await view().locator('[data-f="regLink"]').inputValue()) === 'https://forms.gle/DocxTest', 'ใส่ชื่องาน วันที่ เวลา วันปิดรับ ลิงก์ ลงฟอร์มแล้ว');
+  await view().getByRole('button', { name: 'ให้ AI แยกข้อมูลจากข้อความ' }).click();
+  await view().locator('.pr-prop').getByText('Free AI Test Event').waitFor();
+  ok(aiCalls.some((c) => c.purpose === 'extract' && c.user.includes('อนาคตของการแปล')), 'ส่งข้อความที่อ่านได้ให้ AI แยกข้อมูลเพิ่ม (ไม่ส่งไฟล์)');
+
+  // ---- Claude (จำลอง API)
+  const claudeReqs = [];
+  let fail = false;
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' };
+  await page.route('https://api.anthropic.com/**', async (route) => {
+    const r = route.request();
+    if (r.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    const body = JSON.parse(r.postData());
+    claudeReqs.push({ headers: r.headers(), body });
+    if (fail) return route.fulfill({ status: 401, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) });
+    const polishReq = body.messages[0].content.at(-1).text.includes('TASK: Polish');
+    const data = polishReq ? { variant1: 'ฉบับขัดเกลาโดย Claude วันอังคารที่ 15 ธันวาคม 2569', variant2: '', check: [] } : { variant1: 'Claude แบบ 1 วันอังคารที่ 15 ธันวาคม 2569', variant2: 'Claude แบบ 2', check: [] };
+    return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ id: 'msg_test', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify(data) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1500, output_tokens: 700 } }) });
+  });
+  await page.evaluate(() => localStorage.setItem('larts-pr:anthropic-key', 'sk-ant-test-123'));
+  await open('#/pr-writer?s=compose');
+  await view().locator('[data-out]').waitFor();
+  const opt = await view().locator('select[aria-label="เลือกงาน"] option').filter({ hasText: 'ภาษา วัฒนธรรม' }).getAttribute('value');
+  await view().locator('select[aria-label="เลือกงาน"]').selectOption(opt);
+  await page.waitForTimeout(300);
+  await group('วิธีเขียน').getByRole('button', { name: 'AI เขียน 2 แบบ' }).click();
+  await view().getByText('Claude Haiku 5.5', { exact: true }).waitFor();
+  ok(/≈ [\d.]+ สตางค์/.test(await view().locator('.pr-ai').innerText()), 'แสดง token และค่าใช้จ่ายโดยประมาณก่อนกด');
+  await view().getByRole('button', { name: 'ให้ AI เขียน 2 แบบ' }).click();
+  await view().locator('[data-variant="1"]').filter({ hasText: '' }).waitFor();
+  await page.waitForFunction(() => (document.querySelector('[data-variant="1"]') || {}).value?.startsWith('Claude แบบ 1'));
+  const w = claudeReqs[0];
+  ok(w && w.body.model === 'claude-haiku-5-5' && w.body.thinking.type === 'disabled' && w.body.output_config.effort === 'low' && w.body.output_config.format.type === 'json_schema' && !('temperature' in w.body), 'ร่างด้วย Haiku 5.5: ปิดโหมดคิด, effort ต่ำ, บังคับ JSON');
+  ok(w.body.system.startsWith('You are the PR writer') && w.headers['anthropic-dangerous-direct-browser-access'] === 'true' && (w.headers.authorization || w.headers['x-api-key'] || '').includes('sk-ant-test-123'), 'เรียกจากเบราว์เซอร์ด้วย key ของผู้ใช้ + คำสั่งระบบตามที่กำหนด');
+  await view().locator('[data-variant-card="1"]').getByRole('button', { name: 'ขัดเกลา' }).click();
+  await page.locator('dialog.dialog').getByRole('button', { name: 'ขัดเกลา' }).click();
+  await page.waitForFunction(() => (document.querySelector('[data-variant="1"]') || {}).value?.startsWith('ฉบับขัดเกลาโดย Claude'));
+  const pz = claudeReqs[1];
+  ok(pz && pz.body.model === 'claude-sonnet-5-5' && pz.body.thinking.type === 'between_tools' && await view().locator('[data-variant-card="1"] .badge.ok').isVisible(), 'ขัดเกลาด้วย Sonnet 5.5 (ปิดโหมดคิด) แสดงป้าย “ขัดเกลาแล้ว”');
+  fail = true;
+  await group('โทน').getByRole('button', { name: 'ทางการ', exact: true }).click();
+  await view().getByRole('button', { name: 'ให้ AI เขียน 2 แบบ' }).click();
+  await view().locator('.pr-ai .note.error').waitFor();
+  ok((await view().locator('.pr-ai .note.error').innerText()).includes('API key ไม่ถูกต้อง'), 'key ผิด แสดงข้อความภาษาไทยที่เข้าใจได้');
+  await page.unroute('https://api.anthropic.com/**');
+
+  // ---- ยอดใช้ AI เดือนนี้
+  await view().getByRole('tab', { name: 'ตั้งค่า' }).click();
+  await page.waitForTimeout(400);
+  const usage = await view().locator('.pr-screen:not([hidden]) .facts').first().innerText();
+  ok(usage.includes('4 ครั้ง') && usage.includes('AI ฟรี 2 ครั้ง') && usage.includes('แคช 1 ครั้ง') && usage.includes('$0.0105'), 'ตั้งค่าแสดงยอดใช้ AI เดือนนี้ (ครั้ง / token / ค่าใช้จ่ายจริง)');
+
+  // ---- คลังโพสต์
+  await view().getByRole('tab', { name: 'คลังโพสต์' }).click();
+  const item = view().locator('.pr-lib-item').filter({ hasText: 'แบบที่ 2 ที่แก้แล้ว' });
+  await item.waitFor();
+  ok((await view().locator('.pr-lib-item').count()) === 4 && (await item.innerText()).includes('AI'), 'คลังโพสต์มีโพสต์ตัวอย่าง 3 + ฉบับที่แก้แล้วจาก AI 1');
+  await item.getByLabel('เพิ่มแท็ก').fill('สัมมนาวิชาการ');
+  await item.getByLabel('เพิ่มแท็ก').press('Enter');
+  await item.locator('.pr-tag').filter({ hasText: 'สัมมนาวิชาการ' }).waitFor();
+  ok(true, 'ติดแท็กโพสต์ในคลังได้');
+  await item.getByRole('button', { name: 'ใช้เป็นเทมเพลต' }).click();
+  await view().locator('[data-tpl]').filter({ hasText: 'จากคลัง: แบบที่ 2' }).waitFor();
+  ok(true, 'ใช้โพสต์ในคลังเป็นเทมเพลตได้');
+}
+
+const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop, pr: testPrWriter, pr2: testPrWriter2, pr3: testPrWriter3 };
 for (const [name, fn] of Object.entries(sections)) {
   if (only && only !== name) continue;
   try { await fn(); } catch (e) { failures++; console.log('  ✗ ' + name + ' ล้มเหลว: ' + e.message); await page.screenshot({ path: join(OUT, `fail-${name}.png`), fullPage: true }); }

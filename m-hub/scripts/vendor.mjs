@@ -43,6 +43,12 @@ await build({
   bundle: true, format: 'esm', platform: 'browser', minify: true, outfile: join(out, 'mediabunny.mjs'), logLevel: 'warning',
 });
 
+// Anthropic SDK (เรียก Claude จากเบราว์เซอร์ด้วย API key ของผู้ใช้) — โหลดเฉพาะตอนกดใช้ AI
+await build({
+  stdin: { contents: "export { default as Anthropic } from '@anthropic-ai/sdk';", resolveDir: root },
+  bundle: true, format: 'esm', platform: 'browser', minify: true, outfile: join(out, 'anthropic.mjs'), logLevel: 'warning',
+});
+
 // ฟอนต์ไทย (Sarabun, Kanit, Prompt, Mitr, Charm) เฉพาะ woff2 ชุด thai + latin
 const fonts = { sarabun: [400, 700], kanit: [400, 600], prompt: [400, 600], mitr: [400, 500], charm: [400, 700] };
 let css = '';

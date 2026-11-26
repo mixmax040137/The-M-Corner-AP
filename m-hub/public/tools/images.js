@@ -9,6 +9,8 @@ import { fsSupported, pickDirectory, walkDirectory } from '../core/workspace.js'
 import { presets } from '../core/store.js';
 import { TH_MONTHS } from '../core/thai.js';
 import { IMAGE_RE, FORMATS, isHeic, sameFormatOf, decodeImage, targetSize, drawResized, drawWatermark, encodeCanvas, thumbnail, dateTaken } from '../core/image.js';
+import { ZERO, isIdentity } from '../core/adjust.js';
+import { enhanceSteps, applyExtras, upscaleIfNeeded, aiActive, AI_DEFAULTS } from './images-enhance.js';
 
 const DEFAULTS = {
   resize: 'long', size: 1600, width: 1600, height: 900, percent: 50, noUpscale: true,
@@ -17,6 +19,7 @@ const DEFAULTS = {
   match: 'order', matchCol: '', nameTpl: '',
   organize: 'none', folderTpl: '{{ปี}}/{{ปี}}-{{เดือน}}', yearBE: false,
   wm: { enabled: false, position: 'br', scale: 15, opacity: 85, margin: 3 },
+  adjust: { ...ZERO, scope: 'all' }, ai: { ...AI_DEFAULTS },
 };
 
 const BUILTIN_PRESETS = {
@@ -69,6 +72,7 @@ export function mount(root) {
     const heic = items.filter((x) => isHeic(x.file)).length;
     summary.textContent = items.length ? `เลือกแล้ว ${items.length} รูป · ${formatBytes(total)}${heic ? ` · HEIC ${heic} รูป` : ''}` : 'ยังไม่ได้เลือกรูป';
     moveBox.hidden = !canMove();
+    enh.refresh();
   };
 
   const drop = h('div.drop',
@@ -227,7 +231,7 @@ export function mount(root) {
     if (opts.format !== 'keep') return opts.format;
     return sameFormatOf(it.file);
   }
-  const needsEncode = (it) => opts.format !== 'keep' || opts.resize !== 'none' || opts.wm.enabled || isHeic(it.file) || /\.(gif|bmp|jfif)$/i.test(it.file.name);
+  const needsEncode = (it) => opts.format !== 'keep' || opts.resize !== 'none' || opts.wm.enabled || isHeic(it.file) || /\.(gif|bmp|jfif)$/i.test(it.file.name) || !!it.editedBlob || !isIdentity(opts.adjust) || aiActive(opts.ai);
 
   function rebuildPlan() {
     let list = [...items];
@@ -286,7 +290,7 @@ export function mount(root) {
   function renderTable() {
     if (!plan.length) { tableWrap.replaceChildren(); return; }
     const t = h('table.table',
-      h('thead', h('tr', h('th', '#'), h('th', 'รูป'), h('th', 'ชื่อเดิม'), h('th', 'ชื่อใหม่ (แก้ได้)'), h('th', 'โฟลเดอร์'), h('th', 'ขนาดเดิม'), h('th', 'สถานะ'))),
+      h('thead', h('tr', h('th', '#'), h('th', 'รูป'), h('th', 'ชื่อเดิม'), h('th', 'ชื่อใหม่ (แก้ได้)'), h('th', 'โฟลเดอร์'), h('th', 'ขนาดเดิม'), h('th', 'แก้ไข'), h('th', 'สถานะ'))),
       h('tbody', plan.map((p, i) => h('tr',
         h('td.muted', i + 1),
         h('td', p.it.thumb ? h('img.thumb', { src: p.it.thumb, alt: '', 'data-id': p.it.id }) : h('img.thumb', { alt: '', 'data-id': p.it.id })),
@@ -294,6 +298,8 @@ export function mount(root) {
         h('td', h('div.row', h('input', { type: 'text', value: p.base, onchange: (e) => { overrides[p.it.id] = e.target.value; refresh(); } }), h('span.muted', '.' + p.name.split('.').pop()))),
         h('td', p.folder || h('span.muted', '—')),
         h('td.muted', formatBytes(p.it.file.size)),
+        h('td', h('div.row', btn(p.it.editedBlob ? 'แก้ต่อ' : 'แก้ไข', () => editItem(p.it), { kind: 'sm', ic: 'sparkles' }),
+          p.it.editedBlob ? btn('', () => { p.it.editedBlob = null; p.it.thumb = ''; refreshThumb(p.it); refresh(); enh.refresh(); }, { kind: 'icon-only sm', ic: 'rotate', title: 'กลับไปใช้ภาพต้นฉบับ' }) : '')),
         h('td', { 'data-status': p.it.id, class: p.warn ? 'status-warn' : '' }, p.status || p.warn || (p.fmt ? 'แปลงเป็น ' + FORMATS[p.fmt].label : 'คัดลอกไฟล์เดิม'))))));
     tableWrap.replaceChildren(t);
   }
@@ -327,7 +333,7 @@ export function mount(root) {
       setStatus(p.it.id, 'กำลังทำ…');
       await nextFrame();
       try {
-        const blob = await processOne(p);
+        const blob = await processOne(p, (t) => setStatus(p.it.id, t));
         const path = (p.folder ? p.folder + '/' : '') + p.name;
         const written = await sink.write(path, blob);
         if (doMove && blob.size > 0) { await p.it.parent.removeEntry(p.it.file.name); moved.add(p.it); }
@@ -351,19 +357,49 @@ export function mount(root) {
     if (moved.size) { items = items.filter((x) => !moved.has(x)); renderSummary(); }
   }
 
-  async function processOne(p) {
+  async function processOne(p, say) {
     if (!p.fmt) return p.it.file; // คัดลอกไฟล์เดิมทั้งไฟล์
-    const bmp = await decodeImage(p.it.file);
+    const bmp = await decodeImage(p.it.editedBlob || p.it.file);
     try {
-      const target = targetSize(bmp.width, bmp.height, opts.resize === 'none' ? { mode: 'none' } : { mode: opts.resize, size: +opts.size, width: +opts.width, height: +opts.height, percent: +opts.percent, noUpscale: opts.noUpscale });
-      const bg = FORMATS[p.fmt].alpha ? null : opts.background;
-      const canvas = drawResized(bmp, bmp.width, bmp.height, target, target.crop, bg);
+      let src = bmp;
+      if (aiActive(opts.ai) && opts.ai.upscale > 1) src = await upscaleIfNeeded(bmp, opts, say);
+      const target = targetSize(src.width, src.height, opts.resize === 'none' ? { mode: 'none' } : { mode: opts.resize, size: +opts.size, width: +opts.width, height: +opts.height, percent: +opts.percent, noUpscale: opts.noUpscale });
+      const alpha = FORMATS[p.fmt].alpha;
+      let canvas = drawResized(src, src.width, src.height, target, target.crop, alpha ? null : opts.background);
+      if (!isIdentity(opts.adjust) || (aiActive(opts.ai) && (opts.ai.bg !== 'none' || opts.ai.retouch > 0 || opts.ai.blur > 0))) {
+        canvas = await applyExtras(canvas, opts, say);
+        if (!alpha) { // JPG ไม่มีพื้นใส: ปูพื้นตามสีที่ตั้งไว้
+          const flat = document.createElement('canvas');
+          flat.width = canvas.width; flat.height = canvas.height;
+          const g = flat.getContext('2d');
+          g.fillStyle = opts.ai.bg === 'color' ? opts.ai.bgColor : opts.background;
+          g.fillRect(0, 0, flat.width, flat.height);
+          g.drawImage(canvas, 0, 0);
+          canvas = flat;
+        }
+      }
       if (opts.wm.enabled && logo) drawWatermark(canvas, logo, opts.wm);
       const blob = await encodeCanvas(canvas, p.fmt, +opts.quality);
       canvas.width = 0; canvas.height = 0;
       return blob;
     } finally { bmp.close && bmp.close(); }
   }
+
+  // ---------- แก้ไขทีละรูป ----------
+  async function refreshThumb(it) {
+    it.thumb = (await thumbnail(it.editedBlob ? new File([it.editedBlob], 'edited.png', { type: 'image/png' }) : it.file)) || null;
+    const img = root.querySelector(`img[data-id="${it.id}"]`);
+    if (img && it.thumb) img.src = it.thumb;
+  }
+  async function editItem(it) {
+    const { openEditor } = await import('./image-editor.js');
+    await openEditor({
+      source: it.editedBlob || it.file,
+      name: it.path,
+      onSave: async (blob) => { it.editedBlob = blob; await refreshThumb(it); refresh(); enh.refresh(); toast('บันทึกการแก้ไขแล้ว — จะใช้ภาพนี้ตอนสร้างไฟล์', 'ok'); },
+    });
+  }
+  const enh = enhanceSteps({ opts, getItems: () => items, openEditor: editItem, onChange: () => refresh() });
 
   // ---------- พรีเซ็ต ----------
   const store = presets('images');
@@ -372,7 +408,7 @@ export function mount(root) {
     getData: () => ({ ...structuredClone(opts), wmLogo: logoBlob || null }),
     apply: async (data) => {
       const { wmLogo, ...rest } = data;
-      Object.assign(opts, structuredClone(DEFAULTS), rest, { wm: { ...DEFAULTS.wm, ...(rest.wm || {}) } });
+      Object.assign(opts, structuredClone(DEFAULTS), rest, { wm: { ...DEFAULTS.wm, ...(rest.wm || {}) }, adjust: { ...DEFAULTS.adjust, ...(rest.adjust || {}) }, ai: { ...DEFAULTS.ai, ...(rest.ai || {}) } });
       if (wmLogo) await setLogo(wmLogo);
       syncControls();
     },
@@ -387,6 +423,7 @@ export function mount(root) {
     drawFormat();
     drawRename(); drawOrganize();
     wmToggle.input.checked = opts.wm.enabled; wmBody.hidden = !opts.wm.enabled;
+    enh.sync();
     refresh();
   }
 
@@ -401,9 +438,11 @@ export function mount(root) {
       h('div.grid4', field('ปรับขนาด', resizeSel)), sizeFields,
       field('รูปแบบไฟล์ผลลัพธ์', formatSeg), formatNote,
       h('div.grid4', field(h('span', 'คุณภาพ ', qualityLabel), qualityInput, 'ค่าแนะนำ 80–88'), bgField)),
-    step(3, 'ตั้งชื่อใหม่และจัดเก็บ', renameBody, organizeBody),
-    step(4, 'โลโก้ / ลายน้ำ (ไม่บังคับ)', wmToggle, wmBody),
-    step(5, 'ตรวจสอบแล้วเริ่มทำงาน', planNote, tableWrap,
+    enh.adjustStep,
+    enh.toolsStep,
+    step(5, 'ตั้งชื่อใหม่และจัดเก็บ', renameBody, organizeBody),
+    step(6, 'โลโก้ / ลายน้ำ (ไม่บังคับ)', wmToggle, wmBody),
+    step(7, 'ตรวจสอบแล้วเริ่มทำงาน', planNote, tableWrap,
       h('div.grid2', out.el, moveBox),
       h('div.row.wrap', startBtn, cancelBtn), prog.el, resultBox),
   );

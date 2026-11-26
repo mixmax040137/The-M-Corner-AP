@@ -85,3 +85,24 @@ export async function recognize(file, { langs = 'tha+eng', onProgress, forceOcr 
   if (tidy && /^tha|\+tha|tha\+/.test(langs)) text = tidyThai(text);
   return { text, method: 'ocr', pages: pages.length };
 }
+
+// หาตำแหน่งบรรทัดข้อความในภาพ (ใช้กับ “ดึงข้อความออกจากภาพ”) → [{text, x0, y0, x1, y1, conf}]
+export async function recognizeLines(canvas, { langs = 'tha+eng', onProgress } = {}) {
+  progressFn = onProgress;
+  const w = await getWorker(langs);
+  const scale = canvas.width < 1600 ? Math.min(3, 1600 / canvas.width) : 1;
+  const c = document.createElement('canvas');
+  c.width = Math.round(canvas.width * scale); c.height = Math.round(canvas.height * scale);
+  const g = c.getContext('2d');
+  g.filter = 'grayscale(1) contrast(1.15)';
+  g.drawImage(canvas, 0, 0, c.width, c.height);
+  const { data } = await w.recognize(c, {}, { blocks: true, text: true });
+  const lines = [];
+  for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) {
+    const text = tidyThai(l.text || '').trim();
+    if (!text || (l.confidence ?? 100) < 45 || text.replace(/[^\p{L}\p{N}]/gu, '').length < 2) continue;
+    const bb = l.bbox;
+    lines.push({ text, conf: l.confidence, x0: bb.x0 / scale, y0: bb.y0 / scale, x1: bb.x1 / scale, y1: bb.y1 / scale });
+  }
+  return lines;
+}

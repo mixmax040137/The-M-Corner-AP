@@ -3,3 +3,4 @@ public/vendor/
 .wrangler/
 test/out/
 src/assets.gen.js
+test/cache/

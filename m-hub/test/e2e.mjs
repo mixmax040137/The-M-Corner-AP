@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unzipSync, strFromU8 } from 'fflate';
-import { startServer } from './server.mjs';
+import { startServer, aiCalls } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -607,7 +607,144 @@ async function testVideo() {
   ok(/\.(mp4|webm)$/.test(outFile) && ['avc', 'vp9', 'vp8'].includes(info.codec), 'ได้ไฟล์วิดีโอ ' + info.codec);
 }
 
-const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo };
+// ========== 12) ปรับแต่งภาพ + เครื่องมือแบบ Canva ==========
+const PORTRAIT = fileURLToPath(new URL('./fixtures/portrait.jpg', import.meta.url));
+const editorView = () => page.locator('dialog.editor');
+async function editorPaint(points) {
+  const box = await editorView().locator('canvas').first().boundingBox();
+  await page.mouse.move(box.x + box.width * points[0][0], box.y + box.height * points[0][1]);
+  await page.mouse.down();
+  for (const [x, y] of points.slice(1)) await page.mouse.move(box.x + box.width * x, box.y + box.height * y, { steps: 6 });
+  await page.mouse.up();
+}
+const editorIdle = () => editorView().locator('.editor-busy').waitFor({ state: 'hidden', timeout: 240000 });
+const viewPixel = (fx, fy) => page.evaluate(([fx, fy]) => { const c = document.querySelector('dialog.editor canvas'); const d = c.getContext('2d').getImageData(Math.round(c.width * fx), Math.round(c.height * fy), 1, 1).data; return [...d]; }, [fx, fy]);
+
+async function testImageFx() {
+  console.log('ปรับแต่งภาพ + เครื่องมือแบบ Canva');
+  await open('#/images');
+  await chooseFiles('เลือกไฟล์รูป', [PORTRAIT]);
+  await page.waitForTimeout(1200);
+  await view().getByRole('button', { name: 'ขาวดำ', exact: true }).click();
+  await page.waitForTimeout(1200);
+  const px = await page.evaluate(() => { const c = document.querySelector('main > .tool-view:not([hidden]) .preview-box canvas'); return [...c.getContext('2d').getImageData(c.width >> 1, c.height >> 2, 1, 1).data]; });
+  ok(Math.abs(px[0] - px[1]) < 6 && Math.abs(px[1] - px[2]) < 6, `ฟิลเตอร์ขาวดำแสดงในตัวอย่างทันที (${px.slice(0, 3)})`);
+  const sat = await view().getByRole('slider', { name: 'ความอิ่มสี' }).inputValue();
+  ok(sat === '-100', 'แถบเลื่อนอัปเดตตามฟิลเตอร์ (ความอิ่มสี -100)');
+  await view().getByRole('button', { name: 'PNG', exact: true }).click();
+  await view().locator('select').filter({ hasText: 'ลบพื้นหลัง (โปร่งใส)' }).selectOption('transparent');
+  await view().locator('select').filter({ hasText: 'ดาวน์โหลดเป็นไฟล์ ZIP' }).selectOption('zip');
+  const z = zipEntries(await startAndDownload());
+  const png = Object.values(z)[0];
+  const alpha = await page.evaluate(async (b64) => {
+    const bm = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))]));
+    const c = new OffscreenCanvas(bm.width, bm.height); const g = c.getContext('2d'); g.drawImage(bm, 0, 0);
+    const at = (x, y) => [...g.getImageData(x, y, 1, 1).data];
+    return { corner: at(10, 10), center: at(bm.width >> 1, Math.round(bm.height * 0.45)) };
+  }, Buffer.from(png).toString('base64'));
+  console.log('    ', JSON.stringify(alpha));
+  ok(alpha.corner[3] === 0 && alpha.center[3] === 255, 'ลบพื้นหลังเป็นชุด: มุมภาพโปร่งใส บุคคลทึบ');
+  ok(Math.abs(alpha.center[0] - alpha.center[1]) < 6, 'ไฟล์ผลลัพธ์ใช้ฟิลเตอร์ขาวดำด้วย');
+
+  // ---- หน้าต่างแก้ไข ----
+  await view().getByRole('button', { name: 'รีเซ็ตการปรับแต่ง' }).click();
+  await view().locator('select').filter({ hasText: 'ลบพื้นหลัง (โปร่งใส)' }).selectOption('none');
+  await view().locator('table').last().getByRole('button', { name: 'แก้ไข' }).click();
+  await editorView().waitFor();
+  await page.waitForTimeout(500);
+  await editorView().getByRole('button', { name: 'ยางลบวิเศษ' }).click();
+  const before = await viewPixel(0.47, 0.73);
+  await editorPaint([[0.44, 0.71], [0.5, 0.71], [0.5, 0.76], [0.44, 0.76]]);
+  await editorView().getByRole('button', { name: 'ลบในเครื่อง' }).click();
+  await editorIdle();
+  await page.waitForTimeout(300);
+  const after = await viewPixel(0.47, 0.73);
+  ok(before.some((v, i) => Math.abs(v - after[i]) > 8), `ยางลบวิเศษ (ในเครื่อง) เปลี่ยนพื้นที่ที่ระบาย (${before.slice(0, 3)} → ${after.slice(0, 3)})`);
+  await editorView().getByRole('button', { name: 'เครื่องมือทั้งหมด' }).click();
+  await editorView().getByRole('button', { name: 'แก้ด้วยคำสั่ง' }).click();
+  await editorPaint([[0.1, 0.1], [0.2, 0.15]]);
+  await editorView().locator('textarea').fill('ใส่ช่อดอกไม้');
+  const nCalls = aiCalls.length;
+  await editorView().getByRole('button', { name: 'สร้าง', exact: true }).click();
+  await editorIdle();
+  const last = aiCalls[aiCalls.length - 1];
+  ok(aiCalls.length === nCalls + 1 && /\[EN\] ใส่ช่อดอกไม้/.test(last.prompt) && last.width % 16 === 0, 'แก้ด้วยคำสั่ง: แปลคำสั่งไทย แล้วส่งภาพส่วนที่ระบายไปให้ AI (ขนาดหาร 16 ลงตัว)');
+  await editorView().getByRole('button', { name: 'เครื่องมือทั้งหมด' }).click();
+  await editorView().getByRole('button', { name: 'ขยายขอบภาพ' }).click();
+  await editorView().getByRole('button', { name: '16:9' }).click();
+  await editorIdle();
+  const size = await editorView().locator('.editor-top .muted.small').innerText();
+  ok(size === '1138 × 640', 'ขยายขอบภาพเป็น 16:9 (' + size + ')');
+  await editorView().getByRole('button', { name: 'บันทึก' }).click();
+  await editorView().waitFor({ state: 'detached' });
+  ok(await view().locator('table').last().getByRole('button', { name: 'แก้ต่อ' }).waitFor({ timeout: 10000 }).then(() => true, () => false), 'บันทึกแล้ว รูปในตารางมีสถานะแก้ไขแล้ว');
+
+  // ---- ขยายภาพด้วย AI ----
+  const small = await makeImage('small.png', 200, 150, '#336699', 'png');
+  await open('#/images');
+  await chooseFiles('เลือกไฟล์รูป', [small]);
+  await page.waitForTimeout(800);
+  await view().locator('table').last().getByRole('button', { name: 'แก้ไข' }).click();
+  await editorView().getByRole('button', { name: 'ขยายภาพ (AI)' }).click();
+  await editorView().getByRole('button', { name: /ขยาย 2 เท่า/ }).click();
+  await editorIdle();
+  ok((await editorView().locator('.editor-top .muted.small').innerText()) === '400 × 300', 'ขยายภาพด้วย AI 2 เท่า (200×150 → 400×300)');
+  await editorView().getByRole('button', { name: 'ปิด' }).click();
+  await page.getByRole('button', { name: 'ปิด', exact: true }).last().click().catch(() => {});
+
+  // ---- ดึงข้อความเป็นเลเยอร์ ----
+  const txt = await makeTextImage('poster-text.png', '<div style="font-size:44px;font-weight:700">ประกาศรับสมัครทุนการศึกษา</div><div style="font-size:30px;margin-top:16px">ภายใน 20 ธันวาคม 2569</div>', 760);
+  await open('#/images');
+  await chooseFiles('เลือกไฟล์รูป', [txt]);
+  await page.waitForTimeout(800);
+  await view().locator('table').last().getByRole('button', { name: 'แก้ไข' }).click();
+  await editorView().getByRole('button', { name: 'ดึงข้อความ' }).click();
+  await editorView().getByRole('heading', { name: 'เลเยอร์' }).waitFor({ timeout: 240000 });
+  const names = await editorView().locator('.layer-item .name').allInnerTexts();
+  console.log('    ', names.join(' | '));
+  ok(names.length >= 2 && names.some((n) => n.includes('ประกาศรับสมัคร')), 'ดึงข้อความในภาพออกมาเป็นเลเยอร์ที่แก้ได้');
+  await editorView().locator('textarea').first().fill('ประกาศผลทุนการศึกษา');
+  await editorView().getByRole('button', { name: 'รวมเลเยอร์ลงภาพ' }).click();
+  await editorView().getByRole('button', { name: 'บันทึก' }).click();
+  await editorView().waitFor({ state: 'detached' });
+  ok(await view().locator('table').last().getByRole('button', { name: 'แก้ต่อ' }).waitFor({ timeout: 10000 }).then(() => true, () => false), 'แก้ข้อความแล้วรวมลงภาพ บันทึกกลับเข้างานเป็นชุด');
+  await view().locator('select').filter({ hasText: 'ดาวน์โหลดเป็นไฟล์ ZIP' }).selectOption('zip');
+  const zt = zipEntries(await startAndDownload());
+  const tpng = Object.values(zt)[0];
+  const reread = await page.evaluate(async (b64) => {
+    const { recognize } = await import('/core/ocr.js');
+    return (await recognize(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'x.png', { type: 'image/png' }))).text;
+  }, Buffer.from(tpng).toString('base64'));
+  console.log('     อ่านซ้ำ:', reread.replace(/\n/g, ' | '));
+  ok(reread.includes('ประกาศผลทุนการศึกษา') && !reread.includes('รับสมัคร'), 'ไฟล์ผลลัพธ์มีข้อความใหม่แทนข้อความเดิม (ตรวจด้วย OCR)');
+
+  // ---- หยิบบุคคลเป็นเลเยอร์ + สร้างพื้นหลังใหม่ด้วย AI ----
+  await open('#/images');
+  await chooseFiles('เลือกไฟล์รูป', [PORTRAIT]);
+  await page.waitForTimeout(800);
+  await view().locator('table').last().getByRole('button', { name: 'แก้ไข' }).click();
+  await editorView().getByRole('button', { name: 'หยิบบุคคล' }).click();
+  await page.locator('dialog.dialog').getByRole('button', { name: 'ในเครื่อง (เร็ว)' }).click();
+  await page.locator('dialog.dialog').getByRole('button', { name: 'เริ่ม' }).click();
+  await editorView().getByRole('heading', { name: 'เลเยอร์' }).waitFor({ timeout: 240000 });
+  ok((await editorView().locator('.layer-item .name').allInnerTexts()).includes('บุคคล'), 'หยิบบุคคลออกมาเป็นเลเยอร์ (พื้นหลังถูกเติมแทน)');
+  const bodyBefore = await viewPixel(0.5, 0.75);
+  await editorPaint([[0.5, 0.6], [0.2, 0.6]]); // ลากบุคคลไปทางซ้าย
+  const bodyAfter = await viewPixel(0.5, 0.75);
+  ok(bodyBefore.some((v, i) => Math.abs(v - bodyAfter[i]) > 20), 'ลากย้ายบุคคลบนภาพได้');
+  await editorView().getByRole('button', { name: 'รวมเลเยอร์ลงภาพ' }).click();
+  await editorView().getByRole('button', { name: 'เครื่องมือทั้งหมด' }).click().catch(() => {});
+  await editorView().getByRole('button', { name: 'สร้างพื้นหลังใหม่' }).click();
+  await editorView().getByRole('button', { name: 'สวนสีเขียว มีแสงแดดอ่อน' }).click();
+  const n2 = aiCalls.length;
+  await editorView().getByRole('button', { name: 'สร้างพื้นหลัง' }).click();
+  await editorIdle();
+  ok(aiCalls.length === n2 + 1 && /Replace the background with: \[EN\] สวนสีเขียว/.test(aiCalls[aiCalls.length - 1].prompt), 'สร้างพื้นหลังใหม่: ส่งคำสั่งแปลแล้วให้ AI (คงบุคคลเดิม)');
+  await editorView().getByRole('button', { name: 'ปิด' }).click();
+  await page.locator('dialog.dialog').getByRole('button', { name: 'ปิด' }).click();
+}
+
+const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx };
 for (const [name, fn] of Object.entries(sections)) {
   if (only && only !== name) continue;
   try { await fn(); } catch (e) { failures++; console.log('  ✗ ' + name + ' ล้มเหลว: ' + e.message); await page.screenshot({ path: join(OUT, `fail-${name}.png`), fullPage: true }); }

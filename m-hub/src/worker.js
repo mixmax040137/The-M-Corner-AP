@@ -3,7 +3,7 @@
 // ไม่มีการเก็บไฟล์หรือข้อมูลของผู้ใช้บนเซิร์ฟเวอร์
 import ASSETS from './assets.gen.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 // ไฟล์ใหญ่ที่ไม่ฝังในสคริปต์: Worker ไปดึงจาก jsDelivr ให้ (เฉพาะไฟล์ในรายการนี้เท่านั้น — ไม่ใช่ proxy เปิด)
 const JS = 'text/javascript; charset=utf-8';
 const CDN = {

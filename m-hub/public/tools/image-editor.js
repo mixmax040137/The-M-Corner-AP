@@ -4,6 +4,7 @@ import { icon } from '../core/icons.js';
 import { applyAdjust, isIdentity, ZERO } from '../core/adjust.js';
 import { adjustPanel } from './adjust-panel.js';
 import { makeCanvas, ctx2d, cloneCanvas, blurCanvas, mixByMask, featherMask, blurBackground, replaceBackground, retouchSkin, inpaint } from '../core/fx.js';
+import { RATIOS, transformCanvas, straighten, cropCanvas } from '../core/image.js';
 
 const MAX_WORK = 2400; // ความละเอียดสูงสุดที่แก้ในหน้าต่างนี้ (ด้านยาว)
 const FONTS = ['Sarabun', 'Kanit', 'Prompt', 'Mitr', 'Charm'];
@@ -11,7 +12,7 @@ const SCENES = ['ห้องประชุมสว่าง ทันสม�
 
 const TOOLS = [
   { group: 'ปรับปรุงภาพ', items: [
-    ['adjust', 'ปรับแต่ง', 'sparkles'], ['upscale', 'ขยายภาพ (AI)', 'image'], ['bg', 'ลบพื้นหลัง', 'scissors'],
+    ['crop', 'ครอปและหมุน', 'crop'], ['adjust', 'ปรับแต่ง', 'sparkles'], ['upscale', 'ขยายภาพ (AI)', 'image'], ['bg', 'ลบพื้นหลัง', 'scissors'],
     ['erase', 'ยางลบวิเศษ', 'x'], ['blur', 'เบลอ', 'grid'], ['focus', 'โฟกัสอัตโนมัติ', 'camera'], ['retouch', 'รีทัชผิวหน้า', 'users'],
   ] },
   { group: 'สร้างใหม่ด้วย AI (ใช้อินเทอร์เน็ต)', ai: true, items: [
@@ -77,7 +78,7 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
     redo.length = 0;
     updateButtons();
   }
-  function restore(st) { base = st.base; adj = st.adj; matte = null; resizeView(); panelAdj && panelAdj.set(adj); render(); }
+  function restore(st) { base = st.base; adj = st.adj; matte = null; resizeView(); panelAdj && panelAdj.set(adj); if (cropSt) { cropSt = { src: base, angle: 0, ratio: cropSt.ratio, rect: null }; fitRatio(); } render(); }
   function doUndo() { if (!undo.length) return; redo.push({ base: cloneCanvas(base), adj: { ...adj } }); restore(undo.pop()); updateButtons(); }
   function doRedo() { if (!redo.length) return; undo.push({ base: cloneCanvas(base), adj: { ...adj } }); restore(redo.pop()); updateButtons(); }
   function updateButtons() { undoBtn.disabled = !undo.length; redoBtn.disabled = !redo.length; }
@@ -108,7 +109,7 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
       const g = ctx2d(view);
       g.clearRect(0, 0, view.width, view.height);
       g.imageSmoothingQuality = 'high';
-      g.drawImage(showOriginal ? original : base, 0, 0, view.width, view.height);
+      g.drawImage(showOriginal ? original : mode === 'crop' && cropSt ? cropSt.src : base, 0, 0, view.width, view.height);
       if (!showOriginal && !isIdentity(adj) && (adj.scope === 'all' || scopeMask(1, 1) !== null || adj.scope === 'area')) {
         const id = g.getImageData(0, 0, view.width, view.height);
         g.putImageData(applyAdjust(id, adj, { mask: scopeMask(view.width, view.height) }), 0, 0);
@@ -141,6 +142,18 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
   function drawOverlay() {
     const g = overlay.getContext('2d');
     g.clearRect(0, 0, overlay.width, overlay.height);
+    if (mode === 'crop' && cropSt && !showOriginal) {
+      const r = cropSt.rect, x = r.x * k, y = r.y * k, w = r.w * k, hh = r.h * k;
+      g.fillStyle = 'rgba(0,0,0,.55)';
+      g.fillRect(0, 0, overlay.width, y); g.fillRect(0, y + hh, overlay.width, overlay.height - y - hh);
+      g.fillRect(0, y, x, hh); g.fillRect(x + w, y, overlay.width - x - w, hh);
+      g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1;
+      for (let i = 1; i < 3; i++) { g.beginPath(); g.moveTo(x + (w * i) / 3, y); g.lineTo(x + (w * i) / 3, y + hh); g.moveTo(x, y + (hh * i) / 3); g.lineTo(x + w, y + (hh * i) / 3); g.stroke(); }
+      g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(x, y, w, hh);
+      g.fillStyle = '#fff';
+      for (const [hx, hy] of cropHandles().map(([, px, py]) => [px * k, py * k])) g.fillRect(hx - 6, hy - 6, 12, 12);
+      return;
+    }
     const m = adj.scope === 'area' && mode === 'adjust' ? areaMask : mask;
     if (!m || !['erase', 'blur', 'aiedit', 'adjust'].includes(mode)) return;
     const id = g.createImageData(overlay.width, overlay.height);
@@ -159,8 +172,56 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if ((x - p.x) ** 2 + (y - p.y) ** 2 <= rad * rad) m[y * base.width + x] = brush.erase ? 0 : 1;
   }
   const brushing = () => ['erase', 'aiedit'].includes(mode) || (mode === 'blur' && blurMode === 'brush') || (mode === 'adjust' && adj.scope === 'area');
+  // ---------- ครอป ----------
+  let cropSt = null; // { src, angle, ratio, rect }
+  let cropDrag = null;
+  const ratioOf = () => (cropSt.ratio === 'free' ? 0 : cropSt.ratio === 'orig' ? base.width / base.height : RATIOS[cropSt.ratio]);
+  function cropHandles() {
+    const r = cropSt.rect, locked = !!ratioOf();
+    const hs = [['nw', r.x, r.y], ['ne', r.x + r.w, r.y], ['sw', r.x, r.y + r.h], ['se', r.x + r.w, r.y + r.h]];
+    if (!locked) hs.push(['n', r.x + r.w / 2, r.y], ['s', r.x + r.w / 2, r.y + r.h], ['w', r.x, r.y + r.h / 2], ['e', r.x + r.w, r.y + r.h / 2]);
+    return hs;
+  }
+  function fitRatio() {
+    const r = ratioOf(), W = base.width, H = base.height;
+    if (!r) cropSt.rect = { x: 0, y: 0, w: W, h: H };
+    else { const w = Math.min(W, H * r), hh = w / r; cropSt.rect = { x: (W - w) / 2, y: (H - hh) / 2, w, h: hh }; }
+    updateCropLabel();
+  }
+  const cropChanged = () => cropSt && cropSt.rect && (cropSt.angle || cropSt.rect.x > 0.5 || cropSt.rect.y > 0.5 || Math.abs(cropSt.rect.w - base.width) > 0.5 || Math.abs(cropSt.rect.h - base.height) > 0.5);
+  function moveCrop(p) {
+    const W = base.width, H = base.height, min = Math.max(16, Math.min(W, H) * 0.03);
+    const d = cropDrag, o = d.start, r = { ...o };
+    const dx = p.x - d.p.x, dy = p.y - d.p.y;
+    if (d.h === 'move') { r.x = Math.min(W - o.w, Math.max(0, o.x + dx)); r.y = Math.min(H - o.h, Math.max(0, o.y + dy)); cropSt.rect = r; return; }
+    let x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h;
+    if (d.h.includes('w')) x0 = Math.min(x1 - min, Math.max(0, o.x + dx));
+    if (d.h.includes('e')) x1 = Math.max(x0 + min, Math.min(W, o.x + o.w + dx));
+    if (d.h.includes('n')) y0 = Math.min(y1 - min, Math.max(0, o.y + dy));
+    if (d.h.includes('s')) y1 = Math.max(y0 + min, Math.min(H, o.y + o.h + dy));
+    const ratio = ratioOf();
+    if (ratio) { // ล็อกสัดส่วน: ยึดมุมตรงข้ามไว้
+      let w = x1 - x0, hh = w / ratio;
+      const ax = d.h.includes('w') ? o.x + o.w : o.x, ay = d.h.includes('n') ? o.y + o.h : o.y;
+      const maxW = d.h.includes('w') ? ax : W - ax, maxH = d.h.includes('n') ? ay : H - ay;
+      if (hh > maxH) { hh = maxH; w = hh * ratio; }
+      if (w > maxW) { w = maxW; hh = w / ratio; }
+      x0 = d.h.includes('w') ? ax - w : ax; x1 = x0 + w;
+      y0 = d.h.includes('n') ? ay - hh : ay; y1 = y0 + hh;
+    }
+    cropSt.rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
   view.addEventListener('pointerdown', (e) => {
     const p = toBase(e);
+    if (mode === 'crop' && cropSt) {
+      const tol = 16 * (base.width / view.getBoundingClientRect().width);
+      const hit = cropHandles().find(([, hx, hy]) => Math.abs(p.x - hx) <= tol && Math.abs(p.y - hy) <= tol);
+      const r = cropSt.rect;
+      const inside = p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+      if (hit || inside) { cropDrag = { h: hit ? hit[0] : 'move', p, start: { ...r } }; view.setPointerCapture(e.pointerId); }
+      return;
+    }
     if (layers) {
       const hit = layers.map((L, i) => [L, i]).reverse().find(([L]) => { const b = layerBox(L); return !L.hidden && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h; });
       if (hit) { selLayer = hit[1]; drag = { dx: p.x - hit[0].x, dy: p.y - hit[0].y }; view.setPointerCapture(e.pointerId); drawPanel(); render(); }
@@ -172,10 +233,11 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
   });
   view.addEventListener('pointermove', (e) => {
     const p = toBase(e);
+    if (cropDrag) { moveCrop(p); drawOverlay(); updateCropLabel(); return; }
     if (drag && layers && selLayer >= 0) { layers[selLayer].x = p.x - drag.dx; layers[selLayer].y = p.y - drag.dy; render(); return; }
     if (brush.on) { paint(p, mode === 'adjust' ? areaMask : mask); render(); }
   });
-  view.addEventListener('pointerup', () => { brush.on = false; drag = null; });
+  view.addEventListener('pointerup', () => { brush.on = false; drag = null; cropDrag = null; });
 
   // ---------- งานหนัก (แสดงสถานะ) ----------
   async function work(msg, fn) {
@@ -202,7 +264,7 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
   // ---------- แผงด้านข้าง ----------
   let panelAdj = null;
   let blurMode = 'brush';
-  const back = () => btn('เครื่องมือทั้งหมด', () => { mode = 'home'; mask = null; drawPanel(); render(); }, { ic: 'left', kind: 'ghost sm' });
+  const back = () => btn('เครื่องมือทั้งหมด', () => { mode = 'home'; mask = null; cropSt = null; drawPanel(); render(); }, { ic: 'left', kind: 'ghost sm' });
   const brushCtl = () => h('div.adj-section',
     h('div.adj-row', h('label', 'ขนาดแปรง'), h('input.adj', { type: 'range', min: 6, max: 160, value: brush.size, oninput: (e) => (brush.size = +e.target.value) }), h('span')),
     h('div.row.wrap', seg([['paint', 'ระบาย'], ['erase', 'ลบรอยระบาย']], brush.erase ? 'erase' : 'paint', (v) => (brush.erase = v === 'erase')),
@@ -218,6 +280,44 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
       return;
     }
     const panels = {
+      crop: () => {
+        const ratios = [['free', 'อิสระ'], ['orig', 'ต้นฉบับ'], ...Object.keys(RATIOS).map((r) => [r, r])];
+        const straightIn = h('input.adj', { type: 'range', min: -45, max: 45, step: 0.5, value: cropSt.angle, 'aria-label': 'ปรับเอียง' });
+        const straightNum = h('input.adj-num', { type: 'number', min: -45, max: 45, step: 0.5, value: cropSt.angle, 'aria-label': 'ปรับเอียง (องศา)' });
+        const setAngle = (v) => {
+          v = Math.max(-45, Math.min(45, +v || 0));
+          cropSt.angle = v; straightIn.value = v; straightNum.value = v;
+          cropSt.src = straighten(base, v);
+          render();
+        };
+        straightIn.addEventListener('input', () => setAngle(straightIn.value));
+        straightIn.addEventListener('dblclick', () => setAngle(0));
+        straightNum.addEventListener('change', () => setAngle(straightNum.value));
+        const rot = (o) => () => { commit(transformCanvas(base, o)); cropSt = { src: base, angle: 0, ratio: cropSt.ratio, rect: null }; fitRatio(); drawPanel(); render(); };
+        return [
+          h('p.intro', 'ลากกรอบหรือมุมกรอบบนภาพเพื่อเลือกส่วนที่ต้องการ แล้วกด “ใช้การครอป”'),
+          h('div.adj-section', h('h4', icon('crop'), 'สัดส่วน'),
+            h('div.chips', ...ratios.map(([v, label]) => h('button.chip', { type: 'button', 'aria-pressed': cropSt.ratio === v, style: cropSt.ratio === v ? { borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 600 } : null, onclick: () => { cropSt.ratio = v; fitRatio(); drawPanel(); render(); } }, label)))),
+          cropLabel,
+          h('div.adj-section', h('h4', icon('rotate'), 'หมุนและกลับด้าน'),
+            h('div.grid2',
+              btn('หมุนซ้าย 90°', rot({ rotate: 270 }), { ic: 'rotateL' }),
+              btn('หมุนขวา 90°', rot({ rotate: 90 }), { ic: 'rotate' }),
+              btn('กลับซ้าย–ขวา', rot({ flipH: true }), { ic: 'flip' }),
+              btn('กลับบน–ล่าง', rot({ flipV: true }), { ic: 'flip' })),
+            h('div.adj-row', h('label', 'ปรับเอียง (องศา) — ภาพจะขยายเข้าเล็กน้อยไม่ให้มีมุมว่าง'), straightIn, straightNum)),
+          h('div.row.wrap',
+            btn('ใช้การครอป', () => {
+              const r = cropSt.rect;
+              if (!cropChanged()) return toast('ยังไม่ได้ครอปหรือปรับเอียง', 'warn');
+              commit(cropCanvas(cropSt.src, r.x, r.y, r.w, r.h));
+              cropSt = { src: base, angle: 0, ratio: 'free', rect: null }; fitRatio();
+              drawPanel(); render();
+              toast('ครอปแล้ว — กด Ctrl+Z เพื่อเลิกทำ', 'ok', 2000);
+            }, { kind: 'primary', ic: 'check' }),
+            btn('รีเซ็ต', () => { cropSt = { src: base, angle: 0, ratio: 'free', rect: null }; fitRatio(); drawPanel(); render(); }, { kind: 'ghost' })),
+        ];
+      },
       adjust: () => {
         panelAdj = adjustPanel({
           initial: adj, scopes: [['all', 'ทั้งภาพ'], ['person', 'บุคคล'], ['background', 'พื้นหลัง'], ['area', 'พื้นที่ที่ระบาย']],
@@ -328,8 +428,12 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
     side.append(back(), h('h3', TOOLS.flatMap((g) => g.items).find((x) => x[0] === mode)?.[1] || ''), ...panels[mode]());
   }
 
+  const cropLabel = h('div.muted.small');
+  function updateCropLabel() { if (cropSt && cropSt.rect) cropLabel.textContent = `ส่วนที่เลือก ${Math.round(cropSt.rect.w)} × ${Math.round(cropSt.rect.h)} px`; }
+
   async function openTool(id) {
     mask = null;
+    if (id === 'crop') { cropSt = { src: base, angle: 0, ratio: 'free', rect: null }; fitRatio(); updateCropLabel(); }
     if (id === 'grab' || id === 'layers') return startLayers(id === 'layers');
     if (id === 'grabtext') return startText();
     mode = id;
@@ -439,6 +543,7 @@ export async function openEditor({ source, name = 'รูปภาพ', onSave }
 
   // ---------- บันทึก ----------
   async function save() {
+    if (mode === 'crop' && cropChanged()) { const r = cropSt.rect; commit(cropCanvas(cropSt.src, r.x, r.y, r.w, r.h)); cropSt = null; }
     let out = cloneCanvas(base);
     if (layers) drawLayers(ctx2d(out), 1, true);
     if (!isIdentity(adj)) {

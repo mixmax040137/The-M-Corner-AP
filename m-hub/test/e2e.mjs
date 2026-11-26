@@ -744,7 +744,83 @@ async function testImageFx() {
   await page.locator('dialog.dialog').getByRole('button', { name: 'ปิด' }).click();
 }
 
-const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx };
+// ========== 13) ครอปและหมุน ==========
+async function makeTwoTone(name, w, h) {
+  const p = await context.newPage();
+  await p.setViewportSize({ width: w, height: h });
+  await p.setContent('<body style="margin:0;display:flex;height:100vh"><div style="flex:1;background:#e00000"></div><div style="flex:1;background:#0000e0"></div></body>');
+  const file = join(FIX, name);
+  await p.screenshot({ path: file, type: 'png' });
+  await p.close();
+  return file;
+}
+async function pngInfo(buf, points) {
+  return page.evaluate(async ([b64, pts]) => {
+    const bm = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))]));
+    const c = new OffscreenCanvas(bm.width, bm.height); const g = c.getContext('2d'); g.drawImage(bm, 0, 0);
+    return { w: bm.width, h: bm.height, px: pts.map(([x, y]) => [...g.getImageData(Math.round(x * (bm.width - 1)), Math.round(y * (bm.height - 1)), 1, 1).data]) };
+  }, [Buffer.from(buf).toString('base64'), points]);
+}
+const isRed = (p) => p[0] > 180 && p[2] < 80, isBlue = (p) => p[2] > 180 && p[0] < 80;
+
+async function testCrop() {
+  console.log('ครอปและหมุน');
+  // ---- งานเป็นชุด: หมุนทุกรูป + ครอปตามสัดส่วน ----
+  const tt = await makeTwoTone('twotone.png', 300, 200);
+  await open('#/images');
+  await chooseFiles('เลือกไฟล์รูป', [tt]);
+  await page.waitForTimeout(600);
+  await view().locator('select').filter({ hasText: 'ด้านยาวสุดไม่เกิน' }).selectOption('none');
+  await view().getByRole('button', { name: 'PNG', exact: true }).click();
+  await view().locator('select').filter({ hasText: 'หมุนขวา 90°' }).selectOption('90');
+  await view().locator('select').filter({ hasText: 'ดาวน์โหลดเป็นไฟล์ ZIP' }).selectOption('zip');
+  let z = zipEntries(await startAndDownload());
+  let info = await pngInfo(Object.values(z)[0], [[0.5, 0.1], [0.5, 0.9]]);
+  ok(info.w === 200 && info.h === 300 && isRed(info.px[0]) && isBlue(info.px[1]), `หมุนขวา 90° ทุกรูป: 300×200 → ${info.w}×${info.h} ด้านซ้าย (แดง) ขึ้นไปอยู่ด้านบน`);
+  await view().locator('select').filter({ hasText: 'หมุนขวา 90°' }).selectOption('0');
+  await view().locator('select').filter({ hasText: 'ไม่เปลี่ยนขนาด' }).selectOption('ratio');
+  await view().locator('select').filter({ hasText: 'A4 แนวตั้ง' }).selectOption('1:1');
+  await view().locator('select').filter({ hasText: 'ด้านบน (ภาพบุคคล)' }).selectOption('left');
+  z = zipEntries(await startAndDownload());
+  info = await pngInfo(Object.values(z)[0], [[0.05, 0.5], [0.95, 0.5]]);
+  ok(info.w === 200 && info.h === 200 && isRed(info.px[0]) && isBlue(info.px[1]), `ครอปสัดส่วน 1:1 เก็บด้านซ้าย: ${info.w}×${info.h}`);
+
+  // ---- หน้าต่างแก้ไข: ครอป 16:9 → หมุน → ปรับเอียง → ลากมุมกรอบ ----
+  await open('#/images');
+  await chooseFiles('เลือกไฟล์รูป', [PORTRAIT]);
+  await page.waitForTimeout(600);
+  await view().locator('table').last().getByRole('button', { name: 'แก้ไข' }).click();
+  await editorView().waitFor();
+  const size = () => editorView().locator('.editor-top .muted.small').innerText();
+  await editorView().getByRole('button', { name: 'ครอปและหมุน' }).click();
+  await editorView().getByRole('button', { name: '16:9' }).click();
+  await editorView().getByRole('button', { name: 'ใช้การครอป' }).click();
+  ok((await size()) === '640 × 360', 'ครอป 16:9 ในหน้าต่างแก้ไข (640 × 360)');
+  await editorView().getByRole('button', { name: 'หมุนขวา 90°' }).click();
+  ok((await size()) === '360 × 640', 'หมุนขวา 90° (360 × 640)');
+  await editorView().getByRole('slider', { name: 'ปรับเอียง' }).fill('12');
+  await editorView().getByRole('button', { name: 'ใช้การครอป' }).click();
+  await page.waitForTimeout(300);
+  const corners = await page.evaluate(() => { const c = document.querySelector('dialog.editor canvas'); const g = c.getContext('2d'); return [[1, 1], [c.width - 2, 1], [1, c.height - 2], [c.width - 2, c.height - 2]].map(([x, y]) => g.getImageData(x, y, 1, 1).data[3]); });
+  ok((await size()) === '360 × 640' && corners.every((a) => a === 255), 'ปรับเอียง 12° แล้วไม่มีมุมว่าง (ขนาดเท่าเดิม)');
+  await editorView().getByRole('button', { name: 'อิสระ' }).click();
+  const box = await editorView().locator('canvas').first().boundingBox();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height - 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5, { steps: 8 });
+  await page.mouse.up();
+  const label = await editorView().locator('.muted.small').filter({ hasText: 'ส่วนที่เลือก' }).innerText();
+  await editorView().getByRole('button', { name: 'บันทึก' }).click(); // บันทึกโดยยังไม่กด “ใช้การครอป” → ครอปให้อัตโนมัติ
+  await editorView().waitFor({ state: 'detached' });
+  ok(/ส่วนที่เลือก 18\d × 3[12]\d px/.test(label), 'ลากมุมกรอบครอปได้ (' + label + ')');
+  await view().locator('select').filter({ hasText: 'ดาวน์โหลดเป็นไฟล์ ZIP' }).selectOption('zip');
+  await view().locator('select').filter({ hasText: 'ด้านยาวสุดไม่เกิน' }).selectOption('none');
+  z = zipEntries(await startAndDownload());
+  info = await pngInfo(Object.values(z)[0], [[0.5, 0.5]]);
+  ok(info.w >= 175 && info.w <= 190 && info.h >= 310 && info.h <= 330, `กดบันทึกแล้วครอปให้อัตโนมัติ ไฟล์ผลลัพธ์ ${info.w}×${info.h}`);
+}
+
+const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop };
 for (const [name, fn] of Object.entries(sections)) {
   if (only && only !== name) continue;
   try { await fn(); } catch (e) { failures++; console.log('  ✗ ' + name + ' ล้มเหลว: ' + e.message); await page.screenshot({ path: join(OUT, `fail-${name}.png`), fullPage: true }); }

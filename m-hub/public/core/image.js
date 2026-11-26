@@ -36,11 +36,21 @@ export async function decodeImage(file) {
   }
 }
 
+export const RATIOS = { '1:1': 1, '4:5': 4 / 5, '3:4': 3 / 4, '2:3': 2 / 3, '9:16': 9 / 16, '16:9': 16 / 9, '3:2': 3 / 2, '4:3': 4 / 3, 'A4 แนวตั้ง': 210 / 297, 'A4 แนวนอน': 297 / 210 };
+
+// ตำแหน่งที่เก็บไว้เมื่อครอป: center | top | bottom | left | right
+function anchored(w, h, sw, sh, anchor) {
+  let sx = (w - sw) / 2, sy = (h - sh) / 2;
+  if (anchor === 'top') sy = 0; else if (anchor === 'bottom') sy = h - sh;
+  if (anchor === 'left') sx = 0; else if (anchor === 'right') sx = w - sw;
+  return { sx, sy, sw, sh };
+}
+
 /**
  * คำนวณขนาดผลลัพธ์
- * mode: none | long | width | height | percent | fit | cover
+ * mode: none | long | width | height | percent | fit | cover | ratio (ครอปตามสัดส่วน ไม่ย่อ)
  */
-export function targetSize(w, h, { mode = 'none', size = 1600, width = 1600, height = 900, percent = 50, noUpscale = true }) {
+export function targetSize(w, h, { mode = 'none', size = 1600, width = 1600, height = 900, percent = 50, noUpscale = true, ratio = 1, anchor = 'center' }) {
   let tw = w, th = h, crop = null;
   const cap = (s) => (noUpscale ? Math.min(1, s) : s);
   if (mode === 'long') { const s = cap(size / Math.max(w, h)); tw = w * s; th = h * s; }
@@ -51,10 +61,51 @@ export function targetSize(w, h, { mode = 'none', size = 1600, width = 1600, hei
   else if (mode === 'cover') {
     tw = width; th = height;
     const s = Math.max(width / w, height / h);
-    const sw = width / s, sh = height / s;
-    crop = { sx: (w - sw) / 2, sy: (h - sh) / 2, sw, sh };
+    crop = anchored(w, h, width / s, height / s, anchor);
+  } else if (mode === 'ratio') {
+    const r = +ratio || 1;
+    const sw = Math.min(w, h * r), sh = Math.min(h, w / r);
+    tw = sw; th = sh;
+    crop = anchored(w, h, sw, sh, anchor);
   }
   return { width: Math.max(1, Math.round(tw)), height: Math.max(1, Math.round(th)), crop };
+}
+
+// หมุน 90° / 180° และกลับด้าน (ไม่เสียคุณภาพ)
+export function transformCanvas(src, { rotate = 0, flipH = false, flipV = false } = {}) {
+  const r = ((+rotate % 360) + 360) % 360;
+  if (!r && !flipH && !flipV) return src;
+  const swap = r === 90 || r === 270;
+  const out = makeCanvas(swap ? src.height : src.width, swap ? src.width : src.height);
+  const g = out.getContext('2d');
+  g.translate(out.width / 2, out.height / 2);
+  g.rotate((r * Math.PI) / 180);
+  g.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+  g.drawImage(src, -src.width / 2, -src.height / 2);
+  return out;
+}
+
+// ปรับเอียง (องศา) แล้วขยายเข้าให้เต็มกรอบเดิม ไม่มีมุมว่าง
+export function straighten(src, deg) {
+  if (!deg) return src;
+  const a = Math.abs((deg * Math.PI) / 180), w = src.width, h = src.height;
+  const s = Math.min(w / (w * Math.cos(a) + h * Math.sin(a)), h / (w * Math.sin(a) + h * Math.cos(a)));
+  const out = makeCanvas(w, h);
+  const g = out.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.translate(w / 2, h / 2);
+  g.rotate((deg * Math.PI) / 180);
+  g.scale(1 / s, 1 / s);
+  g.drawImage(src, -w / 2, -h / 2);
+  return out;
+}
+
+export function cropCanvas(src, x, y, w, h) {
+  x = Math.max(0, Math.round(x)); y = Math.max(0, Math.round(y));
+  w = Math.max(1, Math.min(src.width - x, Math.round(w))); h = Math.max(1, Math.min(src.height - y, Math.round(h)));
+  const out = makeCanvas(w, h);
+  out.getContext('2d').drawImage(src, x, y, w, h, 0, 0, w, h);
+  return out;
 }
 
 function makeCanvas(w, h) {

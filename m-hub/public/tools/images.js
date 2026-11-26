@@ -8,12 +8,13 @@ import { outputChooser, openSink } from '../core/output.js';
 import { fsSupported, pickDirectory, walkDirectory } from '../core/workspace.js';
 import { presets } from '../core/store.js';
 import { TH_MONTHS } from '../core/thai.js';
-import { IMAGE_RE, FORMATS, isHeic, sameFormatOf, decodeImage, targetSize, drawResized, drawWatermark, encodeCanvas, thumbnail, dateTaken } from '../core/image.js';
+import { IMAGE_RE, FORMATS, RATIOS, isHeic, sameFormatOf, decodeImage, targetSize, transformCanvas, drawResized, drawWatermark, encodeCanvas, thumbnail, dateTaken } from '../core/image.js';
 import { ZERO, isIdentity } from '../core/adjust.js';
 import { enhanceSteps, applyExtras, upscaleIfNeeded, aiActive, AI_DEFAULTS } from './images-enhance.js';
 
 const DEFAULTS = {
-  resize: 'long', size: 1600, width: 1600, height: 900, percent: 50, noUpscale: true,
+  resize: 'long', size: 1600, width: 1600, height: 900, percent: 50, noUpscale: true, ratio: '1:1', anchor: 'center',
+  rotate: 0, flipH: false, flipV: false,
   format: 'webp', quality: 82, background: '#ffffff',
   rename: 'keep', pattern: 'ภาพกิจกรรม-{{ลำดับ}}', start: 1, digits: 3, sort: 'name',
   match: 'order', matchCol: '', nameTpl: '',
@@ -101,13 +102,23 @@ export function mount(root) {
     if (['width', 'fit', 'cover'].includes(opts.resize)) f.push(field('กว้าง (px)', num(opts.width, (v) => { opts.width = v; refresh(); }, { min: 16 })));
     if (['height', 'fit', 'cover'].includes(opts.resize)) f.push(field('สูง (px)', num(opts.height, (v) => { opts.height = v; refresh(); }, { min: 16 })));
     if (opts.resize === 'percent') f.push(field('เปอร์เซ็นต์', num(opts.percent, (v) => { opts.percent = v; refresh(); }, { min: 1, max: 400 })));
-    if (opts.resize !== 'none' && opts.resize !== 'cover' && opts.resize !== 'percent') f.push(h('div.field', h('span.field-label', ' '), checkbox('ไม่ขยายรูปที่เล็กกว่าเดิม', opts.noUpscale, (v) => { opts.noUpscale = v; refresh(); })));
+    if (opts.resize === 'ratio') f.push(field('สัดส่วน', select(Object.keys(RATIOS), opts.ratio, (v) => { opts.ratio = v; refresh(); })));
+    if (opts.resize === 'cover' || opts.resize === 'ratio') f.push(field('เก็บส่วนไหนของภาพ', select([['center', 'กึ่งกลาง'], ['top', 'ด้านบน (ภาพบุคคล)'], ['bottom', 'ด้านล่าง'], ['left', 'ด้านซ้าย'], ['right', 'ด้านขวา']], opts.anchor, (v) => { opts.anchor = v; refresh(); })));
+    if (!['none', 'cover', 'percent', 'ratio'].includes(opts.resize)) f.push(h('div.field', h('span.field-label', ' '), checkbox('ไม่ขยายรูปที่เล็กกว่าเดิม', opts.noUpscale, (v) => { opts.noUpscale = v; refresh(); })));
     sizeFields.replaceChildren(...f);
   };
   const resizeSel = select([
     ['none', 'ไม่เปลี่ยนขนาด'], ['long', 'ด้านยาวสุดไม่เกิน'], ['width', 'กำหนดความกว้าง'], ['height', 'กำหนดความสูง'],
-    ['fit', 'ย่อให้พอดีกรอบ (ไม่ครอป)'], ['cover', 'ครอปให้เต็มกรอบพอดี'], ['percent', 'ย่อเป็นเปอร์เซ็นต์'],
+    ['fit', 'ย่อให้พอดีกรอบ (ไม่ครอป)'], ['cover', 'ครอปให้เต็มกรอบพอดี (กว้าง × สูง)'], ['ratio', 'ครอปตามสัดส่วน (ไม่ย่อ)'], ['percent', 'ย่อเป็นเปอร์เซ็นต์'],
   ], opts.resize, (v) => { opts.resize = v; drawSizeFields(); refresh(); });
+
+  // หมุน / กลับด้าน (ทุกรูป)
+  const rotateBox = h('div.row.wrap');
+  const drawRotate = () => rotateBox.replaceChildren(
+    field('หมุนทุกรูป', select([[0, 'ไม่หมุน'], [90, 'หมุนขวา 90°'], [270, 'หมุนซ้าย 90°'], [180, 'หมุน 180°']], opts.rotate, (v) => { opts.rotate = +v; refresh(); enh.refresh(); })),
+    h('div.field', h('span.field-label', ' '), checkbox('กลับซ้าย–ขวา', opts.flipH, (v) => { opts.flipH = v; refresh(); enh.refresh(); })),
+    h('div.field', h('span.field-label', ' '), checkbox('กลับบน–ล่าง', opts.flipV, (v) => { opts.flipV = v; refresh(); enh.refresh(); })),
+    h('span.hint', { style: { alignSelf: 'end' } }, 'รูปจากมือถือหมุนตามข้อมูล EXIF ให้อัตโนมัติอยู่แล้ว · ครอป/หมุนทีละรูปได้ที่ปุ่ม “แก้ไข”'));
 
   const qualityLabel = h('span');
   const qualityInput = h('input', { type: 'range', min: 40, max: 100, value: opts.quality, oninput: (e) => { opts.quality = +e.target.value; qualityLabel.textContent = opts.quality; } });
@@ -231,7 +242,7 @@ export function mount(root) {
     if (opts.format !== 'keep') return opts.format;
     return sameFormatOf(it.file);
   }
-  const needsEncode = (it) => opts.format !== 'keep' || opts.resize !== 'none' || opts.wm.enabled || isHeic(it.file) || /\.(gif|bmp|jfif)$/i.test(it.file.name) || !!it.editedBlob || !isIdentity(opts.adjust) || aiActive(opts.ai);
+  const needsEncode = (it) => opts.format !== 'keep' || opts.resize !== 'none' || opts.wm.enabled || isHeic(it.file) || /\.(gif|bmp|jfif)$/i.test(it.file.name) || !!it.editedBlob || !isIdentity(opts.adjust) || aiActive(opts.ai) || !!opts.rotate || opts.flipH || opts.flipV;
 
   function rebuildPlan() {
     let list = [...items];
@@ -363,7 +374,8 @@ export function mount(root) {
     try {
       let src = bmp;
       if (aiActive(opts.ai) && opts.ai.upscale > 1) src = await upscaleIfNeeded(bmp, opts, say);
-      const target = targetSize(src.width, src.height, opts.resize === 'none' ? { mode: 'none' } : { mode: opts.resize, size: +opts.size, width: +opts.width, height: +opts.height, percent: +opts.percent, noUpscale: opts.noUpscale });
+      src = transformCanvas(src, opts);
+      const target = targetSize(src.width, src.height, opts.resize === 'none' ? { mode: 'none' } : { mode: opts.resize, size: +opts.size, width: +opts.width, height: +opts.height, percent: +opts.percent, noUpscale: opts.noUpscale, ratio: RATIOS[opts.ratio], anchor: opts.anchor });
       const alpha = FORMATS[p.fmt].alpha;
       let canvas = drawResized(src, src.width, src.height, target, target.crop, alpha ? null : opts.background);
       if (!isIdentity(opts.adjust) || (aiActive(opts.ai) && (opts.ai.bg !== 'none' || opts.ai.retouch > 0 || opts.ai.blur > 0))) {
@@ -416,7 +428,7 @@ export function mount(root) {
 
   function syncControls() {
     resizeSel.value = opts.resize;
-    drawSizeFields();
+    drawSizeFields(); drawRotate();
     formatSeg.setValue(opts.format);
     qualityInput.value = opts.quality; qualityLabel.textContent = opts.quality;
     bgInput.value = opts.background;
@@ -429,13 +441,13 @@ export function mount(root) {
 
   // ---------- ประกอบหน้า ----------
   qualityLabel.textContent = opts.quality;
-  drawSizeFields(); drawFormat(); drawRename(); drawOrganize(); renderSummary(); rebuildPlan();
+  drawSizeFields(); drawRotate(); drawFormat(); drawRename(); drawOrganize(); renderSummary(); rebuildPlan();
   root.append(
     h('p.intro', 'ย่อ แปลง เปลี่ยนชื่อ และจัดเก็บรูปทีละหลายสิบรูปในคลิกเดียว — รูปทั้งหมดประมวลผลบนเครื่องนี้'),
     bar,
     step(1, 'เลือกรูป', drop, summary),
-    step(2, 'ขนาดและรูปแบบไฟล์',
-      h('div.grid4', field('ปรับขนาด', resizeSel)), sizeFields,
+    step(2, 'ขนาด ครอป หมุน และรูปแบบไฟล์',
+      h('div.grid4', field('ปรับขนาด / ครอป', resizeSel)), sizeFields, rotateBox,
       field('รูปแบบไฟล์ผลลัพธ์', formatSeg), formatNote,
       h('div.grid4', field(h('span', 'คุณภาพ ', qualityLabel), qualityInput, 'ค่าแนะนำ 80–88'), bgField)),
     enh.adjustStep,

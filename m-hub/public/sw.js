@@ -1,7 +1,7 @@
 // M Hub service worker — ใช้งานออฟไลน์ได้ และติดตั้งเป็นโปรแกรมได้
 // โค้ดแอป: เน็ตก่อน (ได้เวอร์ชันใหม่เสมอ) ถ้าออฟไลน์ใช้ของที่เก็บไว้
 // ไลบรารี/ฟอนต์ใน /vendor/: ใช้ของที่เก็บไว้ก่อน (ไฟล์ใหญ่ ไม่ค่อยเปลี่ยน)
-const VERSION = 'm-hub-v1.2';
+const VERSION = 'm-hub-v1.2.1';
 const SHELL = [
   '/', '/app.js', '/app.css', '/manifest.webmanifest', '/icons/icon.svg', '/vendor/fonts/fonts.css',
   '/core/adjust.js', '/core/bus.js', '/core/data.js', '/core/eml.js', '/core/fx.js', '/core/genai.js',

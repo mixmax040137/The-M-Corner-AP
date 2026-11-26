@@ -45,7 +45,7 @@ export function enhanceSteps({ opts, getItems, openEditor, onChange }) {
     const items = getItems();
     const it = items.find((x) => String(x.id) === pickSel.value) || items[0];
     if (!it) { srcCanvas = null; srcKey = null; return null; }
-    const key = it.id + ':' + (it.editedBlob ? it.editedBlob.size : 0);
+    const key = it.id + ':' + (it.editedBlob ? it.editedBlob.size : 0) + ':' + (opts.rotate || 0) + (opts.flipH ? 'h' : '') + (opts.flipV ? 'v' : '');
     if (key === srcKey && srcCanvas) return srcCanvas;
     const { decodeImage } = await import('../core/image.js');
     const bmp = await decodeImage(it.editedBlob || it.file);
@@ -53,6 +53,8 @@ export function enhanceSteps({ opts, getItems, openEditor, onChange }) {
     srcCanvas = makeCanvas(Math.round(bmp.width * s), Math.round(bmp.height * s));
     srcCanvas.getContext('2d').drawImage(bmp, 0, 0, srcCanvas.width, srcCanvas.height);
     bmp.close && bmp.close();
+    const { transformCanvas } = await import('../core/image.js');
+    srcCanvas = transformCanvas(srcCanvas, opts);
     srcKey = key; srcMatte = null;
     setTimeout(() => panel.analyze(), 0);
     return srcCanvas;

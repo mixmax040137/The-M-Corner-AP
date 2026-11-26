@@ -2,7 +2,8 @@
 import { eventTypeOf } from './fields.js';
 import { buildVars } from './templates.js';
 
-export const isLibrary = (p) => p && !p.deleted && (p.status === 'approved' || p.status === 'posted');
+// โพสต์ตัวอย่างที่มีไว้ให้หน้าสถิติเท่านั้น (statsOnly) ไม่อยู่ในคลัง
+export const isLibrary = (p) => p && !p.deleted && !p.statsOnly && (p.status === 'approved' || p.status === 'posted');
 
 const seg = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('th', { granularity: 'word' }) : null;
 const STOP = new Set(['และ', 'ที่', 'ใน', 'ของ', 'การ', 'ได้', 'จะ', 'มี', 'เป็น', 'ให้', 'กับ', 'the', 'and', 'of', 'to', 'in', 'for', 'a', 'on', 'at']);

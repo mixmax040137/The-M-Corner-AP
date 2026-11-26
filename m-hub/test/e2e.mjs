@@ -914,7 +914,7 @@ async function testPrWriter() {
   await bk.saveAs(bkPath);
   const raw = readFileSync(bkPath, 'utf8');
   const backup = JSON.parse(raw);
-  ok(backup.app === 'larts-pr-writer' && backup.data.events.length === 3 && backup.data.posts.length === 4 && backup.data.templates.length === 1 && backup.data.staff.length === 7, 'ส่งออกครบ (งาน 3 · โพสต์ 4 รวมตัวอย่างในคลัง 3 · เทมเพลต 1 · บุคลากร 7)');
+  ok(backup.app === 'larts-pr-writer' && backup.data.events.length === 3 && backup.data.posts.length === 17 && backup.data.templates.length === 1 && backup.data.staff.length === 7, 'ส่งออกครบ (งาน 3 · โพสต์ 17 รวมตัวอย่าง 16 · เทมเพลต 1 · บุคลากร 7)');
   ok(!raw.includes('SECRET123'), 'API key ไม่อยู่ในไฟล์สำรอง');
   await view().getByRole('button', { name: 'ล้างข้อมูลทั้งหมดในเบราว์เซอร์นี้' }).click();
   await page.locator('dialog.dialog').getByRole('button', { name: 'ล้างทั้งหมด' }).click();
@@ -922,7 +922,7 @@ async function testPrWriter() {
   await view().getByText('งาน 0 · โพสต์ 0').waitFor();
   const [fc] = await Promise.all([page.waitForEvent('filechooser'), view().getByRole('button', { name: /นำเข้าจากไฟล์/ }).click()]);
   await fc.setFiles(bkPath);
-  await view().getByText('งาน 3 · โพสต์ 4 · เทมเพลตของฉัน 1').waitFor();
+  await view().getByText('งาน 3 · โพสต์ 17 · เทมเพลตของฉัน 1').waitFor();
   ok(true, 'ล้างข้อมูลแล้วนำเข้าไฟล์สำรองกลับมาครบ');
   ok(await page.evaluate(() => localStorage.getItem('larts-pr:anthropic-key')) === 'sk-ant-test-SECRET123', 'API key ยังอยู่ในเบราว์เซอร์นี้ (ไม่ถูกล้างไปกับข้อมูล)');
 
@@ -1174,7 +1174,72 @@ async function testPrWriter3() {
   ok(true, 'ใช้โพสต์ในคลังเป็นเทมเพลตได้');
 }
 
-const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop, pr: testPrWriter, pr2: testPrWriter2, pr3: testPrWriter3 };
+// ========== L'Arts PR Writer เฟส 4 (สถิติและรายงาน) ==========
+async function testPrWriter4() {
+  console.log("L'Arts PR Writer เฟส 4 (สถิติ)");
+  await open('#/');
+  await page.evaluate(() => new Promise((r) => { const q = indexedDB.deleteDatabase('larts-pr-writer'); q.onsuccess = q.onerror = q.onblocked = () => r(); }));
+  // โพสต์ใหม่ที่ “ใช้จริง” แต่ยังไม่ได้ตั้งว่าโพสต์แล้ว
+  await open('#/pr-writer?s=compose');
+  await view().locator('[data-out]').waitFor();
+  await view().getByRole('button', { name: 'ใช้จริง' }).click();
+  await page.waitForTimeout(300);
+  await view().getByRole('tab', { name: 'สถิติและรายงาน' }).click();
+  const rec = view().locator('.pr-rec tbody tr');
+  await rec.first().waitFor();
+  ok((await rec.count()) === 16, 'ตารางบันทึกผลแสดงโพสต์ที่โพสต์แล้ว 16 โพสต์ (ตัวอย่าง)');
+  await view().getByText('แสดงโพสต์ที่อนุมัติแล้ว').click();
+  await page.waitForTimeout(300);
+  ok((await rec.count()) === 17, 'ติ๊กแล้วแสดงโพสต์ที่อนุมัติแล้วด้วย (17)');
+  const row = view().locator('.pr-rec tbody tr').filter({ hasText: 'เชิญร่วมงาน' }).filter({ has: page.locator('input[aria-label="วันที่โพสต์"]') }).last();
+  const newRow = view().locator('.pr-rec tbody tr').filter({ hasText: 'ภาษา วัฒนธรรม และ AI' });
+  await newRow.getByLabel('วันที่โพสต์').fill('2026-11-25');
+  await newRow.getByLabel('เวลาที่โพสต์').fill('12:30');
+  await newRow.getByLabel('การเข้าถึง (Reach)').fill('5000');
+  await newRow.getByLabel('รีแอ็กชัน').fill('400');
+  await newRow.getByLabel('คอมเมนต์').fill('50');
+  await newRow.getByLabel('แชร์').fill('30');
+  await newRow.getByLabel('คลิก').fill('120');
+  await page.waitForTimeout(800);
+  ok((await newRow.locator('td.num').first().innerText()) === '600' && (await newRow.locator('td.num').last().innerText()) === '12.0%', 'คำนวณ Engagement 600 และอัตรา 12.0% ทันที');
+  void row;
+
+  // Dashboard
+  await view().getByRole('tab', { name: 'Dashboard' }).click();
+  await page.waitForTimeout(500);
+  const dash = view();
+  ok((await dash.locator('.pr-stat-value').first().innerText()) === '17', 'โพสต์ที่ใส่วันที่แล้วถูกนับเป็น “โพสต์แล้ว” (17)');
+  ok((await dash.locator('.pr-insights li').first().innerText()).startsWith('โทนที่ได้ผลดีที่สุด: กึ่งทางการ'), 'สรุปอัตโนมัติบอกโทนที่ได้ผลดีที่สุด');
+  ok((await dash.locator('.pr-viz-grid .pr-viz').count()) === 5, 'กราฟ 5 มุม: โทน ช่องทาง ประเภทงาน วัน ช่วงเวลา');
+  await dash.locator('.pr-bar-row').first().hover();
+  const bb = await dash.locator('.pr-bar-row').first().boundingBox();
+  await page.mouse.move(bb.x + bb.width / 2 + 3, bb.y + bb.height / 2);
+  ok(await page.locator('.pr-tip').isVisible() && (await page.locator('.pr-tip').innerText()).includes('โพสต์'), 'ชี้ที่แท่งกราฟแล้วมีกล่องบอกค่า');
+  ok((await dash.locator('.pr-cols-svg path').count()) >= 10 && (await dash.locator('.pr-legend2 .pr-key').count()) >= 4, 'กราฟโพสต์ต่อเดือนแยกช่องทาง พร้อมคำอธิบายสี');
+  await dash.getByRole('button', { name: 'อัตรา Engagement ต่อ Reach' }).click();
+  await page.waitForTimeout(300);
+  ok(/%/.test(await dash.locator('.pr-bar-val').filter({ hasText: /\d/ }).first().innerText()), 'สลับไปวัดด้วยอัตรา Engagement ต่อ Reach');
+
+  // รายงานรายเดือน
+  await view().getByRole('tab', { name: 'รายงานรายเดือน' }).click();
+  await page.waitForTimeout(400);
+  ok((await view().locator('.pr-report tbody tr').count()) === 4, 'รายงานเดือนพฤศจิกายน 2569 มี 4 โพสต์');
+  const [dl] = await Promise.all([page.waitForEvent('download'), view().getByRole('button', { name: 'ส่งออก CSV' }).click()]);
+  const csvPath = join(OUT, 'pr-report.csv');
+  await dl.saveAs(csvPath);
+  const csv = readFileSync(csvPath, 'utf8');
+  ok(csv.charCodeAt(0) === 0xfeff && csv.includes('วันที่,เวลา,ช่องทาง') && csv.includes('25 พ.ย.,12.30 น.,Facebook') && csv.includes(',600,12.00'), 'ส่งออก CSV (มี BOM ให้ Excel อ่านภาษาไทยถูก)');
+  const [popup] = await Promise.all([page.waitForEvent('popup'), view().getByRole('button', { name: 'พิมพ์ / บันทึกเป็น PDF' }).click()]);
+  await popup.waitForLoadState();
+  const ptxt = await popup.locator('body').innerText();
+  ok(ptxt.includes('รายงานผลการประชาสัมพันธ์ ประจำเดือนพฤศจิกายน 2569') && (await popup.locator('tbody tr').count()) === 4, 'หน้าพิมพ์รายงาน (บันทึกเป็น PDF ได้) มีหัวรายงานและตารางครบ');
+  const pdfPath = join(OUT, 'pr-report.pdf');
+  await popup.pdf({ path: pdfPath, format: 'A4' });
+  ok(readFileSync(pdfPath).length > 10000, 'สร้าง PDF จากหน้าพิมพ์ได้');
+  await popup.close();
+}
+
+const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop, pr: testPrWriter, pr2: testPrWriter2, pr3: testPrWriter3, pr4: testPrWriter4 };
 for (const [name, fn] of Object.entries(sections)) {
   if (only && only !== name) continue;
   try { await fn(); } catch (e) { failures++; console.log('  ✗ ' + name + ' ล้มเหลว: ' + e.message); await page.screenshot({ path: join(OUT, `fail-${name}.png`), fullPage: true }); }

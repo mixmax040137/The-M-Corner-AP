@@ -18,6 +18,7 @@ const SCREENS = [
   { id: 'staff', label: 'บุคลากร', icon: 'users', load: () => import('../pr/ui-staff.js') },
   { id: 'style', label: 'แนวทางการเขียน', icon: 'award', load: () => import('../pr/ui-style.js') },
   { id: 'qr', label: 'QR Code', icon: 'qr', load: () => import('../pr/ui-qr.js') },
+  { id: 'stats', label: 'สถิติและรายงาน', icon: 'table', load: () => import('../pr/ui-stats.js') },
   { id: 'settings', label: 'ตั้งค่า', icon: 'gear', load: () => import('../pr/ui-settings.js') },
 ];
 

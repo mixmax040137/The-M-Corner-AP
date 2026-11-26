@@ -87,6 +87,10 @@ export const SAMPLE_STAFF = [
   { titleTh: 'คุณ', nameTh: 'สมศรี เลขานุการ', titleEn: 'Ms.', nameEn: 'Somsri Lekhanukarn', positionTh: 'เลขานุการคณะ', positionEn: 'Faculty Secretary', unit: 'สำนักงานคณบดี', email: 'secretary-sample@example.com', phone: '02-000-0001' },
 ].map((x) => ({ ...x, sample: true }));
 
+const M = (postedAt, reach, reactions, comments, shares, clicks) => ({ postedAt, metrics: { reach, reactions, comments, shares, clicks } });
+const SAMPLE_POST_METRICS = [M('2026-09-09T12:15', 4800, 420, 31, 52, 160), M('2026-10-16T17:40', 3300, 230, 14, 20, 25), M('2026-11-20T12:00', 2400, 95, 12, 6, 230)];
+const SAMPLE_POST_METRICS_FOR = (i) => SAMPLE_POST_METRICS[i] || { metrics: {} };
+
 // โพสต์ที่ใช้จริงตัวอย่าง (อยู่ในคลังโพสต์ ใช้เป็นตัวอย่างให้ AI) — งาน ชื่อ และลิงก์สมมติ
 export const SAMPLE_POSTS = [
   { kind: 'invite', channel: 'facebook', tone: 'semi', lang: 'th', eventType: 'seminar', tags: ['วิชาการ'],
@@ -113,16 +117,44 @@ export const SAMPLE_POSTS = [
 📝 สมัคร: https://forms.gle/SampleOldPost3
 สงสัยตรงไหน ทักงานกิจการนักศึกษาได้เลย 🙏
 (จาก คณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์)` },
-].map((p) => ({ ...p, subject: '', status: 'posted', source: 'manual', metrics: {}, sample: true }));
+].map((p, i) => ({ ...p, subject: '', status: 'posted', source: 'manual', sample: true, ...SAMPLE_POST_METRICS_FOR(i) }));
 
+// ผลการโพสต์ตัวอย่าง (ตัวเลขสมมติ) สำหรับหน้า “สถิติและรายงาน” — ไม่ใช้เป็นตัวอย่างให้ AI
+export const SAMPLE_METRIC_POSTS = [
+  ['invite', 'facebook', 'semi', 'seminar', M('2026-07-08T12:10', 4200, 310, 24, 41, 120)],
+  ['invite', 'instagram', 'casual', 'student', M('2026-07-15T19:30', 2600, 280, 35, 12, 40)],
+  ['recap', 'facebook', 'formal', 'ceremony', M('2026-07-27T09:05', 3100, 190, 10, 15, 30)],
+  ['reminder', 'line', 'casual', 'seminar', M('2026-08-04T12:00', 1800, 60, 6, 3, 210)],
+  ['announce', 'facebook', 'official', 'admission', M('2026-08-12T10:00', 5200, 150, 30, 60, 340)],
+  ['invite', 'x', 'teen', 'student', M('2026-08-20T20:15', 900, 45, 4, 9, 18)],
+  ['congrats', 'facebook', 'semi', 'other', M('2026-09-02T12:30', 6100, 640, 85, 33, 20)],
+  ['recap', 'instagram', 'semi', 'workshop', M('2026-09-18T18:00', 2200, 240, 18, 6, 15)],
+  ['invite', 'facebook', 'formal', 'lecture', M('2026-10-06T09:30', 3500, 160, 12, 20, 95)],
+  ['reminder', 'email', 'formal', 'conference', M('2026-10-14T08:45', 1200, 0, 0, 0, 160)],
+  ['thanks', 'facebook', 'semi', 'conference', M('2026-10-29T12:20', 3900, 300, 22, 18, 25)],
+  ['invite', 'line', 'casual', 'workshop', M('2026-11-03T12:05', 2000, 80, 9, 4, 190)],
+  ['announce', 'instagram', 'teen', 'student', M('2026-11-12T19:45', 3000, 360, 40, 15, 35)],
+].map(([kind, channel, tone, eventType, extra], i) => ({
+  kind, channel, tone, eventType, lang: 'th', subject: '', tags: [], status: 'posted', source: 'manual', noExample: true, statsOnly: true, sample: true,
+  text: `(โพสต์ตัวอย่างสำหรับสถิติ ${i + 1}) ${channel} · ${kind}`, ...extra,
+}));
 // ใส่ข้อมูลตัวอย่างครั้งแรก และเพิ่มชุดใหม่เมื่ออัปเดตเฟส (ถ้าผู้ใช้ลบข้อมูลตัวอย่างไปแล้วจะไม่ใส่ซ้ำ)
-export const SAMPLE_VERSION = 3;
+export const SAMPLE_VERSION = 4;
 export async function seedIfNeeded() {
   const done = await repo.getMeta('sampleSeed', 0);
   if (done >= SAMPLE_VERSION || (await repo.getMeta('samplesRemoved', false))) return false;
   if (done < 1) for (const e of SAMPLE_EVENTS) await repo.put('events', structuredClone(e), { silent: true });
   if (done < 2) for (const x of SAMPLE_STAFF) await repo.put('staff', structuredClone(x), { silent: true });
   if (done < 3) for (const x of SAMPLE_POSTS) await repo.put('posts', structuredClone(x), { silent: true });
+  if (done < 4) {
+    // ใส่ตัวเลขผลให้โพสต์ตัวอย่างในคลังที่มีอยู่แล้ว (ถ้ายังไม่มี) และเพิ่มโพสต์ตัวอย่างสำหรับสถิติ
+    const existing = (await repo.list('posts')).filter((p) => p.sample && p.source === 'manual');
+    for (const [i, x] of SAMPLE_POSTS.entries()) {
+      const hit = existing.find((p) => p.text === x.text && !(p.metrics && p.metrics.reach));
+      if (hit) await repo.put('posts', { ...hit, ...SAMPLE_POST_METRICS_FOR(i) }, { silent: true });
+    }
+    for (const x of SAMPLE_METRIC_POSTS) await repo.put('posts', structuredClone(x), { silent: true });
+  }
   await repo.setMeta('sampleSeed', SAMPLE_VERSION);
   return true;
 }

@@ -7,6 +7,7 @@ import { fmtDate } from './dates.js';
 import { planCampaign, renderStage, stageOf } from './campaign.js';
 import { renderPost } from './templates.js';
 import { checkPost } from './checker.js';
+import { METRICS, engagement } from './stats.js';
 
 export const STATUS = [['draft', 'ร่าง'], ['approved', 'อนุมัติแล้ว'], ['posted', 'โพสต์แล้ว']];
 
@@ -86,10 +87,26 @@ export async function openPostEditor(app, postId) {
       : h('div.check-item.ok', icon('checkCircle'), h('span.check-msg', 'ไม่พบปัญหาที่ตรวจได้อัตโนมัติ')));
   };
   drawChecks();
+  // ผลการโพสต์ (ใส่ได้เมื่อโพสต์แล้ว)
+  const m = { ...(p.metrics || {}) };
+  const pa = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2}))?/.exec(String(p.postedAt || '')) || [];
+  const posted = { date: pa[1] || '', time: pa[2] || '' };
+  const engOut = h('b');
+  const drawEng = () => { engOut.textContent = engagement(m).toLocaleString('th-TH'); };
+  drawEng();
+  const metricsBox = h('details.pr-help.pr-metrics', { open: p.status === 'posted' },
+    h('summary', 'ผลการโพสต์ (Reach, รีแอ็กชัน, คอมเมนต์ ฯลฯ)'),
+    h('div.grid2',
+      field('วันที่โพสต์จริง', h('input', { type: 'date', value: posted.date, 'aria-label': 'วันที่โพสต์จริง', oninput: (e) => { posted.date = e.target.value; } })),
+      field('เวลาที่โพสต์', h('input', { type: 'time', value: posted.time, 'aria-label': 'เวลาที่โพสต์', oninput: (e) => { posted.time = e.target.value; } }))),
+    h('div.pr-metric-grid', METRICS.map(([k, t]) => field(t, h('input', { type: 'number', min: 0, value: m[k] ?? '', 'aria-label': t, oninput: (e) => { m[k] = e.target.value === '' ? '' : Math.max(0, +e.target.value); drawEng(); } })))),
+    h('div.small', 'Engagement (รีแอ็กชัน + คอมเมนต์ + แชร์ + คลิก): ', engOut));
   const save = async (extra = {}) => {
     const t = new Date().toISOString();
-    await repo.put('posts', { ...p, text: textArea.value, subject: subject ? subject.value : p.subject, plannedDate: planned, status,
-      approvedAt: status !== 'draft' ? p.approvedAt || t : p.approvedAt, postedAt: status === 'posted' ? p.postedAt || t : p.postedAt, edited: true, ...extra });
+    const st2 = posted.date && status !== 'posted' ? 'posted' : status;
+    const postedAt = posted.date ? posted.date + (posted.time ? 'T' + posted.time : '') : st2 === 'posted' ? p.postedAt || t : p.postedAt;
+    await repo.put('posts', { ...p, text: textArea.value, subject: subject ? subject.value : p.subject, plannedDate: planned, status: st2,
+      approvedAt: st2 !== 'draft' ? p.approvedAt || t : p.approvedAt, postedAt, metrics: m, edited: true, ...extra });
   };
   const label = [p.stage ? stageOf(p.stage).th : kindOf(p.kind).th, ch.th, (LANGS.find((l) => l.id === p.lang) || {}).th, 'โทน' + toneOf(p.tone, app.settings.customTones).th].join(' · ');
   const { close } = dialog(ev ? ev.fields.title || 'โพสต์' : 'โพสต์',
@@ -100,6 +117,7 @@ export async function openPostEditor(app, postId) {
     subject ? field('หัวเรื่อง', subject) : null,
     textArea,
     checks,
+    metricsBox,
     h('div.row.wrap',
       btn('บันทึก', async () => { await save(); close(); toast('บันทึกแล้ว', 'ok', 1500); }, { ic: 'save', kind: 'primary' }),
       btn('คัดลอก', () => copyText(textArea.value), { ic: 'copy' }),

@@ -185,5 +185,28 @@ eq(JSON.stringify([hx.title, hx.eventType, hx.date, hx.deadline, hx.startTime, h
 const tplBody = postToTemplate(renderPost(SAMPLE_EVENTS[0].fields, { kind: 'invite', tone: 'semi', channel: 'facebook', lang: 'th', style, settings: {} }).text, SAMPLE_EVENTS[0].fields, 'th', 'invite');
 ok(tplBody.includes('{{title}}') && tplBody.includes('{{date}}') && tplBody.includes('{{host}}') && !tplBody.includes('2569'), 'แปลงโพสต์เป็นเทมเพลต: แทนข้อมูลงานด้วย {{ตัวแปร}}');
 
+console.log('PR Writer เฟส 4: สถิติและรายงาน');
+const sts = await import('../public/pr/stats.js');
+const { SAMPLE_METRIC_POSTS } = await import('../public/pr/sample.js');
+eq(sts.engagement({ reach: 1000, reactions: 50, comments: 5, shares: 3, clicks: 12 }), 70, 'Engagement = รีแอ็กชัน + คอมเมนต์ + แชร์ + คลิก');
+eq(sts.rate({ reach: 1000, reactions: 50, comments: 5, shares: 3, clicks: 12 }), 0.07, 'อัตรา = Engagement ÷ Reach');
+eq(sts.rate({ reach: 0, reactions: 5 }), null, 'ไม่มี Reach → ไม่คำนวณอัตรา');
+eq(sts.timeBucket(12)[0], 'noon', 'ช่วงเวลา 12 น. = กลางวัน');
+const allSample = [...SAMPLE_METRIC_POSTS, ...SAMPLE_POSTS];
+const sAll = sts.summary(sts.scope(allSample));
+ok(sAll.posted === 16 && sAll.measured === 16 && sAll.reach === 50200 && sAll.eng === 5939, 'สรุปรวม: 16 โพสต์ · Reach 50,200 · Engagement 5,939');
+const byTone = sts.groupStats(sts.scope(allSample), 'tone');
+ok(byTone[0].key === 'semi' && byTone[0].n === 5 && byTone[byTone.length - 1].n === 1, 'จัดอันดับโทน: กลุ่มข้อมูลน้อย (1 โพสต์) อยู่ท้าย แม้ค่าเฉลี่ยสูง');
+ok((sts.insight(byTone, 'tone') || '').startsWith('โทนที่ได้ผลดีที่สุด: กึ่งทางการ'), 'สรุปอัตโนมัติ: โทนที่ได้ผลดีที่สุด');
+const byWd = sts.groupStats(sts.scope(allSample), 'weekday');
+ok(byWd[0].label === 'วันพุธ', 'วันที่โพสต์ที่ได้ผลดีที่สุดคำนวณจากวันจริงของวันที่');
+const ppm = sts.postsPerMonth(sts.scope(allSample), 'channel', ['2026-07', '2026-08', '2026-09', '2026-10', '2026-11']);
+ok(ppm.series.find((x) => x.key === 'facebook').values.join() === '2,1,2,3,0' && ppm.series.reduce((a, x) => a + x.values.reduce((p, q) => p + q, 0), 0) === 16, 'นับโพสต์ต่อเดือนแยกช่องทาง');
+const many = Array.from({ length: 9 }, (_, i) => ({ status: 'posted', postedAt: '2026-11-0' + (i + 1), kind: ['invite', 'meeting', 'recap', 'congrats', 'announce', 'change', 'reminder', 'condolence', 'thanks'][i] }));
+ok(sts.postsPerMonth(many, 'kind', ['2026-11']).series.length === 8 && sts.postsPerMonth(many, 'kind', ['2026-11']).series.some((x) => x.label === 'อื่น ๆ'), 'เกิน 8 กลุ่ม รวมกลุ่มเล็กเป็น “อื่น ๆ” (สีมี 8 ช่อง)');
+const rows = sts.monthRows(allSample, [], '2026-11');
+ok(rows.length === 3 && rows[0].date === '3 พ.ย.' && rows[0].time === '12.05 น.' && rows[2].date === '20 พ.ย.', 'รายงานรายเดือน: เรียงตามวันเวลาที่โพสต์');
+eq(sts.monthLabel('2026-11'), 'พฤศจิกายน 2569', 'ชื่อเดือนรายงานเป็น พ.ศ.');
+
 console.log(failures ? `\n✗ ไม่ผ่าน ${failures} ข้อ (ผ่าน ${passed})` : `\n✓ ผ่านทั้งหมด ${passed} ข้อ`);
 process.exit(failures ? 1 : 0);

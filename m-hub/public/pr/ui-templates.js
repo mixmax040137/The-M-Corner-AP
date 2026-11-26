@@ -107,7 +107,7 @@ async function edit(tpl) {
     checkbox('ใช้แทนต้นแบบอัตโนมัติ (เมื่อประเภท โทน ช่องทาง และภาษาตรงกัน)', t.override, (v) => { t.override = v; }),
     h('div.hint', t.channel === '*' ? 'ทุกช่องทาง = เขียนเฉพาะเนื้อหาหลัก ระบบจะเติมหัวอีเมล/หนังสือเวียน แฮชแท็ก และลายเซ็นให้เอง' : 'เจาะจงช่องทาง = ใช้ข้อความนี้ตามที่เขียนทั้งหมด (ระบบเติมเฉพาะแฮชแท็ก ถ้าไม่ได้ใส่ {{hashtags}})'),
     body,
-    h('div.chips', h('span.muted.small', 'แทรกตัวแปร:'), PLACEHOLDER_HELP.map(([k, d]) => h('button.chip', { type: 'button', title: d, onclick: () => insert(k) }, `{{${k}}}`))),
+    h('div.chips', h('span.muted.small', 'แทรกตัวแปร:'), PLACEHOLDER_HELP.map(([k, d]) => h('button.chip.code', { type: 'button', title: d, onclick: () => insert(k) }, `{{${k}}}`))),
     h('div.row.wrap', h('span.field-label', 'ดูตัวอย่างกับ'), select(events.map((e) => [e.id, (e.fields.title || '(ไม่มีชื่อ)') + (e.sample ? ' · ตัวอย่าง' : '')]), st.previewEvent, (v) => { st.previewEvent = v; previewSoon(); })),
     preview, warn,
     h('div.row.wrap',

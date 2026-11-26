@@ -2,8 +2,7 @@
 import { h, setKids, btn, field, select, seg, toast, confirmBox, pickFiles, download, text } from '../core/ui.js';
 import { icon } from '../core/icons.js';
 import { repo, apiKey, newId } from './db.js';
-import { TONES, LANGS, CHANNELS, KINDS, EVENT_TYPES } from './fields.js';
-import { DEFAULT_STYLE } from './sample.js';
+import { TONES, LANGS, CHANNELS, KINDS } from './fields.js';
 
 const MODELS = [
   ['claude-haiku-5-5', 'Claude Haiku 5.5 — เร็วและถูก (แนะนำสำหรับร่าง)'],
@@ -17,7 +16,7 @@ export async function mount(el, app) {
   st = { app, el };
   st.usage = h('div');
   st.data = h('div');
-  el.append(aiCard(), writingCard(), styleCard(), dataCard());
+  el.append(aiCard(), writingCard(), h('section.card', h('h3.card-title', icon('book'), 'ชื่อคณะ แฮชแท็ก ลายเซ็น และคำต้องห้าม'), h('div.row.wrap', h('span.small', 'ย้ายไปอยู่ที่หน้า “แนวทางการเขียน” แล้ว'), btn('เปิดแนวทางการเขียน', () => app.go('style'), { ic: 'book', kind: 'sm' }))), dataCard());
 }
 
 export async function show() { await drawUsage(); await drawData(); }
@@ -92,43 +91,6 @@ function writingCard() {
     tonesBox);
 }
 
-// ---------- แฮชแท็ก ลายเซ็น ชื่อคณะ ----------
-function styleCard() {
-  const box = h('div.pr-stack');
-  const draw = () => {
-    const sy = st.app.style;
-    const tags = sy.hashtags || [];
-    const save = () => st.app.saveStyle({ hashtags: tags, signatures: sy.signatures, facultyTh: sy.facultyTh, facultyEn: sy.facultyEn });
-    setKids(box, 
-      h('div.grid2',
-        field('ชื่อคณะ (ไทย) ใช้เมื่อกล่าวถึงครั้งแรก', text(sy.facultyTh, (v) => { sy.facultyTh = v; save(); })),
-        field('ชื่อคณะ (อังกฤษ)', text(sy.facultyEn, (v) => { sy.facultyEn = v; save(); }))),
-      h('h4', 'ชุดแฮชแท็ก'),
-      h('div.field-list', tags.map((t, i) => h('div.field-item',
-        h('div.grid3',
-          field('ชื่อชุด', text(t.label, (v) => { t.label = v; save(); })),
-          field('ใช้กับช่องทาง', select([['*', 'ทุกช่องทาง'], ...CHANNELS.map((c) => [c.id, c.th])], t.channel || '*', (v) => { t.channel = v; save(); })),
-          field('ใช้กับประเภทงาน', select([['*', 'ทุกประเภท'], ...EVENT_TYPES.map((e) => [e.id, e.label])], t.eventType || '*', (v) => { t.eventType = v; save(); }))),
-        h('div.row', h('div', { style: { flex: '1' } }, text(t.tags, (v) => { t.tags = v; save(); }, { 'aria-label': 'แฮชแท็ก', placeholder: '#แท็ก1 #แท็ก2' })),
-          btn('', () => { tags.splice(i, 1); save(); draw(); }, { ic: 'trash', kind: 'icon-only sm', title: 'ลบชุดนี้' }))))),
-      btn('เพิ่มชุดแฮชแท็ก', () => { tags.push({ id: newId('h'), label: 'ชุดใหม่', channel: '*', eventType: '*', tags: '' }); save(); draw(); }, { ic: 'plus', kind: 'sm' }),
-      h('div.hint', 'จำนวนที่ใส่อัตโนมัติ: Facebook 3, Instagram 6, X 2, ข้อความโปสเตอร์ 1 (โทนราชการไม่เกิน 2) · ชุดที่ระบุประเภทงานจะถูกใช้ก่อน'),
-      h('h4', 'ลายเซ็น (อีเมลและหนังสือเวียน)'),
-      h('div.grid2', ...['th', 'en'].map((lang) => {
-        let sig = (sy.signatures || []).find((x) => x.lang === lang);
-        if (!sig) { sig = { id: newId('s'), lang, text: '' }; (sy.signatures ||= []).push(sig); }
-        return field(lang === 'th' ? 'ภาษาไทย' : 'English', h('textarea', { rows: 3, value: sig.text, oninput: (e) => { sig.text = e.target.value; save(); } }));
-      })),
-      h('div.row', btn('คืนค่าเริ่มต้น', async () => {
-        if (!(await confirmBox('คืนค่าชื่อคณะ แฮชแท็ก และลายเซ็นเป็นค่าเริ่มต้น?', { ok: 'คืนค่า' }))) return;
-        await st.app.saveStyle({ facultyTh: DEFAULT_STYLE.facultyTh, facultyEn: DEFAULT_STYLE.facultyEn, hashtags: structuredClone(DEFAULT_STYLE.hashtags), signatures: structuredClone(DEFAULT_STYLE.signatures) });
-        draw();
-      }, { kind: 'ghost' })));
-  };
-  draw();
-  return h('section.card', h('h3.card-title', icon('type'), 'ชื่อคณะ แฮชแท็ก และลายเซ็น'), box);
-}
-
 // ---------- ข้อมูล ----------
 function dataCard() {
   return h('section.card',
@@ -154,14 +116,14 @@ function dataCard() {
 }
 
 async function drawData() {
-  const [events, posts, templates] = await Promise.all([repo.list('events'), repo.list('posts'), repo.list('templates')]);
-  const samples = events.filter((e) => e.sample).length + posts.filter((p) => p.sample).length;
+  const [events, posts, templates, staff] = await Promise.all([repo.list('events'), repo.list('posts'), repo.list('templates'), repo.list('staff')]);
+  const samples = [...events, ...posts, ...staff].filter((x) => x.sample).length;
   const last = await repo.getMeta('lastBackup', null);
   setKids(st.data, 
-    h('div.muted.small', `งาน ${events.length} · โพสต์ ${posts.length} · เทมเพลตของฉัน ${templates.length}${last ? ` · สำรองล่าสุด ${new Date(last).toLocaleString('th-TH')}` : ' · ยังไม่เคยสำรอง'}`),
+    h('div.muted.small', `งาน ${events.length} · โพสต์ ${posts.length} · เทมเพลตของฉัน ${templates.length} · บุคลากร ${staff.length}${last ? ` · สำรองล่าสุด ${new Date(last).toLocaleString('th-TH')}` : ' · ยังไม่เคยสำรอง'}`),
     h('div.row.wrap',
       samples ? btn(`ลบข้อมูลตัวอย่าง (${samples} รายการ)`, async () => {
-        if (!(await confirmBox('ลบงานและโพสต์ตัวอย่างทั้งหมด? (ข้อมูลที่คุณสร้างเองไม่ถูกลบ)', { ok: 'ลบข้อมูลตัวอย่าง', danger: true }))) return;
+        if (!(await confirmBox('ลบงาน โพสต์ และบุคลากรตัวอย่างทั้งหมด? (ข้อมูลที่คุณสร้างเองไม่ถูกลบ)', { ok: 'ลบข้อมูลตัวอย่าง', danger: true }))) return;
         const n = await repo.removeSamples();
         toast(`ลบข้อมูลตัวอย่าง ${n} รายการแล้ว`, 'ok');
         drawData();

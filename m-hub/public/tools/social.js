@@ -6,6 +6,7 @@ import { outputChooser, openSink } from '../core/output.js';
 import { presets } from '../core/store.js';
 import { wrapText } from '../core/thai.js';
 import { decodeImage, encodeCanvas } from '../core/image.js';
+import { shared, onShare } from '../core/bus.js';
 
 export const SIZES = {
   fb: { label: 'Facebook / แชร์ลิงก์', w: 1200, h: 630 },
@@ -281,6 +282,16 @@ export function mount(root) {
   });
 
   drawText(); drawStyle(); drawSizes(); drawBatch(); refresh();
+  // รับข้อความจาก L'Arts PR Writer (หน้า “ข้อความโปสเตอร์” → ส่งไปทำภาพปก)
+  const takeText = (v) => {
+    if (!v) return;
+    for (const k of ['tag', 'title', 'subtitle', 'info', 'footer']) if (typeof v[k] === 'string') o[k] = v[k];
+    o.batch = false;
+    drawText(); drawBatch(); refresh();
+    toast('รับข้อความจาก L\'Arts PR Writer แล้ว — เลือกภาพพื้นหลังและขนาดได้เลย', 'ok', 4000);
+  };
+  takeText(shared('social-text'));
+  onShare('social-text', takeText);
   root.append(
     h('p.intro', 'ออกแบบครั้งเดียว ได้ภาพครบทุกขนาดสำหรับ Facebook, Instagram, Story, X, แบนเนอร์เว็บไซต์ และปก YouTube — หรือทำทีละหลายโพสต์จากรายการใน Excel'),
     bar,

@@ -4,7 +4,7 @@ import { icon } from './core/icons.js';
 import { tools, ideas } from './tools/registry.js';
 import { workspace, restoreWorkspace, connectWorkspace, disconnectWorkspace, fsSupported } from './core/workspace.js';
 
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 const main = $('#main');
 const nav = $('#nav');
 const title = $('#page-title');

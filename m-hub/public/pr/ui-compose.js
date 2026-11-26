@@ -8,6 +8,8 @@ import { checkPost, applyFix, checkLinks, describeLink, xLength } from './checke
 import { fmtRange, fmtDate } from './dates.js';
 import { buildEml, gmailLink, outlookLink } from '../core/eml.js';
 import { loadGlossary, compileGlossary, aiTranslate, hasThai } from '../core/glossary.js';
+import { staffSuggest, fullName, nameWithPosition } from './staff.js';
+import { snapshot, listVersions, changeSummary } from './versions.js';
 
 let st = null;
 let ui = null;
@@ -18,10 +20,11 @@ const STATUS_LABEL = { draft: 'ร่าง', approved: 'อนุมัติ�
 export async function mount(el, app) {
   const s = app.settings;
   st = { app, eventId: null, event: null, fields: emptyFields(), kind: s.kind, tone: s.tone, lang: s.lang, channel: s.channel, templateId: '',
-    edited: false, text: '', subject: '', postId: null, links: {}, userTemplates: [], lastLinkKey: '' };
+    edited: false, text: '', subject: '', postId: null, links: {}, userTemplates: [], lastLinkKey: '', prevVersionId: '', versions: [], plannedDate: '' };
   ui = {};
   ui.eventSel = h('select', { 'aria-label': 'เลือกงาน', onchange: (e) => loadEvent(e.target.value) });
   ui.sampleNote = h('div.note.info', { hidden: true }, 'งานตัวอย่าง: ชื่อบุคคล เบอร์โทร อีเมล และลิงก์ทั้งหมดเป็นของสมมติ ใช้ทดลองได้เลย หรือลบได้ที่หน้าตั้งค่า');
+  ui.verNote = h('div.note.warn', { hidden: true });
   ui.form = h('div.pr-form');
   ui.options = h('section.card');
   ui.checks = h('section.card.pr-checks');
@@ -33,8 +36,9 @@ export async function mount(el, app) {
       h('div.row.wrap',
         h('span.field-label', 'งาน'), h('div', { style: { flex: '1', minWidth: '220px' } }, ui.eventSel),
         btn('งานใหม่', () => loadEvent(''), { ic: 'plus' }),
-        btn('ทำสำเนางานนี้', duplicateEvent, { ic: 'copy', kind: 'ghost' })),
-      ui.sampleNote,
+        btn('ทำสำเนางานนี้', duplicateEvent, { ic: 'copy', kind: 'ghost' }),
+        btn('แก้ไขและแจ้งเปลี่ยนแปลง', editAndNotify, { ic: 'refresh', kind: 'ghost', title: 'เก็บข้อมูลเดิมเป็นเวอร์ชัน แล้วแก้ช่องที่เปลี่ยน ระบบจะเขียนประกาศแจ้งเปลี่ยนแปลงแบบเทียบเก่า → ใหม่ให้' })),
+      ui.sampleNote, ui.verNote,
       h('div.hint', 'ข้อมูลในฟอร์มบันทึกอัตโนมัติ เปลี่ยนเป็นงานอื่นแล้วกลับมาได้ตลอด')),
     h('div.pr-cols',
       ui.form,
@@ -47,13 +51,59 @@ export async function mount(el, app) {
 }
 
 export async function show(params = {}) {
+  if (params.p) return openPost(params.p);
   if (params.e !== undefined && params.e !== (st.eventId || '')) await loadEvent(params.e, { keepKind: !!params.k });
   else if (!st.eventId && !st.fields.title) {
     const list = await repo.list('events');
     if (list.length && params.e === undefined) await loadEvent(sortEvents(list)[0].id);
     else if (!list.length) { renderForm(); regenerate(); }
   }
-  if (params.k && KINDS.some((k) => k.id === params.k)) { st.kind = params.k; renderOptions(); renderForm(); st.edited = false; regenerate(); }
+  if (params.v) { if (st.eventId) st.versions = await listVersions(st.eventId); st.prevVersionId = params.v; st.kind = 'change'; }
+  if (params.k && KINDS.some((k) => k.id === params.k)) st.kind = params.k;
+  if (params.k || params.v) { renderOptions(); renderForm(); st.edited = false; regenerate(); }
+}
+
+// เปิดโพสต์ที่บันทึกไว้ (จากปฏิทิน / งานทั้งหมด) มาแก้ต่อ
+async function openPost(id) {
+  const p = await repo.get('posts', id);
+  if (!p) return toast('ไม่พบโพสต์', 'warn');
+  if (p.eventId && p.eventId !== st.eventId) await loadEvent(p.eventId);
+  Object.assign(st, { kind: p.kind, tone: p.tone, channel: p.channel, lang: p.lang, prevVersionId: p.prevVersionId || '', plannedDate: p.plannedDate || '' });
+  renderOptions();
+  renderForm();
+  regenerate();
+  st.text = p.text || '';
+  st.subject = p.subject || '';
+  st.edited = true;
+  st.postId = p.id;
+  renderOutput();
+  runCheck();
+  toast('เปิดโพสต์ที่บันทึกไว้แล้ว (แก้แล้วกด “บันทึกร่าง” หรือ “ใช้จริง” เพื่อบันทึกทับ)', 'info', 3500);
+}
+
+// แก้ไขและแจ้งเปลี่ยนแปลง: เก็บข้อมูลตอนนี้เป็นเวอร์ชัน แล้วเปลี่ยนเป็นโพสต์ “แจ้งเปลี่ยนแปลง” ที่เทียบกับเวอร์ชันนั้น
+async function editAndNotify() {
+  await flushSave();
+  if (!st.eventId) return toast('กรอกข้อมูลงานก่อน แล้วค่อยแก้ไขและแจ้งเปลี่ยนแปลง', 'warn');
+  const v = await snapshot(st.eventId);
+  st.event = await repo.get('events', st.eventId);
+  st.versions = await listVersions(st.eventId);
+  st.prevVersionId = v.id;
+  st.kind = 'change';
+  st.edited = false;
+  st.postId = null;
+  renderOptions();
+  renderForm();
+  regenerate();
+  toast(`เก็บข้อมูลเดิมเป็นเวอร์ชัน ${v.versionNo} แล้ว — แก้ช่องที่เปลี่ยนในฟอร์มได้เลย`, 'ok', 4000);
+}
+
+function drawVerNote() {
+  const v = st.kind === 'change' && st.versions.find((x) => x.id === st.prevVersionId);
+  ui.verNote.hidden = !v;
+  if (!v) return;
+  const changed = changeSummary(v.fields, st.fields);
+  setKids(ui.verNote, `กำลังแจ้งเปลี่ยนแปลง: เทียบข้อมูลตอนนี้กับเวอร์ชัน ${v.versionNo} · `, changed ? h('b', 'เปลี่ยน: ' + changed) : 'ยังไม่มีช่องที่เปลี่ยน — แก้วันที่ เวลา สถานที่ หรือลิงก์ในฟอร์ม');
 }
 
 const sortEvents = (list) => [...list].sort((a, b) => String(b.fields.date || '').localeCompare(String(a.fields.date || '')) || String(b.updatedAt).localeCompare(String(a.updatedAt)));
@@ -80,6 +130,9 @@ async function loadEvent(id, { keepKind = false } = {}) {
   if (ev && ev.kind && !keepKind) st.kind = ev.kind;
   st.edited = false;
   st.postId = null;
+  st.versions = ev ? await listVersions(ev.id) : [];
+  st.plannedDate = '';
+  st.prevVersionId = st.versions[0] ? st.versions[0].id : '';
   ui.eventSel.value = st.eventId || '';
   ui.sampleNote.hidden = !(ev && ev.sample);
   renderOptions();
@@ -134,7 +187,18 @@ function renderForm() {
       draw();
       return h('div.pr-stack.pr-date', h('input', { ...attrs, type: t, value: f[key] || '', oninput: (e) => { f[key] = e.target.value; draw(); onChange(); } }), hint);
     }
-    return h('input', { ...attrs, type: t, value: f[key] || '', oninput: (e) => { f[key] = e.target.value.trimStart(); onChange(); }, placeholder: t === 'url' ? 'https://' : null });
+    const inp = h('input', { ...attrs, type: t, value: f[key] || '', oninput: (e) => { f[key] = e.target.value.trimStart(); onChange(); }, placeholder: t === 'url' ? 'https://' : null });
+    if (/^(chair|contactName)(En)?$/.test(key)) {
+      // พิมพ์ชื่อแล้วเลือกจากฐานข้อมูลบุคลากร → ใส่ชื่อ ตำแหน่ง ทั้งไทยและอังกฤษ
+      inp.placeholder = 'พิมพ์ชื่อเพื่อเลือกจากบุคลากร';
+      return staffSuggest(inp, () => st.app.staff, (s) => {
+        if (key.startsWith('chair')) { f.chair = nameWithPosition(s, 'th'); f.chairEn = nameWithPosition(s, 'en'); }
+        else { f.contactName = fullName(s, 'th'); f.contactNameEn = fullName(s, 'en'); if (s.phone) f.phone = s.phone; if (s.email) f.email = s.email; }
+        renderForm();
+        onChange();
+      });
+    }
+    return inp;
   };
   const cards = GROUPS.map(([gid, gtitle]) => {
     const rows = [];
@@ -163,7 +227,8 @@ function guestEditor(showEn, onChange) {
     const list = st.fields.guests || (st.fields.guests = []);
     setKids(box, ...list.map((g, i) => h('div.field-item',
       h('div.grid2',
-        h('input', { type: 'text', 'aria-label': 'ชื่อ (มีคำนำหน้า/ตำแหน่งวิชาการ)', placeholder: 'ชื่อ เช่น รองศาสตราจารย์ ดร.สมชาย ใจดี', value: g.name || '', oninput: (e) => { g.name = e.target.value; onChange(); } }),
+        staffSuggest(h('input', { type: 'text', 'aria-label': 'ชื่อ (มีคำนำหน้า/ตำแหน่งวิชาการ)', placeholder: 'พิมพ์ชื่อเพื่อเลือกจากบุคลากร หรือพิมพ์เอง', value: g.name || '', oninput: (e) => { g.name = e.target.value; delete g.staffId; onChange(); } }),
+          () => st.app.staff, (s) => { Object.assign(g, { name: fullName(s, 'th'), role: s.positionTh || '', nameEn: fullName(s, 'en'), roleEn: s.positionEn || '', staffId: s.id }); draw(); onChange(); }),
         h('input', { type: 'text', 'aria-label': 'ตำแหน่ง / บทบาท', placeholder: 'ตำแหน่ง / บทบาท', value: g.role || '', oninput: (e) => { g.role = e.target.value; onChange(); } })),
       showEn ? h('div.grid2',
         h('input', { type: 'text', 'aria-label': 'Name (English)', placeholder: 'Name in English', value: g.nameEn || '', oninput: (e) => { g.nameEn = e.target.value; onChange(); } }),
@@ -201,6 +266,9 @@ function renderOptions() {
     h('div.grid2',
       field('ประเภทโพสต์', select(KINDS.map((k) => [k.id, k.th]), st.kind, (v) => { st.kind = v; st.templateId = ''; st.edited = false; st.postId = null; renderOptions(); renderForm(); scheduleSave(); regenerate(); })),
       field('เทมเพลต', ui.tplSel)),
+    st.kind === 'change' ? field('เทียบกับข้อมูลเดิม', select([['', st.versions.length ? 'ไม่เทียบ (ใช้ช่องรายละเอียดการเปลี่ยนแปลง)' : 'ยังไม่มีเวอร์ชันเดิม — กด “แก้ไขและแจ้งเปลี่ยนแปลง” ก่อนแก้ข้อมูล'],
+      ...st.versions.map((v) => [v.id, `เวอร์ชัน ${v.versionNo} · บันทึก ${new Date(v.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}`])], st.prevVersionId, (v) => { st.prevVersionId = v; st.edited = false; regenerate(); }),
+      'ข้อความจะบอกค่าเดิม → ค่าใหม่ของช่องที่เปลี่ยน และใส่ “(ไม่เปลี่ยนแปลง)” ให้ข้อมูลสำคัญที่คงเดิม') : null,
     field('โทน', toneSeg, toneOf(st.tone, customTones).desc),
     field('ภาษา', seg(LANGS.map((l) => [l.id, l.th]), st.lang, (v) => { st.lang = v; st.edited = false; st.postId = null; renderForm(); regenerate(); })),
     field('ช่องทาง', seg([...CHANNELS.map((c) => [c.id, c.th]), ['all', 'ทุกช่องทาง']], st.channel, (v) => { st.channel = v; st.edited = false; st.postId = null; regenerate(); })),
@@ -209,11 +277,17 @@ function renderOptions() {
 }
 
 // ---------- สร้างข้อความ ----------
+function prevFields() {
+  if (st.kind !== 'change' || !st.prevVersionId) return null;
+  const v = st.versions.find((x) => x.id === st.prevVersionId);
+  return v ? v.fields : null;
+}
 function opts(channel = st.channel) {
-  return { kind: st.kind, tone: st.tone, channel, lang: st.lang, settings: st.app.settings, style: st.app.style, userTemplates: st.userTemplates, templateId: st.templateId || null };
+  return { kind: st.kind, tone: st.tone, channel, lang: st.lang, settings: st.app.settings, style: st.app.style, userTemplates: st.userTemplates, templateId: st.templateId || null, prevFields: prevFields() };
 }
 
 function regenerate() {
+  drawVerNote();
   if (st.channel === 'all') return renderAll();
   ui.allOut.hidden = true;
   ui.checks.hidden = false;
@@ -239,6 +313,7 @@ function renderOutput() {
   const actions = h('div.row.wrap',
     btn('คัดลอกข้อความ', () => copyText(st.text), { ic: 'copy', kind: 'primary' }),
     ch.subject ? btn('คัดลอกหัวเรื่อง', () => copyText(st.subject), { ic: 'copy' }) : null,
+    h('label.pr-plan', h('span.small.muted', 'วันที่จะโพสต์'), h('input', { type: 'date', value: st.plannedDate, 'aria-label': 'วันที่จะโพสต์', oninput: (e) => { st.plannedDate = e.target.value; } })),
     btn('บันทึกร่าง', () => savePost('draft'), { ic: 'save' }),
     btn('ใช้จริง', () => savePost('approved'), { ic: 'check', title: 'บันทึกเป็นโพสต์ที่ใช้จริง (เก็บเป็นตัวอย่างของคณะ)' }),
     btn('QR จากลิงก์', () => { const u = st.fields.regLink || st.fields.meetingLink; st.app.go('qr', u ? { u } : {}); }, { ic: 'qr', kind: 'ghost' }));
@@ -272,7 +347,7 @@ function markEdited() {
 // ---------- ตัวตรวจ ----------
 const runCheckSoon = debounce(() => runCheck(), 200);
 function checkCtx(channel = st.channel) {
-  return { fields: st.fields, kind: st.kind, tone: st.tone, channel, lang: st.lang, style: st.app.style, settings: st.app.settings, subject: st.subject, staff: st.app.staff || [] };
+  return { fields: st.fields, kind: st.kind, tone: st.tone, channel, lang: st.lang, style: st.app.style, settings: st.app.settings, subject: st.subject, staff: st.app.staff || [], prevFields: prevFields() };
 }
 function runCheck() {
   if (st.channel === 'all') return;
@@ -357,9 +432,10 @@ async function savePost(status) {
     ...(prev || {}),
     id: st.postId || undefined,
     eventId: st.eventId, kind: st.kind, tone: st.tone, channel: st.channel, lang: st.lang, eventType: st.fields.eventType,
-    text: st.text, subject: st.subject, status, source: 'template', edited: st.edited,
+    text: st.text, subject: st.subject, status, source: (prev && prev.source) || 'template', edited: st.edited, prevVersionId: st.kind === 'change' ? st.prevVersionId : '',
     templateId: (st.used || []).find((u) => u.id)?.id || null,
     approvedAt: status === 'approved' ? t : prev && prev.approvedAt,
+    plannedDate: st.plannedDate || (prev && prev.plannedDate) || '',
     metrics: (prev && prev.metrics) || {},
     sample: !!(st.event && st.event.sample),
   });

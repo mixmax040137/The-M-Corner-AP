@@ -75,11 +75,25 @@ export const SAMPLE_EVENTS = [
   }, { kind: 'recap' }),
 ];
 
-// ใส่ข้อมูลตัวอย่างครั้งแรก (ถ้าผู้ใช้ลบข้อมูลตัวอย่างไปแล้วจะไม่ใส่ซ้ำ)
+// บุคลากรตัวอย่าง (ชื่อสมมติ) — อาจารย์ ดร.ณัฐ ในฐานข้อมูลเป็น “ผู้ช่วยศาสตราจารย์ ดร.” แต่ในงานค่ายตัวอย่างเขียนว่า “อาจารย์ ดร.”
+// เพื่อให้เห็นว่าตัวตรวจเทียบตำแหน่งวิชาการกับฐานข้อมูลอย่างไร
+export const SAMPLE_STAFF = [
+  { titleTh: 'รองศาสตราจารย์ ดร.', nameTh: 'อรุณี ตัวอย่างดี', titleEn: 'Assoc. Prof. Dr.', nameEn: 'Arunee Tuayangdee', positionTh: 'คณบดีคณะศิลปศาสตร์', positionEn: 'Dean', unit: 'สำนักงานคณบดี', email: 'dean-sample@example.com', phone: '02-000-0010' },
+  { titleTh: 'ผู้ช่วยศาสตราจารย์ ดร.', nameTh: 'วรรณา ตัวอย่าง', titleEn: 'Asst. Prof. Dr.', nameEn: 'Wanna Tuayang', positionTh: 'รองคณบดีฝ่ายกิจการนักศึกษา', positionEn: 'Associate Dean for Student Affairs', unit: 'งานกิจการนักศึกษา', email: 'wanna-sample@example.com', phone: '02-000-0011' },
+  { titleTh: 'ผู้ช่วยศาสตราจารย์ ดร.', nameTh: 'ภาณุ สมมติวงศ์', titleEn: 'Asst. Prof. Dr.', nameEn: 'Panu Sommutwong', positionTh: 'อาจารย์ประจำสาขาวิชาภาษาศาสตร์', positionEn: 'Lecturer in Linguistics', unit: 'สาขาวิชาภาษาศาสตร์', email: 'panu-sample@example.com', phone: '' },
+  { titleTh: 'ผู้ช่วยศาสตราจารย์ ดร.', nameTh: 'ณัฐ สาธิตกุล', titleEn: 'Asst. Prof. Dr.', nameEn: 'Nat Sathitkul', positionTh: 'อาจารย์ประจำสาขาวิชาภาษาญี่ปุ่น', positionEn: 'Lecturer in Japanese', unit: 'สาขาวิชาภาษาญี่ปุ่น', email: 'nat-sample@example.com', phone: '' },
+  { titleTh: 'อาจารย์', nameTh: 'กานต์ ทดลองใช้', titleEn: 'Ajarn', nameEn: 'Karn Thodlongchai', positionTh: 'อาจารย์ประจำสาขาวิชาภาษาฝรั่งเศส', positionEn: 'Lecturer in French', unit: 'สาขาวิชาภาษาฝรั่งเศส', email: 'karn-sample@example.com', phone: '' },
+  { titleTh: 'คุณ', nameTh: 'พิมพ์ชนก ใจประสาน', titleEn: 'Ms.', nameEn: 'Pimchanok Jaiprasan', positionTh: 'นักประชาสัมพันธ์', positionEn: 'Public Relations Officer', unit: 'งานประชาสัมพันธ์', email: 'pr-sample@example.com', phone: '02-000-0000' },
+  { titleTh: 'คุณ', nameTh: 'สมศรี เลขานุการ', titleEn: 'Ms.', nameEn: 'Somsri Lekhanukarn', positionTh: 'เลขานุการคณะ', positionEn: 'Faculty Secretary', unit: 'สำนักงานคณบดี', email: 'secretary-sample@example.com', phone: '02-000-0001' },
+].map((x) => ({ ...x, sample: true }));
+
+// ใส่ข้อมูลตัวอย่างครั้งแรก และเพิ่มชุดใหม่เมื่ออัปเดตเฟส (ถ้าผู้ใช้ลบข้อมูลตัวอย่างไปแล้วจะไม่ใส่ซ้ำ)
+export const SAMPLE_VERSION = 2;
 export async function seedIfNeeded() {
   const done = await repo.getMeta('sampleSeed', 0);
-  if (done >= 1 || (await repo.getMeta('samplesRemoved', false))) return false;
-  for (const e of SAMPLE_EVENTS) await repo.put('events', structuredClone(e), { silent: true });
-  await repo.setMeta('sampleSeed', 1);
+  if (done >= SAMPLE_VERSION || (await repo.getMeta('samplesRemoved', false))) return false;
+  if (done < 1) for (const e of SAMPLE_EVENTS) await repo.put('events', structuredClone(e), { silent: true });
+  if (done < 2) for (const x of SAMPLE_STAFF) await repo.put('staff', structuredClone(x), { silent: true });
+  await repo.setMeta('sampleSeed', SAMPLE_VERSION);
   return true;
 }

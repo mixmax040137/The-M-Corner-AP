@@ -747,7 +747,7 @@ export const SHORT = {
 };
 
 // ข้อความโปสเตอร์: พาดหัว ≤ 8 คำ, หัวรอง, วัน-เวลา-สถานที่, คำชวน, ลิงก์/QR
-const CTA = {
+export const CTA = {
   th: { invite: 'ลงทะเบียนเลย!', meeting: 'โปรดเข้าร่วมประชุมตรงเวลา', recap: 'ขอบคุณทุกท่านที่มาร่วมงาน', congrats: 'ขอแสดงความยินดี', announce: 'อ่านรายละเอียดเพิ่มเติม', change: 'โปรดตรวจสอบกำหนดการใหม่', reminder: 'รีบลงทะเบียนก่อนปิดรับ!', condolence: 'ด้วยความอาลัยยิ่ง', thanks: 'ขอบคุณจากใจ' },
   en: { invite: 'Register now!', meeting: 'Please be on time', recap: 'Thank you for joining us', congrats: 'Congratulations!', announce: 'Read more', change: 'Please check the new schedule', reminder: 'Register before it closes!', condolence: 'With deepest sympathy', thanks: 'Thank you' },
 };
@@ -1018,6 +1018,7 @@ export function renderPost(fields, opts) {
     const body = tpl ? tpl.body : builtinBody(kind, toneId, lang, ch.id);
     used.push({ lang, source: tpl ? 'user' : 'builtin', name: tpl ? tpl.name : 'ต้นแบบ', id: tpl ? tpl.id : null });
     let text = fill(body, vars, label);
+    if (opts.lead && opts.lead[lang]) text = opts.lead[lang] + '\n' + text; // บรรทัดนำของชุดโพสต์ เช่น “พรุ่งนี้แล้ว!”
     if (!emojiOK) text = stripEmoji(text);
     let subject = ch.subject ? stripEmoji(fill(SUBJECTS[kind][lang], vars, label)) : '';
     const fullCustom = tpl && tpl.channel !== '*';

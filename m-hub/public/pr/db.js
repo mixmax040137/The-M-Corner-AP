@@ -75,9 +75,9 @@ export const repo = {
     const x = await backend.get('meta', key);
     return x && !x.deleted ? x.value : fallback;
   },
-  async setMeta(key, value) {
+  async setMeta(key, value, { silent = false } = {}) {
     await this.put('meta', { id: key, value }, { silent: true });
-    emit('meta');
+    if (!silent) emit('meta');
   },
 
   // แคชผลลัพธ์ AI (ไม่ส่งออก)

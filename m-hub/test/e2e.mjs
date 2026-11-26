@@ -935,7 +935,138 @@ async function testPrWriter() {
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
-const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop, pr: testPrWriter };
+// ========== L'Arts PR Writer เฟส 2 ==========
+async function testPrWriter2() {
+  console.log("L'Arts PR Writer เฟส 2");
+  await open('#/');
+  await page.evaluate(() => new Promise((r) => { const q = indexedDB.deleteDatabase('larts-pr-writer'); q.onsuccess = q.onerror = q.onblocked = () => r(); }));
+  await open('#/pr-writer?s=staff');
+  const count = () => view().locator('.pr-screen:not([hidden]) .muted.small').filter({ hasText: / คน$/ }).innerText();
+  await view().locator('tr[data-staff]').first().waitFor();
+  ok((await count()) === '7 คน', 'บุคลากรตัวอย่าง 7 คน');
+  await view().getByRole('button', { name: 'เพิ่มบุคลากร' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('tr[data-staff]').length === 8 && document.querySelector('tr[data-staff] [aria-label="ชื่อ-นามสกุล (ไทย)"]').value === '');
+  const row = view().locator('tr[data-staff]').first();
+  await row.getByLabel('คำนำหน้า/ตำแหน่งวิชาการ (ไทย)').fill('รองศาสตราจารย์');
+  await row.getByLabel('ชื่อ-นามสกุล (ไทย)').fill('ทดสอบ ระบบ');
+  await row.getByLabel('ตำแหน่ง (ไทย)').fill('ผู้อำนวยการโครงการ');
+  await row.getByLabel('คำนำหน้า/ตำแหน่งวิชาการ (อังกฤษ)').fill('Assoc. Prof.');
+  await row.getByLabel('ชื่อ-นามสกุล (อังกฤษ)').fill('Test System');
+  await row.getByLabel('ตำแหน่ง (อังกฤษ)').fill('Project Director');
+  await page.waitForTimeout(700);
+  const csv = '﻿ชื่อ-นามสกุล (ไทย),ชื่อ-นามสกุล (อังกฤษ),คำนำหน้า/ตำแหน่งวิชาการ (ไทย),คำนำหน้า/ตำแหน่งวิชาการ (อังกฤษ),ตำแหน่ง (ไทย),ตำแหน่ง (อังกฤษ),หน่วยงาน / สาขา,อีเมล,โทรศัพท์\r\n'
+    + 'ภาณุ สมมติวงศ์,Panu Sommutwong,ผู้ช่วยศาสตราจารย์ ดร.,Asst. Prof. Dr.,อาจารย์ประจำสาขาวิชาภาษาศาสตร์,Lecturer in Linguistics,สาขาวิชาภาษาศาสตร์,panu-sample@example.com,02-999-9999\r\n'
+    + 'นงลักษณ์ นำเข้า,Nongluck Namkao,อาจารย์ ดร.,Dr.,อาจารย์ประจำสาขาวิชาภาษาอังกฤษ,Lecturer in English,สาขาวิชาภาษาอังกฤษ,nong-sample@example.com,\r\n';
+  const csvPath = join(FIX, 'staff.csv');
+  writeFileSync(csvPath, csv);
+  await chooseFiles('นำเข้า CSV / Excel', [csvPath]);
+  await view().getByText('9 คน').waitFor();
+  ok(true, 'เพิ่มเอง 1 คน + นำเข้า CSV (อัปเดต 1 · เพิ่ม 1) = 9 คน');
+  const panuPhone = await page.evaluate(() => {
+    const tr = [...document.querySelectorAll('tr[data-staff]')].find((r) => r.querySelector('[aria-label="ชื่อ-นามสกุล (ไทย)"]').value === 'ภาณุ สมมติวงศ์');
+    return tr && tr.querySelector('[aria-label="โทรศัพท์"]').value;
+  });
+  ok(panuPhone === '02-999-9999', 'นำเข้าแล้วอัปเดตเบอร์โทรของคนเดิม');
+
+  // เขียนโพสต์: เลือกชื่อจากฐานข้อมูล
+  await view().getByRole('tab', { name: 'เขียนโพสต์' }).click();
+  const out = view().locator('[data-out]');
+  await out.waitFor();
+  const group = (name) => view().getByRole('group', { name });
+  await group('โทน').getByRole('button', { name: 'ทางการ', exact: true }).click();
+  await group('ภาษา').getByRole('button', { name: 'ไทย + English' }).click();
+  await view().getByRole('button', { name: 'เพิ่มรายชื่อ' }).click();
+  const gname = view().getByLabel('ชื่อ (มีคำนำหน้า/ตำแหน่งวิชาการ)').last();
+  await gname.fill('ทดสอบ');
+  await view().locator('.pr-ac-list li').filter({ hasText: 'รองศาสตราจารย์ ทดสอบ ระบบ' }).click();
+  await page.waitForTimeout(400);
+  ok((await view().getByLabel('Name (English)').last().inputValue()) === 'Assoc. Prof. Test System' && (await view().getByLabel('ตำแหน่ง / บทบาท').last().inputValue()) === 'ผู้อำนวยการโครงการ', 'เลือกวิทยากรจากรายชื่อ: เติมชื่อ ตำแหน่ง ไทย/อังกฤษ ให้');
+  await view().locator('[data-f="chair"]').fill('วรรณา');
+  await view().locator('.pr-ac-list li').filter({ hasText: 'วรรณา ตัวอย่าง' }).click();
+  await page.waitForTimeout(400);
+  ok((await view().locator('[data-f="chair"]').inputValue()) === 'ผู้ช่วยศาสตราจารย์ ดร.วรรณา ตัวอย่าง รองคณบดีฝ่ายกิจการนักศึกษา'
+    && (await view().locator('[data-f="chairEn"]').inputValue()) === 'Asst. Prof. Dr. Wanna Tuayang, Associate Dean for Student Affairs', 'เลือกประธานจากรายชื่อ: ใส่ชื่อ + ตำแหน่งตามภาษา');
+  let text = await out.inputValue();
+  ok(text.includes('ประธานในพิธี: ผู้ช่วยศาสตราจารย์ ดร.วรรณา ตัวอย่าง') && text.includes('Assoc. Prof. Test System, Project Director'), 'ข้อความโพสต์ใช้ชื่อและตำแหน่งจากฐานข้อมูล');
+  await out.fill(text.replace('ประธานในพิธี: ผู้ช่วยศาสตราจารย์ ดร.วรรณา', 'ประธานในพิธี: อาจารย์ ดร.วรรณา'));
+  await page.waitForTimeout(400);
+  const staffItem = view().locator('.check-item[data-code="staff-title"]');
+  ok((await staffItem.count()) === 1 && (await staffItem.innerText()).includes('ผู้ช่วยศาสตราจารย์ ดร.'), 'ตัวตรวจจับตำแหน่งวิชาการไม่ตรงฐานข้อมูล');
+  await staffItem.getByRole('button').click();
+  ok((await out.inputValue()).includes('ประธานในพิธี: ผู้ช่วยศาสตราจารย์ ดร.วรรณา ตัวอย่าง'), 'ปุ่มแก้ใช้ตำแหน่งตามฐานข้อมูล');
+
+  // แนวทางการเขียน: เพิ่มคำต้องห้าม
+  await view().getByRole('tab', { name: 'แนวทางการเขียน' }).click();
+  await view().getByRole('button', { name: 'เพิ่มคำ' }).click();
+  await view().getByLabel('คำที่พบ').last().fill('ไลฟ์สด');
+  await view().getByLabel('คำที่ควรใช้').last().fill('ถ่ายทอดสด');
+  await page.waitForTimeout(600);
+  await view().getByRole('tab', { name: 'เขียนโพสต์' }).click();
+  await view().getByRole('button', { name: 'สร้างใหม่จากข้อมูล' }).click();
+  await view().locator('[data-f="notes"]').fill('มีไลฟ์สดทางเพจของคณะ');
+  await page.waitForTimeout(500);
+  ok((await view().locator('.check-item[data-code="banned"]').filter({ hasText: 'ไลฟ์สด' }).count()) === 1, 'คำต้องห้ามที่เพิ่มในแนวทางการเขียน ถูกตรวจในหน้าเขียนโพสต์');
+
+  // แก้ไขและแจ้งเปลี่ยนแปลง
+  await view().getByRole('button', { name: 'แก้ไขและแจ้งเปลี่ยนแปลง' }).click();
+  await page.waitForTimeout(400);
+  await view().locator('[data-f="date"]').fill('2026-12-17');
+  await view().locator('[data-f="place"]').fill('ห้องประชุมใหญ่ ชั้น 5');
+  await group('ช่องทาง').getByRole('button', { name: 'อีเมล' }).click();
+  await page.waitForTimeout(500);
+  text = await out.inputValue();
+  const subj = await view().locator('[data-subject]').inputValue();
+  ok(subj.startsWith('[แจ้งเปลี่ยนแปลง]') && subj.includes('[Change notice]'), 'หัวเรื่องอีเมลขึ้นต้นด้วย [แจ้งเปลี่ยนแปลง]');
+  ok(text.includes('วันที่: จากเดิม วันอังคารที่ 15 ธันวาคม 2569 เปลี่ยนเป็น วันพฤหัสบดีที่ 17 ธันวาคม 2569') && text.includes('สถานที่: จากเดิม ห้องประชุมชั้น 2'), 'แสดงค่าเดิม → ค่าใหม่ของช่องที่เปลี่ยน');
+  ok(text.includes('เวลา: 13.00–16.00 น. (ไม่เปลี่ยนแปลง)') && text.includes('(unchanged)') && text.includes('ขออภัยในความไม่สะดวก'), 'ข้อมูลที่คงเดิมมี (ไม่เปลี่ยนแปลง) และมีคำขออภัย');
+  ok((await view().locator('.check-item[data-code="weekday"]').count()) === 0 && (await view().getByText('เปลี่ยน: วันที่, สถานที่').count()) === 1, 'แถบแจ้งบอกช่องที่เปลี่ยน และไม่มีวันผิด');
+  await view().getByRole('tab', { name: 'งานทั้งหมด' }).click();
+  const evCard = view().locator('.pr-event').filter({ hasText: 'ภาษา วัฒนธรรม และ AI' });
+  await evCard.getByRole('button', { name: /โพสต์ \(0\) · ประวัติ/ }).click();
+  ok((await evCard.locator('[data-version="1"]').innerText()).includes('วันที่, สถานที่'), 'ประวัติเวอร์ชันแสดงเวอร์ชัน 1 และช่องที่เปลี่ยน');
+
+  // ชุดโพสต์ 5 ชิ้น → ปฏิทิน
+  await evCard.getByRole('button', { name: 'สร้างชุดโพสต์' }).click();
+  const dlg = page.locator('dialog.pr-dialog');
+  await dlg.waitFor();
+  ok((await dlg.locator('tr[data-stage] input[type="checkbox"]:checked').count()) === 5, 'ชุดโพสต์เลือกไว้ครบ 5 ชิ้น');
+  await dlg.getByRole('button', { name: 'สร้างโพสต์ที่เลือก' }).click();
+  await view().locator('.pr-cal-cell [data-post]').first().waitFor();
+  ok((await view().locator('.pr-cal-cell [data-post]').count()) === 5, 'ปฏิทินแสดงโพสต์ 5 ชิ้นในเดือนธันวาคม');
+  ok((await view().locator('.pr-cal-cell[data-date="2026-12-16"] [data-post]').innerText()).includes('1 วันก่อนงาน'), 'โพสต์ 1 วันก่อนงานอยู่วันที่ 16 ธ.ค.');
+  await view().locator('.pr-cal-cell[data-date="2026-12-16"] [data-post]').click();
+  const ed = page.locator('dialog.pr-dialog');
+  ok((await ed.getByLabel('ข้อความโพสต์').inputValue()).includes('พรุ่งนี้'), 'โพสต์ 1 วันก่อนงานมีบรรทัดนำ “พรุ่งนี้”');
+  await ed.locator('select').selectOption('approved');
+  await ed.getByRole('button', { name: 'บันทึก', exact: true }).click();
+  await page.waitForTimeout(400);
+  ok(await view().locator('.pr-cal-cell[data-date="2026-12-16"] .pr-chip.approved').isVisible(), 'เปลี่ยนสถานะเป็นอนุมัติแล้วในปฏิทิน');
+
+  // ข้อความโปสเตอร์ → ภาพปก
+  await view().getByRole('tab', { name: 'ข้อความโปสเตอร์' }).click();
+  const head = view().locator('[data-poster="th-headline"]');
+  await head.waitFor();
+  ok((await head.inputValue()) === 'ภาษา วัฒนธรรม และ AI', 'พาดหัวโปสเตอร์ใช้ส่วนที่ไม่เกิน 8 คำ');
+  await view().locator('button.chip').filter({ hasText: 'AI: มนุษยศาสตร์' }).click();
+  const cnt = await view().locator('[data-lang="th"] .field').first().locator('span.small').innerText();
+  const n = +cnt.match(/(\d+) คำ/)[1];
+  ok(n > 8 && cnt.includes('ควรไม่เกิน 8 คำ'), `พาดหัวยาว ${n} คำ แสดงคำเตือน`);
+  ok((await view().locator('[data-preview] canvas').count()) === 1, 'ตัวอย่างโปสเตอร์มี QR ของลิงก์ลงทะเบียน');
+  await view().getByRole('button', { name: 'ส่งไปทำภาพปกโพสต์' }).click();
+  await page.waitForFunction(() => location.hash === '#/social');
+  await page.waitForTimeout(600);
+  ok((await view().getByLabel('หัวเรื่อง').inputValue()).includes('มนุษยศาสตร์'), 'ส่งข้อความโปสเตอร์ไปเครื่องมือภาพปกโพสต์ได้');
+
+  // มือถือ: ปฏิทินไม่ล้นจอ
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open('#/pr-writer?s=calendar&m=2026-12');
+  await page.waitForTimeout(500);
+  const sw = await page.evaluate(() => document.documentElement.scrollWidth);
+  ok(sw <= 391, `ปฏิทินบนมือถือไม่ล้นจอ (กว้าง ${sw}px)`);
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
+const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop, pr: testPrWriter, pr2: testPrWriter2 };
 for (const [name, fn] of Object.entries(sections)) {
   if (only && only !== name) continue;
   try { await fn(); } catch (e) { failures++; console.log('  ✗ ' + name + ' ล้มเหลว: ' + e.message); await page.screenshot({ path: join(OUT, `fail-${name}.png`), fullPage: true }); }

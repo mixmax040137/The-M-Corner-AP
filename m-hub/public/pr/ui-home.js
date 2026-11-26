@@ -42,6 +42,7 @@ async function draw() {
     h('div', { style: { flex: '1', minWidth: '0' } },
       h('div', h('b', e.fields.title || '(ไม่มีชื่อ)'), e.sample ? h('span.badge', 'ตัวอย่าง') : null),
       h('div.muted.small', [fmtRange(e.fields.date, e.fields.endDate, 'th'), eventTypeOf(e.fields.eventType).label].filter(Boolean).join(' · '))),
+    btn('ชุดโพสต์', async () => (await import('./ui-campaign.js')).openCampaign(st.app, e.id), { ic: 'calendar', kind: 'ghost sm', title: 'สร้างชุดโพสต์ 5 ชิ้นลงปฏิทิน' }),
     btn('เขียนโพสต์', () => st.app.go('compose', { e: e.id }), { ic: 'pen', kind: 'sm' }));
   setKids(st.box, 
     samples ? h('div.note.info', h('div.row.wrap', h('span', `มีงานตัวอย่าง ${samples} งาน (ชื่อบุคคลและลิงก์สมมติ) ไว้ให้ลองใช้ เปิดหน้า “เขียนโพสต์” ได้เลย`), h('span.spacer'),

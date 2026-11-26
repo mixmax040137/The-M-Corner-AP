@@ -10,8 +10,12 @@ export const TOOL_ID = 'pr-writer';
 const SCREENS = [
   { id: 'home', label: 'ภาพรวม', icon: 'home', load: () => import('../pr/ui-home.js') },
   { id: 'compose', label: 'เขียนโพสต์', icon: 'pen', load: () => import('../pr/ui-compose.js') },
-  { id: 'events', label: 'งานทั้งหมด', icon: 'calendar', load: () => import('../pr/ui-events.js') },
+  { id: 'events', label: 'งานทั้งหมด', icon: 'list', load: () => import('../pr/ui-events.js') },
+  { id: 'calendar', label: 'ปฏิทินโพสต์', icon: 'calendar', load: () => import('../pr/ui-calendar.js') },
+  { id: 'poster', label: 'ข้อความโปสเตอร์', icon: 'type', load: () => import('../pr/ui-poster.js') },
   { id: 'templates', label: 'เทมเพลต', icon: 'file', load: () => import('../pr/ui-templates.js') },
+  { id: 'staff', label: 'บุคลากร', icon: 'users', load: () => import('../pr/ui-staff.js') },
+  { id: 'style', label: 'แนวทางการเขียน', icon: 'book', load: () => import('../pr/ui-style.js') },
   { id: 'qr', label: 'QR Code', icon: 'qr', load: () => import('../pr/ui-qr.js') },
   { id: 'settings', label: 'ตั้งค่า', icon: 'gear', load: () => import('../pr/ui-settings.js') },
 ];
@@ -27,13 +31,15 @@ export async function mount(root) {
   const app = {
     settings: { ...DEFAULT_SETTINGS, ...(await repo.getMeta('settings', {})) },
     style: await loadStyle(),
+    staff: await repo.list('staff'),
+    async reloadStaff() { this.staff = await repo.list('staff'); },
     async saveSettings(patch) {
       Object.assign(this.settings, patch);
-      await repo.setMeta('settings', { ...this.settings });
+      await repo.setMeta('settings', { ...this.settings }, { silent: true }); // ไม่โหลดซ้ำ: หน้าจอถือ object เดิมอยู่
     },
     async saveStyle(patch) {
       Object.assign(this.style, patch);
-      await repo.put('style', { ...this.style, id: 'main' });
+      await repo.put('style', { ...this.style, id: 'main' }, { silent: true });
     },
     go(screen, params = {}) {
       const q = new URLSearchParams({ s: screen, ...params });
@@ -42,6 +48,7 @@ export async function mount(root) {
   };
   repo.onChange(async (type) => {
     if (type === 'style' || type === '*') app.style = await loadStyle();
+    if (type === 'staff' || type === '*') app.staff = await repo.list('staff');
     if (type === 'meta' || type === '*') app.settings = { ...DEFAULT_SETTINGS, ...(await repo.getMeta('settings', {})) };
   });
 

@@ -116,5 +116,44 @@ ok(ch.text.includes('ขออภัยในความไม่สะดว�
 const en = renderPost({ ...SAMPLE_EVENTS[0].fields, placeEn: '' }, { kind: 'invite', tone: 'semi', channel: 'facebook', lang: 'en', style, settings: {} });
 ok(en.text.includes('[กรอก: สถานที่ (อังกฤษ)]'), 'ภาษาอังกฤษที่ยังไม่กรอก แสดง [กรอก: …]');
 
+console.log('PR Writer เฟส 2: บุคลากร เวอร์ชัน ชุดโพสต์ โปสเตอร์');
+const { fullName, nameWithPosition, searchStaff, rowsToStaff } = await import('../public/pr/staff.js');
+const { diffFields, changeSummary } = await import('../public/pr/versions.js');
+const { planCampaign, renderStage } = await import('../public/pr/campaign.js');
+const { headlineCandidates } = await import('../public/pr/ui-poster.js');
+const { SAMPLE_STAFF } = await import('../public/pr/sample.js');
+const dean = SAMPLE_STAFF[0];
+eq(fullName(dean, 'th'), 'รองศาสตราจารย์ ดร.อรุณี ตัวอย่างดี', 'ชื่อไทยต่อคำนำหน้าแบบไม่เว้นหลัง ดร.');
+eq(fullName({ titleTh: 'อาจารย์', nameTh: 'กานต์ ทดลองใช้' }, 'th'), 'อาจารย์ กานต์ ทดลองใช้', 'อาจารย์ + ชื่อ เว้นวรรค');
+eq(fullName({ titleTh: 'นางสาว', nameTh: 'สมศรี ใจดี' }, 'th'), 'นางสาวสมศรี ใจดี', 'นางสาว + ชื่อ ไม่เว้นวรรค');
+eq(nameWithPosition(dean, 'en'), 'Assoc. Prof. Dr. Arunee Tuayangdee, Dean', 'ชื่อ + ตำแหน่งภาษาอังกฤษ');
+eq(searchStaff(SAMPLE_STAFF, 'ผศ.ดร.ภาณุ').map((s) => s.nameTh).join(), 'ภาณุ สมมติวงศ์', 'ค้นชื่อโดยพิมพ์คำนำหน้าย่อมาด้วยก็เจอ');
+eq(searchStaff(SAMPLE_STAFF, 'arunee').length, 1, 'ค้นด้วยชื่ออังกฤษ');
+const imp = rowsToStaff(['ชื่อ-นามสกุล (ไทย)', 'ชื่อ-นามสกุล (อังกฤษ)', 'คำนำหน้า/ตำแหน่งวิชาการ (ไทย)', 'คำนำหน้า/ตำแหน่งวิชาการ (อังกฤษ)', 'ตำแหน่ง (ไทย)', 'ตำแหน่ง (อังกฤษ)', 'หน่วยงาน / สาขา', 'อีเมล', 'โทรศัพท์'],
+  [{ 'ชื่อ-นามสกุล (ไทย)': 'ก ข', 'ชื่อ-นามสกุล (อังกฤษ)': 'K K', 'คำนำหน้า/ตำแหน่งวิชาการ (ไทย)': 'ผู้ช่วยศาสตราจารย์', 'คำนำหน้า/ตำแหน่งวิชาการ (อังกฤษ)': 'Asst. Prof.', 'ตำแหน่ง (ไทย)': 'อาจารย์', 'ตำแหน่ง (อังกฤษ)': 'Lecturer', 'หน่วยงาน / สาขา': 'x', 'อีเมล': 'a@b.c', 'โทรศัพท์': '1' }]);
+ok(imp.list[0].titleTh === 'ผู้ช่วยศาสตราจารย์' && imp.list[0].titleEn === 'Asst. Prof.' && imp.list[0].positionEn === 'Lecturer' && imp.list[0].phone === '1', 'นำเข้า CSV จับคอลัมน์ถูกทุกช่อง');
+const recapEv = SAMPLE_EVENTS[2];
+const out3 = renderPost(recapEv.fields, { kind: 'recap', tone: 'formal', channel: 'facebook', lang: 'th', style, settings: {} });
+const r3 = checkPost(out3.text, { fields: recapEv.fields, kind: 'recap', tone: 'formal', channel: 'facebook', lang: 'th', style, settings: {}, staff: SAMPLE_STAFF });
+ok(r3.items.some((i) => i.code === 'staff-title' && /ผู้ช่วยศาสตราจารย์ ดร\./.test(i.msg)), 'ตัวตรวจจับ “อาจารย์ ดร.ณัฐ” ไม่ตรงฐานข้อมูล (ผู้ช่วยศาสตราจารย์ ดร.)');
+const out1 = renderPost(SAMPLE_EVENTS[0].fields, { kind: 'invite', tone: 'semi', channel: 'facebook', lang: 'both', style, settings: {} });
+const r1 = checkPost(out1.text, { fields: SAMPLE_EVENTS[0].fields, kind: 'invite', tone: 'semi', channel: 'facebook', lang: 'both', style, settings: {}, staff: SAMPLE_STAFF });
+ok(!r1.items.some((i) => i.code === 'staff-title'), 'ชื่อที่ตรงฐานข้อมูลไม่ถูกเตือน (ไทย + อังกฤษ)');
+const before = { ...SAMPLE_EVENTS[0].fields }, after = { ...before, date: '2026-12-17', place: 'ห้องใหม่' };
+const d = diffFields(before, after);
+ok(d.length === 2 && d[0].field === 'date' && d[1].field === 'place', 'เทียบเวอร์ชัน: พบช่องที่เปลี่ยน 2 ช่อง');
+eq(changeSummary(before, after), 'วันที่, สถานที่', 'สรุปช่องที่เปลี่ยน');
+const plan = planCampaign(SAMPLE_EVENTS[0], '2026-11-26');
+eq(plan.map((p) => p.date).join(' '), '2026-12-01 2026-12-09 2026-12-14 2026-12-15 2026-12-16', 'ชุดโพสต์ 5 ชิ้น: วันที่แนะนำ');
+ok(plan.every((p) => p.include), 'ชุดโพสต์เลือกครบ 5 ชิ้นสำหรับงานที่ยังไม่ถึง');
+const pastPlan = planCampaign(SAMPLE_EVENTS[2], '2026-11-26');
+ok(pastPlan.filter((p) => p.include).map((p) => p.stage.id).join() === 'recap' && pastPlan[4].date === '2026-11-26', 'งานที่จบแล้ว: แนะนำเฉพาะโพสต์สรุป (วันนี้)');
+const db = renderStage(SAMPLE_EVENTS[0], 'daybefore', { tone: 'official', channel: 'facebook', lang: 'th', style, settings: {} });
+ok(db.text.startsWith('ขอเรียนเชิญอีกครั้ง — กำหนดจัดในวันพรุ่งนี้') && db.text.includes('วันอังคารที่ 15 ธันวาคม 2569'), 'โพสต์ 1 วันก่อนงานมีบรรทัดนำ “พรุ่งนี้”');
+const dof = renderStage(SAMPLE_EVENTS[0], 'dayof', { tone: 'semi', channel: 'email', lang: 'th', style, settings: {} });
+ok(!countEmoji(dof.text), 'บรรทัดนำในอีเมลไม่มีอีโมจิ');
+const hc = headlineCandidates(SAMPLE_EVENTS[0].fields.title, 'th');
+eq(hc[0], 'ภาษา วัฒนธรรม และ AI', 'พาดหัวโปสเตอร์ที่แนะนำอันแรก ≤ 8 คำ');
+
 console.log(failures ? `\n✗ ไม่ผ่าน ${failures} ข้อ (ผ่าน ${passed})` : `\n✓ ผ่านทั้งหมด ${passed} ข้อ`);
 process.exit(failures ? 1 : 0);

@@ -1,7 +1,7 @@
 // M Hub service worker — ใช้งานออฟไลน์ได้ และติดตั้งเป็นโปรแกรมได้
 // โค้ดแอป: เน็ตก่อน (ได้เวอร์ชันใหม่เสมอ) ถ้าออฟไลน์ใช้ของที่เก็บไว้
 // ไลบรารี/ฟอนต์ใน /vendor/: ใช้ของที่เก็บไว้ก่อน (ไฟล์ใหญ่ ไม่ค่อยเปลี่ยน)
-const VERSION = 'm-hub-v1.2.1';
+const VERSION = 'm-hub-v1.3.0';
 const SHELL = [
   '/', '/app.js', '/app.css', '/manifest.webmanifest', '/icons/icon.svg', '/vendor/fonts/fonts.css',
   '/core/adjust.js', '/core/bus.js', '/core/data.js', '/core/eml.js', '/core/fx.js', '/core/genai.js',
@@ -9,7 +9,9 @@ const SHELL = [
   '/core/pdf.js', '/core/qr.js', '/core/store.js', '/core/thai.js', '/core/ui.js', '/core/workspace.js',
   '/tools/adjust-panel.js', '/tools/announce.js', '/tools/contacts.js', '/tools/docs-designer.js', '/tools/docs.js', '/tools/glossary.js',
   '/tools/image-editor.js', '/tools/images-enhance.js', '/tools/images.js', '/tools/ocr.js', '/tools/pdf.js', '/tools/qr.js',
-  '/tools/registry.js', '/tools/social.js', '/tools/video.js',
+  '/tools/registry.js', '/tools/social.js', '/tools/video.js', '/tools/pr-writer.js',
+  '/pr/checker.js', '/pr/dates.js', '/pr/db.js', '/pr/fields.js', '/pr/sample.js', '/pr/templates.js',
+  '/pr/ui-compose.js', '/pr/ui-events.js', '/pr/ui-home.js', '/pr/ui-qr.js', '/pr/ui-settings.js', '/pr/ui-templates.js',
 ];
 
 self.addEventListener('install', (e) => {

@@ -820,7 +820,122 @@ async function testCrop() {
   ok(info.w >= 175 && info.w <= 190 && info.h >= 310 && info.h <= 330, `กดบันทึกแล้วครอปให้อัตโนมัติ ไฟล์ผลลัพธ์ ${info.w}×${info.h}`);
 }
 
-const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop };
+// ========== L'Arts PR Writer ==========
+async function testPrWriter() {
+  console.log("L'Arts PR Writer");
+  await open('#/pr-writer?s=home');
+  await view().getByText('มีงานตัวอย่าง 3 งาน').waitFor();
+  ok(await view().getByText('ภาษา วัฒนธรรม และ AI').first().isVisible(), 'หน้าภาพรวมแสดงงานตัวอย่างที่กำลังจะถึง');
+  await view().locator('.list-item[data-event]').filter({ hasText: 'ภาษา วัฒนธรรม และ AI' }).getByRole('button', { name: 'เขียนโพสต์' }).click();
+  const out = view().locator('[data-out]');
+  await out.waitFor();
+  await page.waitForTimeout(400);
+  let text = await out.inputValue();
+  ok(text.includes('วันอังคารที่ 15 ธันวาคม 2569') && text.includes('คณะศิลปศาสตร์ มหาวิทยาลัยธรรมศาสตร์') && text.includes('#ศิลปศาสตร์ธรรมศาสตร์'), 'โหมดเทมเพลตสร้างโพสต์ (วันไทย ชื่อคณะเต็ม แฮชแท็ก)');
+  ok(await view().locator('.check-item[data-code="weekday-ok"]').isVisible(), 'ตัวตรวจยืนยันวันกับวันที่ตรงกัน');
+  await view().locator('[data-link] >> text=เปิดได้ (HTTP 200)').waitFor({ timeout: 5000 });
+  ok(true, 'ตรวจลิงก์ลงทะเบียนอัตโนมัติ: เปิดได้ (HTTP 200)');
+
+  // แก้ข้อความเองให้วันผิด → ตัวตรวจจับได้ และกดแก้ให้ได้
+  await out.fill(text.replace('วันอังคารที่ 15', 'วันจันทร์ที่ 15') + '\nปิดรับ ๑๕ ธ.ค. ๖๙ (จันทร์)\nMonday, 15 December 2026');
+  await page.waitForTimeout(400);
+  const wd = view().locator('.check-item[data-code="weekday"]');
+  ok((await wd.count()) === 3, 'จับวันผิด 3 จุด (ไทย, เลขไทย, อังกฤษ)');
+  ok((await wd.first().innerText()).includes('ตรงกับวันอังคาร'), 'บอกวันที่ถูกต้อง (วันอังคาร)');
+  ok(await view().getByText('แก้ข้อความเองแล้ว').isVisible(), 'แจ้งว่าแก้ข้อความเองแล้ว');
+  for (let i = 0; i < 3; i++) { await wd.first().getByRole('button').click(); await page.waitForTimeout(250); }
+  text = await out.inputValue();
+  ok(text.includes('วันอังคารที่ 15 ธันวาคม 2569') && text.includes('๑๕ ธ.ค. ๖๙ (อังคาร)') && text.includes('Tuesday, 15 December 2026') && (await wd.count()) === 0, 'ปุ่ม “แก้เป็นวัน…” แก้ครบทั้ง 3 จุด (คงเลขไทยไว้)');
+  await view().getByRole('button', { name: 'สร้างใหม่จากข้อมูล' }).click();
+
+  // เปลี่ยนข้อมูลในฟอร์ม → ข้อความเปลี่ยนตาม
+  await view().locator('[data-f="date"]').fill('2026-12-16');
+  await page.waitForTimeout(400);
+  ok((await out.inputValue()).includes('วันพุธที่ 16 ธันวาคม 2569'), 'เปลี่ยนวันที่ในฟอร์มแล้วข้อความอัปเดต');
+  ok((await view().locator('.pr-datehint').first().innerText()) === 'วันพุธที่ 16 ธันวาคม 2569', 'ใต้ช่องวันที่แสดงวันแบบไทย');
+
+  const group = (name) => view().getByRole('group', { name });
+  await group('ภาษา').getByRole('button', { name: 'ไทย + English' }).click();
+  await group('ช่องทาง').getByRole('button', { name: 'อีเมล' }).click();
+  await page.waitForTimeout(300);
+  const subj = await view().locator('[data-subject]').inputValue();
+  text = await out.inputValue();
+  ok(subj.startsWith('ขอเชิญร่วมการสัมมนา') && subj.includes(' / Invitation:'), 'อีเมลสองภาษามีหัวเรื่องไทย / อังกฤษ');
+  ok(text.startsWith('เรียน ') && text.includes('Wednesday, 16 December 2026') && text.indexOf('ขอบคุณ') < text.indexOf('Wednesday') && text.includes('งานประชาสัมพันธ์') && text.trim().endsWith('Faculty of Liberal Arts, Thammasat University') && !/\p{Extended_Pictographic}/u.test(text), 'อีเมล: ไทยก่อน อังกฤษตามหลัง มีคำลงท้ายและลายเซ็น ไม่มีอีโมจิ');
+  await group('ภาษา').getByRole('button', { name: 'ไทย', exact: true }).click();
+  await group('ช่องทาง').getByRole('button', { name: 'X' }).click();
+  await page.waitForTimeout(300);
+  const n = +(await view().locator('.pr-outcard .row .small').first().innerText()).replace(/[^\d].*$/, '').replace(/,/g, '');
+  ok(n > 50 && n <= 280, `ข้อความ X ไม่เกิน 280 ตัวอักษร (${n})`);
+  await group('ช่องทาง').getByRole('button', { name: 'ทุกช่องทาง' }).click();
+  await page.waitForTimeout(300);
+  ok((await view().locator('.pr-chcard').count()) === 8, 'โหมดทุกช่องทางแสดงครบ 8 ช่องทาง');
+  await view().locator('.pr-chcard[data-ch="facebook"]').getByRole('button', { name: /เปิดแก้ไข/ }).click();
+  await view().getByRole('button', { name: 'ใช้จริง' }).click();
+  await page.waitForTimeout(300);
+
+  // ลิงก์เสีย
+  await view().locator('[data-f="regLink"]').fill('https://forms.gle/broken-link');
+  await view().locator('[data-link] >> text=ไม่พบหน้านี้ (HTTP 404)').waitFor({ timeout: 5000 });
+  ok(true, 'ลิงก์เสียแสดง “ไม่พบหน้านี้ (HTTP 404)”');
+
+  // งานทั้งหมด: โพสต์ที่กด “ใช้จริง”
+  await view().getByRole('tab', { name: 'งานทั้งหมด' }).click();
+  const evCard = view().locator('.pr-event').filter({ hasText: 'ภาษา วัฒนธรรม และ AI' });
+  await evCard.getByRole('button', { name: /โพสต์ \(1\)/ }).click();
+  ok((await evCard.locator('.pr-post select').inputValue()) === 'approved', 'โพสต์ที่กด “ใช้จริง” อยู่ในงาน สถานะอนุมัติแล้ว');
+
+  // เทมเพลตของฉันใช้แทนต้นแบบ
+  await view().getByRole('tab', { name: 'เทมเพลต' }).click();
+  await view().getByRole('button', { name: 'คัดลอกไปแก้เป็นเทมเพลตของฉัน' }).click();
+  const tb = view().getByRole('textbox', { name: 'เนื้อหาเทมเพลต' });
+  await tb.fill('★ ทดสอบเทมเพลต ★\n' + (await tb.inputValue()));
+  await view().getByRole('button', { name: 'บันทึกเทมเพลต' }).click();
+  await page.waitForTimeout(300);
+  await view().getByRole('tab', { name: 'เขียนโพสต์' }).click();
+  await group('ช่องทาง').getByRole('button', { name: 'Facebook' }).click();
+  await page.waitForTimeout(300);
+  ok((await out.inputValue()).startsWith('★ ทดสอบเทมเพลต ★'), 'เทมเพลตของฉัน (ใช้แทนต้นแบบ) ถูกใช้ในหน้าเขียนโพสต์');
+
+  // QR จากลิงก์งาน
+  await open('#/pr-writer?s=qr&u=' + encodeURIComponent('https://forms.gle/LArtsSample2569'));
+  await page.waitForTimeout(500);
+  const [dl] = await Promise.all([page.waitForEvent('download'), view().getByRole('button', { name: 'ดาวน์โหลด PNG' }).click()]);
+  const qrPath = join(OUT, 'pr-qr.png');
+  await dl.saveAs(qrPath);
+  ok((await decodeQr(readFileSync(qrPath))) === 'https://forms.gle/LArtsSample2569', 'QR จากลิงก์งาน สแกนได้ถูกต้อง');
+
+  // ตั้งค่า: API key ไม่อยู่ในไฟล์สำรอง, ส่งออก → ล้าง → นำเข้า
+  await open('#/pr-writer?s=settings');
+  await view().getByLabel('Anthropic API key').fill('sk-ant-test-SECRET123');
+  await view().getByRole('button', { name: 'บันทึก', exact: true }).click();
+  const [bk] = await Promise.all([page.waitForEvent('download'), view().getByRole('button', { name: /ส่งออกข้อมูลทั้งหมด/ }).click()]);
+  const bkPath = join(OUT, 'pr-backup.json');
+  await bk.saveAs(bkPath);
+  const raw = readFileSync(bkPath, 'utf8');
+  const backup = JSON.parse(raw);
+  ok(backup.app === 'larts-pr-writer' && backup.data.events.length === 3 && backup.data.posts.length === 1 && backup.data.templates.length === 1, 'ส่งออกครบ (งาน 3 · โพสต์ 1 · เทมเพลต 1)');
+  ok(!raw.includes('SECRET123'), 'API key ไม่อยู่ในไฟล์สำรอง');
+  await view().getByRole('button', { name: 'ล้างข้อมูลทั้งหมดในเบราว์เซอร์นี้' }).click();
+  await page.locator('dialog.dialog').getByRole('button', { name: 'ล้างทั้งหมด' }).click();
+  await page.locator('dialog.dialog').getByRole('button', { name: 'ยืนยันล้างข้อมูล' }).click();
+  await view().getByText('งาน 0 · โพสต์ 0').waitFor();
+  const [fc] = await Promise.all([page.waitForEvent('filechooser'), view().getByRole('button', { name: /นำเข้าจากไฟล์/ }).click()]);
+  await fc.setFiles(bkPath);
+  await view().getByText('งาน 3 · โพสต์ 1 · เทมเพลตของฉัน 1').waitFor();
+  ok(true, 'ล้างข้อมูลแล้วนำเข้าไฟล์สำรองกลับมาครบ');
+  ok(await page.evaluate(() => localStorage.getItem('larts-pr:anthropic-key')) === 'sk-ant-test-SECRET123', 'API key ยังอยู่ในเบราว์เซอร์นี้ (ไม่ถูกล้างไปกับข้อมูล)');
+
+  // มือถือ: ไม่มีเลื่อนแนวนอน
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open('#/pr-writer?s=compose');
+  await page.waitForTimeout(500);
+  const sw = await page.evaluate(() => document.documentElement.scrollWidth);
+  ok(sw <= 391, `หน้าเขียนโพสต์บนมือถือไม่ล้นจอ (กว้าง ${sw}px)`);
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
+const sections = { images: testImages, docs: testDocs, announce: testAnnounce, pdf: testPdf, move: testMoveAndLayout, glossary: testGlossary, contacts: testContacts, qr: testQr, social: testSocial, ocr: testOcr, video: testVideo, imagefx: testImageFx, crop: testCrop, pr: testPrWriter };
 for (const [name, fn] of Object.entries(sections)) {
   if (only && only !== name) continue;
   try { await fn(); } catch (e) { failures++; console.log('  ✗ ' + name + ' ล้มเหลว: ' + e.message); await page.screenshot({ path: join(OUT, `fail-${name}.png`), fullPage: true }); }

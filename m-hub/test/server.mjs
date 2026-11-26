@@ -24,6 +24,14 @@ export function startServer(port = 0) {
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({ ok: true, image: j.image || GRAY_PNG }));
     }
+    if (url.pathname === '/api/linkcheck') {
+      // จำลองตัวตรวจลิงก์: มีคำว่า broken = 404, closed = ฟอร์มปิด, อื่น ๆ = 200
+      let body = '';
+      for await (const c of req) body += c;
+      const { urls = [] } = JSON.parse(body || '{}');
+      res.setHeader('content-type', 'application/json');
+      return res.end(JSON.stringify({ ok: true, results: urls.map((u) => (/broken/i.test(u) ? { url: u, status: 404 } : /closed/i.test(u) ? { url: u, status: 200, note: 'form-closed' } : { url: u, status: 200 })) }));
+    }
     if (url.pathname === '/api/translate') {
       let body = '';
       for await (const c of req) body += c;

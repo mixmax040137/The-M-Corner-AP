@@ -3,7 +3,7 @@
 // ไม่มีการเก็บไฟล์หรือข้อมูลของผู้ใช้บนเซิร์ฟเวอร์
 import ASSETS from './assets.gen.js';
 
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 // ไฟล์ใหญ่ที่ไม่ฝังในสคริปต์: Worker ไปดึงจาก jsDelivr ให้ (เฉพาะไฟล์ในรายการนี้เท่านั้น — ไม่ใช่ proxy เปิด)
 const JS = 'text/javascript; charset=utf-8';
 const CDN = {
@@ -153,6 +153,43 @@ async function imageAI(req, env, kind) {
   }
 }
 
+// ---------- ตรวจลิงก์ (สำหรับตัวตรวจก่อนโพสต์ของ L'Arts PR Writer) ----------
+// ตรวจจากฝั่งเซิร์ฟเวอร์จึงไม่ติด CORS · รับเฉพาะคำขอจากหน้าเว็บของ M Hub · ไม่ส่งเนื้อหาหน้าเว็บกลับ
+const MAX_LINKS = 10;
+const PRIVATE_HOST = /^(localhost|.*\.local|.*\.internal|.*\.localhost|0\.0\.0\.0|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|\[.*\])$/i;
+const UA = 'Mozilla/5.0 (compatible; MHubLinkCheck/1.0; +https://m-hub.mcorner-ap.workers.dev)';
+
+async function checkOne(raw) {
+  let u;
+  try { u = new URL(String(raw)); } catch { return { url: raw, invalid: true }; }
+  if (!/^https?:$/.test(u.protocol)) return { url: raw, invalid: true };
+  if ((u.port && u.port !== '80' && u.port !== '443') || PRIVATE_HOST.test(u.hostname)) return { url: raw, blocked: true };
+  const isForm = /(^|\.)forms\.gle$/i.test(u.hostname) || (/(^|\.)docs\.google\.com$/i.test(u.hostname) && u.pathname.includes('/forms/'));
+  const go = (method) => fetch(u.toString(), { method, redirect: 'follow', headers: { 'user-agent': UA, accept: 'text/html,*/*' }, signal: AbortSignal.timeout(8000) });
+  try {
+    let r = isForm ? null : await go('HEAD');
+    if (!r || [400, 403, 405, 406, 501].includes(r.status) || r.status >= 500) r = await go('GET');
+    let note;
+    if (isForm && r.ok && /text\/html/.test(r.headers.get('content-type') || '')) {
+      const html = (await r.text()).slice(0, 400000);
+      if (/closedform|no longer accepting responses|ไม่รับคำตอบแล้ว|ไม่รับการตอบกลับ/i.test(html)) note = 'form-closed';
+    } else if (r.body) {
+      try { await r.body.cancel(); } catch { /* ignore */ }
+    }
+    return { url: raw, status: r.status, finalUrl: r.url && r.url !== u.toString() ? r.url : undefined, note };
+  } catch (e) {
+    return { url: raw, error: e && e.name === 'TimeoutError' ? 'timeout' : 'network' };
+  }
+}
+
+async function linkCheck(req) {
+  let body;
+  try { body = await req.json(); } catch { return json({ error: 'ข้อมูลไม่ถูกต้อง' }, 400); }
+  const urls = [...new Set((Array.isArray(body.urls) ? body.urls : []).map((x) => String(x).trim()).filter(Boolean))].slice(0, MAX_LINKS);
+  if (!urls.length) return json({ error: 'ไม่มีลิงก์' }, 400);
+  return json({ ok: true, results: await Promise.all(urls.map(checkOne)) });
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -166,6 +203,11 @@ export default {
       if (req.method !== 'POST') return json({ error: 'ใช้ POST' }, 405);
       if (!sameOrigin(req, url)) return json({ error: 'ไม่อนุญาต' }, 403);
       return imageAI(req, env, url.pathname.endsWith('generate') ? 'generate' : 'edit');
+    }
+    if (url.pathname === '/api/linkcheck') {
+      if (req.method !== 'POST') return json({ error: 'ใช้ POST' }, 405);
+      if (!sameOrigin(req, url)) return json({ error: 'ไม่อนุญาต' }, 403);
+      return linkCheck(req);
     }
     if (url.pathname.startsWith('/api/')) return json({ error: 'ไม่พบ' }, 404);
     if (url.pathname.startsWith('/cdn/') && cdnEntry(url.pathname)) return serveCdn(url.pathname);

@@ -223,6 +223,9 @@ function revokeAllSessions_(username, keepTokens) {
     if (keep.some(function (t) { return safeEqual_(rows[i].token, t); })) continue;
     deleteRow_(SHEETS.SESSIONS, rows[i]._row, rows[i]); n++;
   }
+  // อีกระบบ (Cloudflare ⇄ Apps Script) มีการเข้าใช้งานแยกของตัวเอง ต้องให้ออกจากระบบที่นั่นด้วย
+  // เครื่องที่ยกเว้นไว้ (keepTokens) อยู่ฝั่งนี้เท่านั้น ฝั่งโน้นออกทั้งหมด
+  syncNoteRevoke_(username, false);
   return n;
 }
 
@@ -378,6 +381,7 @@ function forgetAllDevices_(username) {
     }
   }
   logActivity_('ยกเลิกอุปกรณ์ทั้งหมด', username, n + ' เครื่อง');
+  syncNoteRevoke_(username, true);   // ยกเลิก PIN ในอีกระบบด้วย
   return n;
 }
 

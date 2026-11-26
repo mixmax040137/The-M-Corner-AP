@@ -71,6 +71,7 @@ body{
 }
 img{max-width:100%}
 code{overflow-wrap:anywhere}   /* ลิงก์ยาว ๆ ตัดขึ้นบรรทัดใหม่ได้ ไม่ดันจอให้เลื่อนข้าง */
+.t td > .cv{display:contents}   /* ตัวห่อค่าในช่องตาราง — จอกว้างทำเหมือนไม่มี (ดู labelCells) */
 [hidden]{display:none!important}
 :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:5px}
 @media (prefers-reduced-motion:reduce){
@@ -741,13 +742,11 @@ button.sync-pill:active{transform:translateY(1px)}
     display:grid;grid-template-columns:36% minmax(0,1fr);column-gap:10px;align-items:baseline;
     padding:3px 0;border:0;text-align:left!important;white-space:normal;
   }
-  .t tbody td > *{grid-column:2;min-width:0}
-  .t tbody td > .b,.t tbody td > .btn{justify-self:start}   /* ป้ายสถานะ/ปุ่ม กว้างเท่าข้อความ ไม่ยืดเต็มช่อง */
   .t tbody td:not([data-label]){grid-template-columns:minmax(0,1fr)}
-  .t tbody td:not([data-label]) > *{grid-column:auto}
+  .t tbody td > .cv{display:block;min-width:0}   /* ค่าทั้งช่อง (labelCells ห่อไว้) เรียงตามปกติในคอลัมน์ขวา */
   .t tbody td:empty,.t tbody td.cell-empty{display:none}
   .t tbody td[data-label]::before{
-    content:attr(data-label);grid-column:1;grid-row:1 / span 9;min-width:0;
+    content:attr(data-label);grid-column:1;min-width:0;
     color:var(--muted);font-size:11.5px;font-weight:500;
   }
   .t tbody td.num{justify-content:flex-start}

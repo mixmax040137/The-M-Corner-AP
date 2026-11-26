@@ -55,6 +55,7 @@ gas.UrlFetchApp = {
     if (net.cfDown || !cf) throw new Error('Address unavailable: ' + url);
     const body = JSON.parse(opts.payload);
     const res = cf.handleSyncApply(body);
+    if (net.cfReplyLost) throw new Error('Timeout: ' + url);   // Cloudflare ทำแล้ว แต่คำตอบหายระหว่างทาง
     return { getResponseCode: () => 200, getContentText: () => JSON.stringify(res) };
   }
 };
@@ -65,8 +66,13 @@ global.fetch = async (url, init) => {
   if (String(url) === GAS_URL) {
     net.gasCalls++;
     if (net.gasDown) throw new TypeError('fetch failed');
+    const req = JSON.parse(init.body);
+    if (net.exportFail && req.op === 'export') return new Response(JSON.stringify({ ok: false, error: 'หมดเวลา' }), { status: 200 });
     const out = gas.doPost({ postData: { contents: init.body } });
-    return new Response(out.text, { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (net.gasReplyLost && req.op === 'apply') throw new DOMException('The operation timed out.', 'TimeoutError');
+    let text = out.text;
+    if (net.exportCorrupt && req.op === 'export') { const j = JSON.parse(text); j.sheets.Purchases.push(null); text = JSON.stringify(j); }
+    return new Response(text, { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
   return realFetch(url, init);
 };
@@ -366,6 +372,126 @@ function makeCtx(db) {
   r = await req('/setup/verify', { adminKey });
   check('ผิด 8 ครั้ง พักก่อน แม้กุญแจถูก', r.status, 429);
   cf.store.delProp('__setup_guard');
+
+  /* ================================================================ */
+  section('13b. กรณีพิเศษของการซิงก์ (จากรอบตรวจโค้ด)');
+  const gstore = gas.module.exports.store;
+  const logCount = (rows, text) => rows.filter(l => JSON.stringify(l).indexOf(text) >= 0).length;
+
+  // ให้ออกจากระบบทุกเครื่อง: ต้องมีผลทั้งสองระบบ
+  const gv = gapi('auth.login', { username: 'viewer', password: 'Viewer#2026pass' }).data.session;
+  const cv = (await capi('auth.login', { username: 'viewer', password: 'Viewer#2026pass' })).data.session;
+  // (ตัวจำลอง Apps Script ถือว่าผู้เรียกเป็นเจ้าของชีตเสมอ จึงดูว่ายังเป็นบัญชี viewer อยู่ไหม แทนการดูว่าล็อกอินอยู่)
+  check('ก่อน: คนดูล็อกอินอยู่ทั้งสองระบบ', [gapi('auth.me', { _session: gv }).data.username, (await capi('auth.me', { _session: cv })).data.username], ['viewer', 'viewer']);
+  const so = await capi('user.signOutAll', { _session: ses, username: 'viewer' });
+  check('สั่งออกทุกเครื่องบน Cloudflare สำเร็จ', so.ok, true);
+  check('สั่งออกทุกเครื่องบน Cloudflare → Apps Script ก็ออกด้วย', [gapi('auth.me', { _session: gv }).data.username, (await capi('auth.me', { _session: cv })).data.signedIn], ['', false]);
+  const gv2 = gapi('auth.login', { username: 'viewer', password: 'Viewer#2026pass' }).data.session;
+  const cv2 = (await capi('auth.login', { username: 'viewer', password: 'Viewer#2026pass' })).data.session;
+  gapi('user.signOutAll', { _session: gses, username: 'viewer' });
+  check('สั่งออกทุกเครื่องบน Apps Script → Cloudflare ก็ออกด้วย', (await capi('auth.me', { _session: cv2 })).data.signedIn, false);
+  check('และฝั่ง Apps Script เองออกแล้ว', gapi('auth.me', { _session: gv2 }).data.username, '');
+  check('รหัสการเข้าใช้งานไม่ข้ามระบบ', gasRows(S.SESSIONS).some(x => x.token === cv2) || cfRows(S.SESSIONS).some(x => x.token === gv2), false);
+
+  // คำตอบหายระหว่างทาง → ส่งซ้ำ → อีกฝั่งต้องไม่ทำซ้ำ
+  net.cfReplyLost = true;
+  gapi('finance.save', { _session: gses, record: { date: '2026-11-02', kind: 'ค่าอินเทอร์เน็ต', amount: 599, note: 'ส่งซ้ำ-GAS' } });
+  net.cfReplyLost = false;
+  check('Apps Script คิดว่าส่งไม่สำเร็จ เก็บเข้าคิว', clone(G('syncStatus_()')).pending > 0, true);
+  G('syncRetry()');
+  check('Cloudflare ได้รายการครั้งเดียว ไม่ซ้ำ', cfRows(S.FINANCE).filter(x => x.note === 'ส่งซ้ำ-GAS').length, 1);
+  check('ประวัติการแก้ไขบน Cloudflare ไม่งอกซ้ำ', logCount(cfRows(S.LOG), 'ส่งซ้ำ-GAS') <= 1 && logCount(cfRows(S.LOG), 'ค่าอินเทอร์เน็ต') === logCount(gasRows(S.LOG), 'ค่าอินเทอร์เน็ต'), true);
+
+  net.gasReplyLost = true;
+  const dup = await capi('building.save', { _session: ses, record: { zone: 'ดาดฟ้า', title: 'ส่งซ้ำ-CF', reportDate: '2026-11-20', cost: 100 } });
+  check('บันทึกบน Cloudflare (คำตอบจาก Apps Script หาย)', dup.ok, true);
+  check('Cloudflare ยังถือว่าค้างส่ง', cf.store.outboxCount() > 0, true);
+  net.gasReplyLost = false;
+  await cf.alarm(); await settle();
+  check('ส่งซ้ำแล้วคิวว่าง', cf.store.outboxCount(), 0);
+  check('Apps Script ได้ครั้งเดียว ประวัติไม่ซ้ำ', [gasRows(S.BUILDING_REPAIRS).filter(x => x.title === 'ส่งซ้ำ-CF').length,
+    logCount(gasRows(S.LOG), 'ส่งซ้ำ-CF') === logCount(cfRows(S.LOG), 'ส่งซ้ำ-CF')], [1, true]);
+
+  // การแก้บน Cloudflare ที่ยังค้างส่ง ต้องไม่ถูกทับด้วยชีตทั้งแผ่นจาก Apps Script
+  net.gasDown = true;
+  const pend = cfRows(S.PURCHASES)[0];
+  await capi('purchase.save', { _session: ses, record: Object.assign({}, pend, { note: 'แก้บน CF ยังไม่ส่ง' }) });
+  await new Promise(res => setTimeout(res, 5));
+  const psh = gas.SpreadsheetApp.getActiveSpreadsheet().getSheetByName(S.PURCHASES);
+  G('syncOnEdit')({ range: { getSheet: () => psh } });   // เจ้าของพิมพ์ในชีต → ส่งทั้งแผ่นมา (เวลาใหม่กว่า)
+  check('การแก้ที่ค้างส่งบน Cloudflare ไม่ถูกทับ', cfRows(S.PURCHASES).find(x => x.id === pend.id).note, 'แก้บน CF ยังไม่ส่ง');
+  net.gasDown = false;
+  await cf.alarm(); await settle();
+  check('ส่งแล้วสองฝั่งตรงกัน', gasRows(S.PURCHASES).find(x => x.id === pend.id).note, 'แก้บน CF ยังไม่ส่ง');
+
+  // op เดียวที่พัง ต้องไม่ขวางทั้งชุด
+  const secret = G("props_().getProperty('SYNC_SECRET')");
+  const good = { s: S.SETTINGS, k: 'building_name', r: Object.assign({}, cfRows(S.SETTINGS).find(x => x.key === 'building_name'), { value: 'หลัง op พัง' }), t: Date.now() };
+  r = cf.handleSyncApply({ secret, ops: [{ s: S.PURCHASES, all: [null], t: Date.now() }, good] });
+  check('ชุดที่มี op พังยังรับได้ (ข้ามเฉพาะตัวที่พัง)', [r.ok, cfRows(S.SETTINGS).find(x => x.key === 'building_name').value], [true, 'หลัง op พัง']);
+  check('จดสาเหตุไว้ให้เห็นในหน้าสถานะ', /ข้าม 1 รายการ/.test(cf.store.getProp('SYNC_LAST_ERROR') || ''), true);
+  check('ข้อมูลรายการซื้อไม่เสีย', cfRows(S.PURCHASES).length > 90, true);
+  await capi('settings.save', { _session: ses, values: { building_name: 'The M Corner AP' } });
+
+  // โค้ดคนละรุ่น
+  check('Cloudflare ปฏิเสธชุดที่รุ่นข้อมูลไม่ตรง', cf.handleSyncApply({ secret, schemaVersion: 999, ops: [] }).ok, false);
+  check('Apps Script ปฏิเสธชุดที่รุ่นข้อมูลไม่ตรง', clone(gas.syncHandle_({ op: 'apply', secret, schemaVersion: 999, ops: [] })).ok, false);
+  check('ชุดที่ไม่แนบรุ่น (โค้ดรุ่นแรก) ยังรับได้', cf.handleSyncApply({ secret, ops: [] }).ok, true);
+
+  // คิวยาวด้วยภาษาไทย (ไบต์เกินที่ Script Properties รับ) ต้องไม่ทำให้การเปลี่ยนแปลงหาย
+  const realGetProps = gas.PropertiesService.getScriptProperties;
+  gas.PropertiesService = { getScriptProperties: () => {
+    const p = realGetProps();
+    return { getProperty: p.getProperty, deleteProperty: p.deleteProperty,
+      setProperty: (k, v) => { if (Buffer.byteLength(String(v)) > 9216) throw new Error('Argument too large: value'); p.setProperty(k, v); } };
+  } };
+  net.cfDown = true;
+  const thai = 'หมายเหตุภาษาไทยยาว ๆ สำหรับทดสอบคิว '.repeat(25);
+  const ids = [];
+  for (let i = 0; i < 4; i++) {
+    const x = gapi('repair.save', { _session: gses, record: { room: '201', reportDate: '2026-11-1' + i, items: 'คิวไทย ' + i, note: thai } });
+    check('บันทึกบน Apps Script ระหว่าง Cloudflare ล่ม (' + (i + 1) + ')', x.ok, true);
+    if (x.ok) ids.push(x.data.id);
+  }
+  check('ยังมีของรอส่ง (เป็นคิวหรือทั้งชีต)', clone(G('syncStatus_()')).pending > 0, true);
+  net.cfDown = false;
+  G('syncRetry()');
+  check('Cloudflare ได้ครบทุกรายการ ไม่มีหาย', ids.every(id => cfRows(S.ROOM_REPAIRS).some(x => x.id === id)), true);
+  gas.PropertiesService = { getScriptProperties: realGetProps };
+
+  // ส่งจาก Apps Script ใช้ล็อกเสมอ
+  const taken0 = gstore.locks.taken;
+  G("syncDeliver_([])");
+  check('ส่งข้อมูลจาก Apps Script ทำใต้ล็อก และคืนล็อกเสมอ', [gstore.locks.taken > taken0, gstore.locks.held], [true, 0]);
+
+  // ระหว่างย้ายข้อมูลใหม่ ไม่รับการเขียน
+  cf.pairing = true;
+  check('ระหว่างย้ายข้อมูล /api ไม่รับ', (await post('/api', { action: 'purchase.delete', payload: { _session: ses, id: pend.id } })).ok, false);
+  check('ระหว่างย้ายข้อมูล /sync/apply ไม่รับ', (await post('/sync/apply', { secret, ops: [] })).ok, false);
+  cf.pairing = false;
+
+  // ดึงข้อมูลใหม่แต่ขั้น export พลาด → การซิงก์ต้องเดินต่อได้ (ไม่ใช่รหัสลับคนละตัว)
+  net.exportFail = true;
+  r = await post('/setup/pair', { gasUrl: GAS_URL, adminKey });
+  net.exportFail = false;
+  check('export พลาด แจ้งว่าข้อมูลเดิมยังอยู่', [r.ok, /ซิงก์ต่อ/.test(r.error || '')], [false, true]);
+  const afterFail = gapi('finance.save', { _session: gses, record: { date: '2026-11-03', kind: 'ค่าเก็บขยะ', amount: 40, note: 'หลัง export พลาด' } });
+  check('Apps Script → Cloudflare ยังซิงก์', cfRows(S.FINANCE).some(x => x.id === afterFail.data.id), true);
+  const cfAfter = await capi('finance.save', { _session: ses, record: { date: '2026-11-04', kind: 'ค่าเก็บขยะ', amount: 41, note: 'CF หลัง export พลาด' } });
+  check('Cloudflare → Apps Script ยังซิงก์', gasRows(S.FINANCE).some(x => x.id === cfAfter.data.id), true);
+
+  // นำเข้าไม่ครบ → ไม่เปิดใช้บนข้อมูลครึ่ง ๆ กลาง ๆ แล้วจับคู่ใหม่ได้
+  net.exportCorrupt = true;
+  r = await post('/setup/pair', { gasUrl: GAS_URL, adminKey });
+  net.exportCorrupt = false;
+  check('ข้อมูลที่ดึงมาเสีย → ไม่สำเร็จ', r.ok, false);
+  check('และไม่ถือว่าเชื่อมแล้ว (ไม่เปิดระบบบนข้อมูลครึ่งเดียว)', (await post('/setup/status', {})).paired, false);
+  r = await post('/setup/pair', { gasUrl: GAS_URL, adminKey });
+  check('จับคู่ใหม่ได้', r.ok, true);
+  v = await post('/setup/verify', { adminKey });
+  check('หลังจับคู่ใหม่ ข้อมูลตรงกันทั้งหมด', [v.allSame, v.sheets.filter(x => !x.same).map(x => x.name)], [true, []]);
+  const ses2 = (await capi('auth.login', { username: 'owner', password: 'Owner#2026pass' })).data.session;
+  check('ล็อกอินใหม่ได้หลังจับคู่ใหม่', !!ses2, true);
 
   /* ================================================================ */
   section('14. เวลาไทยบน Cloudflare (เครื่องเป็น UTC) ตรงกับ Apps Script');

@@ -81,6 +81,7 @@ body{
 }
 img{max-width:100%}
 code{overflow-wrap:anywhere}   /* ลิงก์ยาว ๆ ตัดขึ้นบรรทัดใหม่ได้ ไม่ดันจอให้เลื่อนข้าง */
+.t td > .cv{display:contents}   /* ตัวห่อค่าในช่องตาราง — จอกว้างทำเหมือนไม่มี (ดู labelCells) */
 [hidden]{display:none!important}
 :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:5px}
 @media (prefers-reduced-motion:reduce){
@@ -751,13 +752,11 @@ button.sync-pill:active{transform:translateY(1px)}
     display:grid;grid-template-columns:36% minmax(0,1fr);column-gap:10px;align-items:baseline;
     padding:3px 0;border:0;text-align:left!important;white-space:normal;
   }
-  .t tbody td > *{grid-column:2;min-width:0}
-  .t tbody td > .b,.t tbody td > .btn{justify-self:start}   /* ป้ายสถานะ/ปุ่ม กว้างเท่าข้อความ ไม่ยืดเต็มช่อง */
   .t tbody td:not([data-label]){grid-template-columns:minmax(0,1fr)}
-  .t tbody td:not([data-label]) > *{grid-column:auto}
+  .t tbody td > .cv{display:block;min-width:0}   /* ค่าทั้งช่อง (labelCells ห่อไว้) เรียงตามปกติในคอลัมน์ขวา */
   .t tbody td:empty,.t tbody td.cell-empty{display:none}
   .t tbody td[data-label]::before{
-    content:attr(data-label);grid-column:1;grid-row:1 / span 9;min-width:0;
+    content:attr(data-label);grid-column:1;min-width:0;
     color:var(--muted);font-size:11.5px;font-weight:500;
   }
   .t tbody td.num{justify-content:flex-start}
@@ -1063,8 +1062,13 @@ function serverCall(action, payload, ok, fail){
     body: JSON.stringify({ action: action, payload: payload }),
     credentials: 'same-origin'
   }).then(function(r){
-    if (!r.ok && r.status !== 200) throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ (HTTP ' + r.status + ')');
-    return r.json();
+    // ตอบกลับเป็นข้อผิดพลาด (4xx/5xx) แต่มีข้อความบอกสาเหตุ — ส่งต่อให้แสดงข้อความจริง ไม่ใช่ขึ้นว่าออฟไลน์
+    return r.json().then(function(body){
+      if (body && typeof body === 'object' && 'ok' in body) return body;
+      throw new Error('เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ (HTTP ' + r.status + ')');
+    }, function(){
+      throw new Error(r.ok ? 'เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ' : 'เซิร์ฟเวอร์ขัดข้อง (HTTP ' + r.status + ')');
+    });
   }).then(ok, function(e){ fail(e && e.message ? e : new Error('network: ' + e)); });
 }
 
@@ -1855,7 +1859,19 @@ function labelCells(root){
       if (tr.querySelector('[colspan]')) { tr.classList.add('row-wide'); return; }
       Array.prototype.forEach.call(tr.children, function(td, i){
         var label = heads[i] || '';
-        if (label) td.setAttribute('data-label', label);
+        if (label) {
+          td.setAttribute('data-label', label);
+          // ห่อค่าทั้งช่องไว้ก้อนเดียว — บนจอแคบช่องเป็น 2 คอลัมน์ (ชื่อช่อง | ค่า)
+          // ถ้าไม่ห่อ ป้ายสถานะ 2 อัน รูปสลิปหลายรูป หรือ "ข้อความ + ตัวเลข" จะแตกเป็นบรรทัดละชิ้น
+          // บนจอกว้าง .cv เป็น display:contents จึงเหมือนไม่มีตัวห่อ
+          var only = td.children.length === 1 && td.childNodes.length === 1 ? td.firstElementChild : null;
+          if (td.childNodes.length && !(only && only.classList.contains('cv'))) {
+            var cv = document.createElement('div');
+            cv.className = 'cv';
+            while (td.firstChild) cv.appendChild(td.firstChild);
+            td.appendChild(cv);
+          }
+        }
         else td.classList.add('cell-actions');   // คอลัมน์ปุ่ม ไม่มีหัวตาราง ไม่ต้องติดป้าย
 
         // ช่องที่ไม่มีค่า (ว่างหรือขีด) บนจอแคบไม่ต้องโชว์เป็นบรรทัด

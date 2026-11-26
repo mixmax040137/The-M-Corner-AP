@@ -22,7 +22,7 @@ import { createApp } from './dist/app.mjs';
 import { ASSETS } from './dist/assets.mjs';
 
 const ECHO_WINDOW_MS = 10 * 60 * 1000;   // แก้ฝั่งนี้ไปไม่ถึง 10 นาที แล้วอีกฝั่งส่งแถวเดียวกันมา → ส่งผลสุดท้ายกลับไปยืนยัน
-const BATCH_OPS = 300;                    // op ต่อการส่งหนึ่งครั้ง (Apps Script เขียนชีตช้า อย่าส่งก้อนใหญ่เกิน)
+const BATCH_OPS = 100;                    // op ต่อการส่งหนึ่งครั้ง (Apps Script เขียนชีตช้า ก้อนใหญ่จะเกินเวลารอ)
 const OUTBOX_ROW_MAX = 1500000;           // SQLite ของ Durable Object เก็บได้ 2 MB ต่อช่อง
 const MAX_BODY = 60 * 1024 * 1024;
 
@@ -155,7 +155,9 @@ export class Store {
           else if (op.all && keyOf) { const key = keyOf(op.s); op.all.forEach(r => this.setMeta(op.s, r[key], op.t, 'cf', false)); }
         }
         for (const chunk of splitOps(ops, keyOf)) {
-          this.sql.exec('INSERT INTO outbox (ops, n, at) VALUES (?, ?, ?)', JSON.stringify(chunk), chunk.length, Date.now());
+          // at = เวลาของ op ที่เก่าสุดในก้อน — ใช้รู้ว่าแถวไหนแก้แล้วแต่ยังส่งไม่ถึงอีกฝั่ง (ดู undeliveredSince)
+          const at = chunk.reduce((m, o) => Math.min(m, Number(o.t) || m), Date.now());
+          this.sql.exec('INSERT INTO outbox (ops, n, at) VALUES (?, ?, ?)', JSON.stringify(chunk), chunk.length, at);
         }
         wrote++;
       }
@@ -169,6 +171,11 @@ export class Store {
   }
 
   outboxCount() { return (this.rows('SELECT COUNT(*) AS n FROM outbox')[0] || { n: 0 }).n; }
+  /** เวลาของการแก้ที่เก่าสุดที่ยังส่งไม่ถึงอีกฝั่ง (Infinity = ส่งครบแล้ว) */
+  undeliveredSince() {
+    const r = this.rows('SELECT MIN(at) AS m FROM outbox')[0];
+    return r && r.m != null ? Number(r.m) : Infinity;
+  }
 
   /** ล้างข้อมูลทั้งหมด (ก่อนย้ายข้อมูลจาก Apps Script มาตั้งต้นใหม่) — ค่าตั้งของการเชื่อมต่อยังอยู่ */
   wipeData() {
@@ -263,7 +270,7 @@ export class MCornerAP {
       throw e;
     }
     if (hadPending && this.paired()) {
-      this.ensureAlarm(20000);
+      this.later(this.ensureAlarm(20000));
       this.later(this.deliver());
     }
   }
@@ -296,9 +303,10 @@ export class MCornerAP {
           let ops = [], last = 0, size = 0;
           for (const r of rows) {
             if (ops.length && (ops.length + r.n > BATCH_OPS || size + r.ops.length > 8 * OUTBOX_ROW_MAX)) break;
-            ops = ops.concat(JSON.parse(r.ops)); last = r.id; size += r.ops.length;
+            // _o = เลขแถวในคิว — Apps Script จำเลขที่ทำแล้ว ส่งซ้ำ (คำตอบหาย/เกินเวลา) ก็ไม่ทำซ้ำ
+            ops = ops.concat(JSON.parse(r.ops).map(o => Object.assign({ _o: r.id }, o))); last = r.id; size += r.ops.length;
           }
-          const res = await this.callGas({ op: 'apply', ops });
+          const res = await this.callGas({ op: 'apply', schemaVersion: this.app.schemaVersion, ops });
           if (!res.ok) {
             this.store.setProp('SYNC_LAST_ERROR', stamp() + ' · ' + res.error);
             this.store.setProp('__fail_count', String(Number(this.store.getProp('__fail_count') || 0) + 1));
@@ -347,6 +355,10 @@ export class MCornerAP {
   applyFromPeer(ops) {
     const store = this.store, app = this.app, now = Date.now();
     const sendBack = new Map();   // "ชีต\tรหัส" → ต้องส่งสภาพล่าสุดของฝั่งนี้กลับไป
+    // แถวที่ฝั่งนี้แก้แล้วแต่ยังค้างในคิว ถือว่า "ใหม่กว่า" ข้อมูลทั้งชีตที่อีกฝั่งส่งมาเสมอ
+    // (เวลาของชุดทั้งชีตคือเวลาที่อ่านชีต ซึ่งอาจหลังการแก้ของเรา แต่ชีตนั้นยังไม่มีการแก้ของเรา)
+    const since = store.undeliveredSince();
+    const ours = (m, t) => m.t > t || (m.src === 'cf' && m.t >= since);
     const accepted = [];
     const key = (s, k) => s + '\t' + k;
     const opts = {
@@ -363,16 +375,28 @@ export class MCornerAP {
       },
       keepNewer: (name, k, t) => {
         const m = store.meta(name, k);
-        if (m && !m.del && m.t > t) { sendBack.set(key(name, k), { s: name, k }); return true; }
+        if (m && !m.del && ours(m, t)) { sendBack.set(key(name, k), { s: name, k }); return true; }
         return false;
       },
       dropIncoming: (name, k, t) => {
         const m = store.meta(name, k);
-        if (m && m.del && m.t > t) { sendBack.set(key(name, k), { s: name, k }); return true; }
+        if (m && m.del && ours(m, t)) { sendBack.set(key(name, k), { s: name, k }); return true; }
         return false;
-      }
+      },
+      failed: []
     };
-    const n = app.applyOps(ops, opts);
+    let n = 0;
+    try {
+      n = app.applyOps(ops, opts);
+    } catch (e) {
+      // applyOps ข้าม op ที่พังทีละตัวอยู่แล้ว มาถึงตรงนี้คือพังทั้งก้อน — บันทึกเท่าที่ทำไปแล้วก่อนโยนต่อ
+      this.commit();
+      throw e;
+    }
+    if (opts.failed.length) {
+      store.setProp('SYNC_LAST_ERROR', stamp() + ' · ข้าม ' + opts.failed.length + ' รายการที่รับจาก Apps Script: ' +
+        opts.failed.slice(0, 3).map(f => f.s + '/' + (f.k || '') + ' ' + f.error).join(' | ').slice(0, 300));
+    }
     for (const op of accepted) store.metaQueue.push({ s: op.s, k: op.k, t: op.t, src: 'gas', del: !op.r });
     if (sendBack.size) {
       const back = [];
@@ -426,6 +450,11 @@ export class MCornerAP {
       if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
       const body = await readJson(request);
       if (body.adminKey !== undefined) body.adminKey = keyFrom(body.adminKey);
+      if (this.pairing && (path === '/api' || path === '/sync/apply')) {
+        // กำลังย้ายข้อมูลตั้งต้นใหม่ — ของที่เขียนตอนนี้จะถูกล้างทิ้งพร้อมข้อมูลเก่า จึงไม่รับไว้ก่อน
+        // (Apps Script จะเก็บเข้าคิวแล้วส่งใหม่เอง หน้าเว็บขึ้นข้อความให้รอแล้วกดใหม่)
+        return json({ ok: false, error: 'ระบบกำลังย้ายข้อมูลจาก Apps Script — รอสักครู่แล้วลองอีกครั้ง' });
+      }
       if (path === '/api') return json(await this.handleApi(body));
       if (path === '/sync/apply') return json(this.handleSyncApply(body));
       if (path === '/setup/status') return json(await this.setupStatus(body));
@@ -476,9 +505,23 @@ export class MCornerAP {
 
   handleSyncApply(body) {
     const secret = this.store.getProp('SYNC_SECRET');
-    if (!secret || !safeEqual(body.secret, secret)) return { ok: false, error: 'รหัสเชื่อมต่อไม่ถูกต้อง' };
-    const ops = Array.isArray(body.ops) ? body.ops : [];
+    if (!secret || !safeEqual(body.secret, secret) || !this.paired()) return { ok: false, error: 'รหัสเชื่อมต่อไม่ถูกต้อง' };
+    const sv = body.schemaVersion;
+    if (sv !== undefined && sv !== null && sv !== '' && Number(sv) !== Number(this.app.schemaVersion)) {
+      return { ok: false, error: 'โค้ดสองฝั่งเป็นคนละรุ่น (รุ่นข้อมูล Cloudflare ' + this.app.schemaVersion + ' / Apps Script ' + sv +
+        ') — อัปเดตโค้ดให้ตรงกันก่อน ระหว่างนี้ข้อมูลรอในคิว ไม่หาย' };
+    }
+    // ส่งซ้ำ (คำตอบรอบก่อนหายระหว่างทาง) — op ที่ทำไปแล้วข้าม ประวัติการแก้ไขจะได้ไม่งอก
+    const done = Number(this.store.getProp('__gas_done') || 0);
+    let top = done;
+    const ops = (Array.isArray(body.ops) ? body.ops : []).filter(op => {
+      const g = op && Number(op._g);
+      if (!g) return true;
+      if (g > top) top = g;
+      return g > done;
+    });
     const n = this.applyFromPeer(ops);
+    if (top > done) this.store.setProp('__gas_done', String(top));
     return { ok: true, applied: n };
   }
 
@@ -534,8 +577,10 @@ export class MCornerAP {
       return { ok: false, error: 'ที่อยู่ Apps Script ไม่ถูกต้อง — ต้องเป็นลิงก์ https://script.google.com/macros/s/…/exec' };
     }
     if (!adminKey) return { ok: false, error: 'กรุณาใส่กุญแจกู้ระบบ' };
+    if (this.pairing) return { ok: false, error: 'กำลังย้ายข้อมูลอยู่ รอสักครู่' };
     this.guard();
-    if (this.paired()) {
+    const wasPaired = this.paired();
+    if (wasPaired) {
       // จับคู่ใหม่ = ดึงข้อมูลจาก Apps Script มาทับ — ต้องส่งของที่ค้างให้ถึงก่อน ไม่งั้นการแก้ล่าสุดหาย
       this.checkAdmin(body);
       await this.deliver();
@@ -552,26 +597,44 @@ export class MCornerAP {
         return { ok: false, error: p.error };
       }
       this.guard(true);
+      // Apps Script เปลี่ยนรหัสลับไปแล้ว — จดตามทันที ถ้าขั้นต่อไปพลาด อย่างน้อยการซิงก์ของเดิมยังเดินต่อได้
+      // (ถ้าไม่จด สองฝั่งจะถือรหัสคนละตัว แล้วปฏิเสธกันเงียบ ๆ ทั้งสองทาง)
+      if (wasPaired && this.store.getProp('GAS_URL') === gasUrl) this.store.setProp('SYNC_SECRET', p.secret);
+      const keep = wasPaired ? ' — ข้อมูลเดิมบน Cloudflare ยังอยู่และซิงก์ต่อตามปกติ ลองกดใหม่ได้' : '';
       const exp = await this.callGas({ op: 'export', secret: p.secret }, gasUrl);
-      if (!exp.ok) return { ok: false, error: 'ดึงข้อมูลจาก Apps Script ไม่สำเร็จ: ' + exp.error };
+      if (!exp.ok) return { ok: false, error: 'ดึงข้อมูลจาก Apps Script ไม่สำเร็จ: ' + exp.error + keep };
       if (Number(exp.schemaVersion) !== Number(this.app.schemaVersion)) {
         return { ok: false, error: 'โค้ดสองฝั่งเป็นคนละรุ่น (Apps Script รุ่น ' + exp.version + ' / Cloudflare รุ่น ' +
-          this.app.version + ') — อัปเดตโค้ดใน Apps Script ให้เป็นรุ่นล่าสุดแล้ว Deploy ใหม่ก่อน' };
+          this.app.version + ') — อัปเดตโค้ดใน Apps Script ให้เป็นรุ่นล่าสุดแล้ว Deploy ใหม่ก่อน' + keep };
       }
+      // ตั้งแต่ตรงนี้ไม่มีการรอ (await) — คำขออื่นแทรกกลางไม่ได้ ล้าง-นำเข้า-บันทึก จบในรวดเดียว
       const t = Date.now();
       this.store.wipeData();
+      this.store.delProp('SYNC_SECRET');
+      this.store.delProp('GAS_URL');        // ยังไม่ถือว่าเชื่อมแล้ว จนกว่าจะนำเข้าครบ
       this.boot();
-      this.store.setProp('SYNC_SECRET', p.secret);
-      this.store.setProp('GAS_URL', gasUrl);
-      this.store.setProp('GAS_SHEET_URL', p.sheetUrl || '');
-      this.store.setProp('SCHEMA_VERSION', String(exp.schemaVersion));
-      this.store.setProp('__setup_paired_at', stamp());
-      this.store.delProp('SYNC_LAST_ERROR');
-      const ops = Object.keys(exp.sheets || {}).map(name => ({ s: name, all: exp.sheets[name], t }));
-      this.app.applyOps(ops);
-      this.app.ensureAll();
-      this.app.log('ย้ายข้อมูลจาก Apps Script มา Cloudflare', gasUrl, '');
-      this.commit();
+      try {
+        this.store.setProp('SCHEMA_VERSION', String(exp.schemaVersion));
+        const ops = Object.keys(exp.sheets || {}).map(name => ({ s: name, all: exp.sheets[name], t }));
+        this.app.applyOps(ops, { strict: true });
+        this.app.ensureAll();
+        this.store.setProp('SYNC_SECRET', p.secret);
+        this.store.setProp('GAS_URL', gasUrl);
+        this.store.setProp('GAS_SHEET_URL', p.sheetUrl || '');
+        this.store.setProp('__setup_paired_at', stamp());
+        this.store.delProp('SYNC_LAST_ERROR');
+        this.store.delProp('__gas_done');   // Apps Script นับเลขลำดับต่อจากเดิม แต่ฝั่งนี้เริ่มใหม่หมด
+        this.app.log('ย้ายข้อมูลจาก Apps Script มา Cloudflare', gasUrl, '');
+        this.commit();
+      } catch (e) {
+        // นำเข้าไม่ครบ — ไม่ปล่อยให้ระบบเปิดใช้บนข้อมูลครึ่ง ๆ กลาง ๆ
+        console.error('pair import', e && e.stack || e);
+        this.store.wipeData();
+        this.store.delProp('SYNC_SECRET');
+        this.store.delProp('GAS_URL');
+        this.boot();
+        return { ok: false, error: 'ย้ายข้อมูลไม่สำเร็จ: ' + String(e && e.message || e) + ' — กดเชื่อมต่อใหม่อีกครั้ง' };
+      }
       return { ok: true, counts: this.counts(), gasVersion: exp.version, version: this.app.version };
     } finally {
       this.pairing = false;
